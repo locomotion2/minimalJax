@@ -1,0 +1,6 @@
+g = 9.81
+
+INPUT_SIZE = 3
+OUTPUT_SIZE = 2
+
+MAX_ENERGY = 2
