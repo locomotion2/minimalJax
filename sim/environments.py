@@ -1,11 +1,14 @@
-from CONSTANTS import *
-from controllers import PID
-from models import CPG, Pendulum
+from sim.controllers import PID
+from sim.models import CPG, Pendulum
+
+from IPython import display
+import matplotlib.pyplot as plt
 
 import numpy as np
 
+
 class BaseEnvironment:
-    def __init__(self, delta_t: float = 0.001, t_final: float = 10):
+    def __init__(self, delta_t: float = 0.001, t_final: float = 5):
         self.delta_t = delta_t
         self.t_final = t_final
 
@@ -43,3 +46,30 @@ class BaseEnvironment:
         self.model = Pendulum(delta_t=self.delta_t)
         self.controller = PID(delta_t=self.delta_t)
         self.generator = CPG(delta_t=self.delta_t, x_0=[0, -1])
+
+    def render(self):
+        # Get key variables
+        t_traj = self.model.get_temporal_traj()
+        x_traj = self.model.get_state_traj()
+        q_traj = x_traj[:, 0]
+
+        display.clear_output(wait=True)
+        plt.clf()
+        # plt.figure(figsize=(10,7))
+
+        # plt.subplot(2, 1, 1)
+
+        plt.plot(t_traj, q_traj, 'b--', linewidth=3)
+        plt.ylabel(r'$Angle (rad)$')
+        plt.legend(['Pend. traj.'], loc='best')
+        plt.xlabel('Time (s)')
+
+        # plt.subplot(2, 1, 2)
+        # plt.plot(t[0:i + 1], sp[0:i + 1], 'k.-', linewidth=1)
+        # plt.plot(t[0:i + 1], xd[0:i + 1], 'r-', linewidth=3)
+        # plt.ylabel(r'$x_d\;(mol/L)$')
+        # plt.legend(['Starting composition', 'Distillate composition'], loc='best')
+        # plt.xlabel('Time (hr)')
+
+        plt.draw()
+        plt.show()

@@ -1,0 +1,12 @@
+uint8_t out_of_bounds
+uint8_t lost_tracking
+uint8_t is_crawling
+uint8_t can_fit_box
+uint8_t has_fallen
+uint8_t last_obs_valid
+
+double heading
+double start_heading
+double transform[9]
+double translation[3]
+double world_position[3]

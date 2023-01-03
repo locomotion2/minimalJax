@@ -1,0 +1,66 @@
+trot: &defaults
+  # The pulsations will be multiply by pi
+  omega_swing: 7
+  omega_stance: 4
+  desired_step_len: 0.025
+  ground_clearance: 0.015
+  ground_penetration: 0.02
+
+fast_trot:
+  # Note: was tuned for 60Hz control freq
+  desired_step_len: 0.054810071883006226
+  ground_clearance: 0.0325640127661092
+  ground_penetration: 0.014896340622611772
+  omega_stance: 3.43196861849978
+  omega_swing: 3.4596382238215413
+
+walk:
+  <<: *defaults
+  omega_swing: 7
+  omega_stance: 7
+  desired_step_len: 0.025
+  ground_clearance: 0.02
+  ground_penetration: 0.015
+
+bound:
+  <<: *defaults
+  omega_swing: 5
+  omega_stance: 5
+  desired_step_len: 0.02
+  ground_clearance: 0.018
+  ground_penetration: 0.01
+
+# TO BE TUNED
+pace:
+  <<: *defaults
+  omega_swing: 7.5
+  omega_stance: 7.5
+  desired_step_len: 0.015
+  ground_clearance: 0.025
+  ground_penetration: 0.01
+
+stay:
+  <<: *defaults
+  omega_swing: 1
+  omega_stance: 1
+  desired_step_len: 0.00001
+  ground_clearance: 0.0
+  ground_penetration: 0.0
+
+# Jump in place
+pronk:
+  <<: *defaults
+  # omega_swing: 8
+  # omega_stance: 5
+  desired_step_len: 0.0
+  ground_clearance: 0.015
+  ground_penetration: 0.02
+  # Optimized:
+  omega_swing: 9.82
+  omega_stance: 4.41
+  # Daniel params:
+  # omega_swing: 5.5
+  # omega_stance: 6.8
+
+bounce:
+  <<: *defaults

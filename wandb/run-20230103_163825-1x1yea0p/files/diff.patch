@@ -1,0 +1,319 @@
+diff --git a/.idea/EigenDRL.iml b/.idea/EigenDRL.iml
+index 2afa151..68da720 100644
+--- a/.idea/EigenDRL.iml
++++ b/.idea/EigenDRL.iml
+@@ -2,7 +2,9 @@
+ <module type="PYTHON_MODULE" version="4">
+   <component name="NewModuleRootManager">
+     <content url="file://$MODULE_DIR$">
+-      <sourceFolder url="file://$MODULE_DIR$/simupy" isTestSource="false" />
++      <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
++      <sourceFolder url="file://$MODULE_DIR$/rl-baselines3-zoo" isTestSource="false" />
++      <sourceFolder url="file://$MODULE_DIR$/sim" isTestSource="false" />
+     </content>
+     <orderEntry type="jdk" jdkName="Python 3.7 (dlr)" jdkType="Python SDK" />
+     <orderEntry type="sourceFolder" forTests="false" />
+diff --git a/.idea/vcs.xml b/.idea/vcs.xml
+index 82e77a7..cd7d149 100644
+--- a/.idea/vcs.xml
++++ b/.idea/vcs.xml
+@@ -2,6 +2,7 @@
+ <project version="4">
+   <component name="VcsDirectoryMappings">
+     <mapping directory="$PROJECT_DIR$" vcs="Git" />
++    <mapping directory="$PROJECT_DIR$/rl-baselines3-zoo" vcs="Git" />
+     <mapping directory="$PROJECT_DIR$/simupy" vcs="Git" />
+   </component>
+ </project>
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index fa0b534..b64d011 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,9 @@
+-# EigenDRL
+\ No newline at end of file
++# EigenDRL
++RL:
++```
++CUDA_VISIBLE_DEVICES= python train.py --algo tqc --env BertTrotSpeed-v1 --env-kwargs action_repeat:2 --eval-freq -1 -tb logs/tb/bert-trot --save-freq 10000 --save-replay-buffer
++
++CUDA_VISIBLE_DEVICES= python enjoy.py --algo tqc --env BertTrotSpeed-v1 -f logs/ --exp-id 0 -n 1500 --env-kwargs action_repeat:1
++
++CUDA_VISIBLE_DEVICES= python enjoy.py --algo tqc --env BertPronk-v1 -f logs/ --exp-id 0 -n 1500 --env-kwargs action_repeat:1
++```
+\ No newline at end of file
+diff --git a/hyperparams/tqc.yml b/hyperparams/tqc.yml
+new file mode 100644
+index 0000000..4635a04
+--- /dev/null
++++ b/hyperparams/tqc.yml
+@@ -0,0 +1,6 @@
++TestEnvironment-v1:
++  n_timesteps: 20000
++  policy: 'MlpPolicy'
++  learning_rate: !!float 1e-3
++  env_wrapper: stable_baselines3.common.monitor.Monitor
++#  vec_env_wrapper: stable_baselines3.common.vec_env.DummyVecEnv
+\ No newline at end of file
+diff --git a/setup.py b/setup.py
+new file mode 100644
+index 0000000..05aa1b5
+--- /dev/null
++++ b/setup.py
+@@ -0,0 +1,33 @@
++from setuptools import find_packages, setup
++
++setup(
++    name="sim",
++    packages=[package for package in find_packages() if package.startswith("sim")],
++    install_requires=["gym", "numpy"],
++    extras_require={
++        "tests": [
++            # Type check
++            "pytype",
++            # Lint code
++            "flake8>=3.8",
++            # Sort imports
++            "isort>=5.0",
++            # Reformat
++            "black",
++        ]
++    },
++    description="Gym env for fitting the CPG.",
++    author="Andres Gonzalez",
++    url="",
++    author_email="j.andregon15@gmail.com",
++    keywords="reinforcement-learning-algorithms reinforcement-learning machine-learning ",
++    license="MIT",
++    long_description="",
++    long_description_content_type="text/markdown",
++    version="0.7.0",
++)
++
++# python setup.py sdist
++# python setup.py bdist_wheel
++# twine upload --repository-url https://test.pypi.org/legacy/ dist/*
++# twine upload dist/*
+diff --git a/sim/__init__.py b/sim/__init__.py
+new file mode 100644
+index 0000000..14958f7
+--- /dev/null
++++ b/sim/__init__.py
+@@ -0,0 +1,8 @@
++from gym.envs.registration import register
++
++register(
++    id="TestEnvironment-v1",
++    entry_point="sim.gym_environment:BaseGymEnvironment",
++    kwargs={
++    },
++)
+\ No newline at end of file
+diff --git a/sim/controllers.py b/sim/controllers.py
+index 22da342..7810b57 100644
+--- a/sim/controllers.py
++++ b/sim/controllers.py
+@@ -1,6 +1,3 @@
+-from CONSTANTS import *
+-
+-import numpy as np
+ 
+ 
+ class constant_output:
+diff --git a/sim/environments.py b/sim/environments.py
+index 3883c4c..32c335a 100644
+--- a/sim/environments.py
++++ b/sim/environments.py
+@@ -1,11 +1,14 @@
+-from CONSTANTS import *
+-from controllers import PID
+-from models import CPG, Pendulum
++from sim.controllers import PID
++from sim.models import CPG, Pendulum
++
++from IPython import display
++import matplotlib.pyplot as plt
+ 
+ import numpy as np
+ 
++
+ class BaseEnvironment:
+-    def __init__(self, delta_t: float = 0.001, t_final: float = 10):
++    def __init__(self, delta_t: float = 0.001, t_final: float = 5):
+         self.delta_t = delta_t
+         self.t_final = t_final
+ 
+@@ -43,3 +46,30 @@ class BaseEnvironment:
+         self.model = Pendulum(delta_t=self.delta_t)
+         self.controller = PID(delta_t=self.delta_t)
+         self.generator = CPG(delta_t=self.delta_t, x_0=[0, -1])
++
++    def render(self):
++        # Get key variables
++        t_traj = self.model.get_temporal_traj()
++        x_traj = self.model.get_state_traj()
++        q_traj = x_traj[:, 0]
++
++        display.clear_output(wait=True)
++        plt.clf()
++        # plt.figure(figsize=(10,7))
++
++        # plt.subplot(2, 1, 1)
++
++        plt.plot(t_traj, q_traj, 'b--', linewidth=3)
++        plt.ylabel(r'$Angle (rad)$')
++        plt.legend(['Pend. traj.'], loc='best')
++        plt.xlabel('Time (s)')
++
++        # plt.subplot(2, 1, 2)
++        # plt.plot(t[0:i + 1], sp[0:i + 1], 'k.-', linewidth=1)
++        # plt.plot(t[0:i + 1], xd[0:i + 1], 'r-', linewidth=3)
++        # plt.ylabel(r'$x_d\;(mol/L)$')
++        # plt.legend(['Starting composition', 'Distillate composition'], loc='best')
++        # plt.xlabel('Time (hr)')
++
++        plt.draw()
++        plt.show()
+diff --git a/sim/gym_environment.py b/sim/gym_environment.py
+index 18e2dc0..9716633 100644
+--- a/sim/gym_environment.py
++++ b/sim/gym_environment.py
+@@ -1,32 +1,43 @@
+-from CONSTANTS import *
++from sim.CONSTANTS import *
+ 
+ import gym
+ from gym.spaces import Box
+ import numpy as np
+ from typing import Callable
+-from IPython import display
+-import matplotlib.pyplot as plt
+ 
+-from environments import BaseEnvironment
++from sim.environments import BaseEnvironment
+ 
+ 
+ class BaseGymEnvironment(gym.Env):
+-    def __init__(self, sim_handle: BaseEnvironment, reward_func: Callable = None, action_scale=None):
++    def __init__(self, reward_func: Callable = None, action_scale=None):
+         super().__init__()
+ 
+         if action_scale is None:
+             self.action_scale = [1, 1]
+         else:
+             self.action_scale = action_scale
++
++        if reward_func is None:
++            self.reward_func = self.default_func
++        else:
++            self.reward_func = reward_func
++
+         self.action_space = Box(low=0, high=1, shape=(OUTPUT_SIZE,))
+         self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
+ 
+-        self.sim = sim_handle
+-        self.reward_func = reward_func
++        self.sim = BaseEnvironment(delta_t=0.01, t_final=2)
+         self.E_d = 0
+-
+         self.rng = np.random.default_rng()
+ 
++    def default_func(self, state: dict):
++        E_d = state['Energy_des']
++        E_k, E_p = state['Energies']
++        E_t = E_k + E_p
++
++        r_E = float(np.exp(-((E_t - E_d) / 0.3) ** 2))
++
++        return r_E * 0.1
++
+     def new_target_energy(self):
+         self.E_d = self.rng.uniform(0, MAX_ENERGY / 2)
+ 
+@@ -34,7 +45,7 @@ class BaseGymEnvironment(gym.Env):
+         p = self.sim.get_positions()
+         E = self.sim.get_energies()
+         state = {'positions': p, 'Energy_des': self.E_d, 'Energies': E}
+-        obs = np.concatenate(p, self.E_d / MAX_ENERGY)
++        obs = np.concatenate([p, [self.E_d / MAX_ENERGY]])
+ 
+         return state, obs
+ 
+@@ -59,22 +70,4 @@ class BaseGymEnvironment(gym.Env):
+         return obs
+ 
+     def render(self, mode="human"):
+-        pass
+-        # display.clear_output(wait=True)
+-        # plt.clf()
+-        # # plt.figure(figsize=(10,7))
+-        #
+-        # plt.subplot(2, 1, 1)
+-        # plt.plot(t[0:i + 1], rr[0:i + 1], 'b--', linewidth=3)
+-        # plt.ylabel(r'$RR$')
+-        # plt.legend(['Reflux ratio'], loc='best')
+-        #
+-        # plt.subplot(2, 1, 2)
+-        # plt.plot(t[0:i + 1], sp[0:i + 1], 'k.-', linewidth=1)
+-        # plt.plot(t[0:i + 1], xd[0:i + 1], 'r-', linewidth=3)
+-        # plt.ylabel(r'$x_d\;(mol/L)$')
+-        # plt.legend(['Starting composition', 'Distillate composition'], loc='best')
+-        # plt.xlabel('Time (hr)')
+-        #
+-        # plt.draw()
+-        # plt.show()
+\ No newline at end of file
++        self.sim.render()
+diff --git a/sim/models.py b/sim/models.py
+index adfe465..e808c80 100644
+--- a/sim/models.py
++++ b/sim/models.py
+@@ -1,4 +1,4 @@
+-from CONSTANTS import *
++from sim.CONSTANTS import *
+ 
+ import numpy as np
+ from scipy.integrate import odeint
+@@ -27,7 +27,7 @@ class CPG:
+ 
+     def step(self, omega, mu):
+         ts = [self.t_cur, self.t_cur + self.delta_t]
+-        xs = odeint(self.eqs_motion, self.x_cur, ts, args=[omega, mu])
++        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(omega, mu))
+ 
+         # Update vars
+         self.x_cur = xs[-1]
+@@ -43,6 +43,9 @@ class Pendulum:
+         self.x_cur = [q_0, dq_0]
+         self.t_cur = t_0
+ 
++        self.x_traj = [self.x_cur]
++        self.t_traj = [self.t_cur]
++
+     def eqs_motion(self, x, t, tau):
+         x1 = x[0]
+         x2 = x[1]
+@@ -68,13 +71,21 @@ class Pendulum:
+     def get_time(self) -> float:
+         return self.t_cur
+ 
++    def get_state_traj(self):
++        return self.x_traj
++
++    def get_temporal_traj(self):
++        return self.t_traj
++
+     def config(self):
+         pass
+ 
+     def step(self, tau):
+         ts = [self.t_cur, self.t_cur + self.delta_t]
+-        xs = odeint(self.eqs_motion, self.x_cur, ts, args=[tau])
++        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(tau,))
+ 
+         # Update vars
+         self.x_cur = xs[-1]
+         self.t_cur += self.delta_t
++        self.x_traj.append(self.x_cur)
++        self.t_traj.append(self.t_cur)

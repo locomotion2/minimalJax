@@ -1,0 +1,63 @@
+{
+    "os": "Windows-10-10.0.22000-SP0",
+    "python": "3.7.15",
+    "heartbeatAt": "2023-01-03T15:29:06.437695",
+    "startedAt": "2023-01-03T15:29:05.067077",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--algo",
+        "tqc",
+        "--env",
+        "TestEnvironment-v1",
+        "--progress",
+        "--conf-file",
+        ".\\hyperparams\\tqc.yml",
+        "--eval-freq",
+        "200",
+        "--track",
+        "--wandb-project-name",
+        "EigenHunt"
+    ],
+    "state": "running",
+    "program": "C:\\Users\\jandr\\anaconda3\\envs\\dlr\\Scripts\\rl_zoo3-script.py",
+    "codePath": "..\\..\\..\\..\\anaconda3\\envs\\dlr\\Scripts\\rl_zoo3-script.py",
+    "git": {
+        "remote": "https://github.com/coin15/EigenDRL.git",
+        "commit": "777be1fae6f44f3c6d1b646d2793f01262d0f7af"
+    },
+    "email": "ge56ruj@mytum.de",
+    "root": "C:/Users/jandr/Documents/Terran/Master thesis/EigenDRL",
+    "host": "LAPTOP-N6EUVKRH",
+    "username": "jandr",
+    "executable": "C:\\Users\\jandr\\anaconda3\\envs\\dlr\\python.exe",
+    "cpu_count": 8,
+    "cpu_count_logical": 16,
+    "cpu_freq": {
+        "current": 3301.0,
+        "min": 0.0,
+        "max": 3301.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3301.0,
+            "min": 0.0,
+            "max": 3301.0
+        }
+    ],
+    "disk": {
+        "total": 455.5081214904785,
+        "used": 425.40489196777344
+    },
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3060 Laptop GPU",
+            "memory_total": 6442450944
+        }
+    ],
+    "memory": {
+        "total": 15.422203063964844
+    }
+}

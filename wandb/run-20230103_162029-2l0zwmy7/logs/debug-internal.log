@@ -1,0 +1,532 @@
+2023-01-03 16:20:29,973 INFO    StreamThr :8188 [internal.py:wandb_internal():90] W&B internal server running at pid: 8188, started at: 2023-01-03 16:20:29.973294
+2023-01-03 16:20:29,974 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: status
+2023-01-03 16:20:29,977 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: status
+2023-01-03 16:20:29,978 DEBUG   SenderThread:8188 [sender.py:send():303] send: header
+2023-01-03 16:20:29,978 INFO    WriterThread:8188 [datastore.py:open_for_write():75] open: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\run-2l0zwmy7.wandb
+2023-01-03 16:20:30,013 DEBUG   SenderThread:8188 [sender.py:send():303] send: run
+2023-01-03 16:20:30,597 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: check_version
+2023-01-03 16:20:30,601 INFO    SenderThread:8188 [dir_watcher.py:__init__():216] watching files in: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files
+2023-01-03 16:20:30,601 INFO    SenderThread:8188 [sender.py:_start_run_threads():931] run started: 2l0zwmy7 with start time 1672759229.970794
+2023-01-03 16:20:30,601 DEBUG   SenderThread:8188 [sender.py:send():303] send: summary
+2023-01-03 16:20:30,602 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file wandb-summary.json with policy end
+2023-01-03 16:20:30,602 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: check_version
+2023-01-03 16:20:30,809 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: run_start
+2023-01-03 16:20:31,449 DEBUG   HandlerThread:8188 [system_info.py:__init__():31] System info init
+2023-01-03 16:20:31,449 DEBUG   HandlerThread:8188 [system_info.py:__init__():46] System info init done
+2023-01-03 16:20:31,449 INFO    HandlerThread:8188 [system_monitor.py:start():150] Starting system monitor
+2023-01-03 16:20:31,450 INFO    SystemMonitor:8188 [system_monitor.py:_start():116] Starting system asset monitoring threads
+2023-01-03 16:20:31,450 INFO    HandlerThread:8188 [system_monitor.py:probe():171] Collecting system info
+2023-01-03 16:20:31,458 INFO    SystemMonitor:8188 [interfaces.py:start():168] Started cpu
+2023-01-03 16:20:31,458 INFO    SystemMonitor:8188 [interfaces.py:start():168] Started disk
+2023-01-03 16:20:31,458 INFO    SystemMonitor:8188 [interfaces.py:start():168] Started gpu
+2023-01-03 16:20:31,470 INFO    SystemMonitor:8188 [interfaces.py:start():168] Started memory
+2023-01-03 16:20:31,486 DEBUG   HandlerThread:8188 [system_info.py:probe():195] Probing system
+2023-01-03 16:20:31,486 INFO    SystemMonitor:8188 [interfaces.py:start():168] Started network
+2023-01-03 16:20:31,487 DEBUG   HandlerThread:8188 [system_info.py:_probe_git():180] Probing git
+2023-01-03 16:20:31,564 DEBUG   HandlerThread:8188 [system_info.py:_probe_git():188] Probing git done
+2023-01-03 16:20:31,565 DEBUG   HandlerThread:8188 [system_info.py:probe():241] Probing system done
+2023-01-03 16:20:31,565 DEBUG   HandlerThread:8188 [system_monitor.py:probe():180] {'os': 'Windows-10-10.0.22000-SP0', 'python': '3.7.15', 'heartbeatAt': '2023-01-03T15:20:31.486916', 'startedAt': '2023-01-03T15:20:29.956294', 'docker': None, 'cuda': None, 'args': ('--algo', 'tqc', '--env', 'TestEnvironment-v1', '--progress', '--conf-file', '.\\hyperparams\\tqc.yml', '--eval-freq', '200', '--track', '--wandb-project-name', 'EigenHunt'), 'state': 'running', 'program': 'C:\\Users\\jandr\\anaconda3\\envs\\dlr\\Scripts\\rl_zoo3-script.py', 'codePath': '..\\..\\..\\..\\anaconda3\\envs\\dlr\\Scripts\\rl_zoo3-script.py', 'git': {'remote': 'https://github.com/coin15/EigenDRL.git', 'commit': '777be1fae6f44f3c6d1b646d2793f01262d0f7af'}, 'email': 'ge56ruj@mytum.de', 'root': 'C:/Users/jandr/Documents/Terran/Master thesis/EigenDRL', 'host': 'LAPTOP-N6EUVKRH', 'username': 'jandr', 'executable': 'C:\\Users\\jandr\\anaconda3\\envs\\dlr\\python.exe', 'cpu_count': 8, 'cpu_count_logical': 16, 'cpu_freq': {'current': 2652.0, 'min': 0.0, 'max': 3301.0}, 'cpu_freq_per_core': [{'current': 2652.0, 'min': 0.0, 'max': 3301.0}], 'disk': {'total': 455.5081214904785, 'used': 425.4775276184082}, 'gpu': 'NVIDIA GeForce RTX 3060 Laptop GPU', 'gpu_count': 1, 'gpu_devices': [{'name': 'NVIDIA GeForce RTX 3060 Laptop GPU', 'memory_total': 6442450944}], 'memory': {'total': 15.422203063964844}}
+2023-01-03 16:20:31,565 INFO    HandlerThread:8188 [system_monitor.py:probe():181] Finished collecting system info
+2023-01-03 16:20:31,565 INFO    HandlerThread:8188 [system_monitor.py:probe():184] Publishing system info
+2023-01-03 16:20:31,565 DEBUG   HandlerThread:8188 [system_info.py:_save_pip():52] Saving list of pip packages installed into the current environment
+2023-01-03 16:20:31,566 DEBUG   HandlerThread:8188 [system_info.py:_save_pip():67] Saving pip packages done
+2023-01-03 16:20:31,566 DEBUG   HandlerThread:8188 [system_info.py:_save_conda():75] Saving list of conda packages installed into the current environment
+2023-01-03 16:20:31,569 ERROR   HandlerThread:8188 [system_info.py:_save_conda():85] Error saving conda packages: [WinError 2] The system cannot find the file specified
+Traceback (most recent call last):
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\sdk\internal\system\system_info.py", line 82, in _save_conda
+    ["conda", "env", "export"], stdout=f, stderr=subprocess.DEVNULL
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\subprocess.py", line 339, in call
+    with Popen(*popenargs, **kwargs) as p:
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\subprocess.py", line 800, in __init__
+    restore_signals, start_new_session)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\subprocess.py", line 1207, in _execute_child
+    startupinfo)
+FileNotFoundError: [WinError 2] The system cannot find the file specified
+2023-01-03 16:20:31,570 DEBUG   HandlerThread:8188 [system_info.py:_save_conda():86] Saving conda packages done
+2023-01-03 16:20:31,570 DEBUG   HandlerThread:8188 [system_info.py:_save_code():89] Saving code
+2023-01-03 16:20:31,604 DEBUG   HandlerThread:8188 [system_info.py:_save_code():110] Saving code done
+2023-01-03 16:20:31,604 DEBUG   HandlerThread:8188 [system_info.py:_save_patches():127] Saving git patches
+2023-01-03 16:20:31,607 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-summary.json
+2023-01-03 16:20:31,608 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\conda-environment.yaml
+2023-01-03 16:20:31,608 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\requirements.txt
+2023-01-03 16:20:31,787 DEBUG   HandlerThread:8188 [system_info.py:_save_patches():169] Saving git patches done
+2023-01-03 16:20:31,788 INFO    HandlerThread:8188 [system_monitor.py:probe():186] Finished publishing system info
+2023-01-03 16:20:31,835 DEBUG   SenderThread:8188 [sender.py:send():303] send: files
+2023-01-03 16:20:31,835 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file wandb-metadata.json with policy now
+2023-01-03 16:20:31,836 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file code\..\..\..\..\anaconda3\envs\dlr\Scripts\rl_zoo3-script.py with policy now
+2023-01-03 16:20:31,836 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file diff.patch with policy now
+2023-01-03 16:20:31,845 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:20:31,845 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:20:31,893 INFO    HandlerThread:8188 [handler.py:handle_tbrecord():724] handling tbrecord: tbrecord {
+  log_dir: "runs/TestEnvironment-v1__tqc__60634460__1672759227\\TestEnvironment-v1\\TQC_1"
+  save: true
+}
+control {
+  relay_id: "77b25c7aabb44ed0995c9a65831e4891"
+}
+_info {
+  stream_id: "2l0zwmy7"
+}
+
+2023-01-03 16:20:31,894 DEBUG   HandlerThread:8188 [config_util.py:dict_from_config_file():100] no default config file found in config-defaults.yaml
+2023-01-03 16:20:31,943 DEBUG   Thread-36 :8188 [tb_watcher.py:_process_events():275] Encountered tensorboard directory watcher error: symbolic link privilege not held
+2023-01-03 16:20:32,085 DEBUG   SenderThread:8188 [sender.py:send():303] send: telemetry
+2023-01-03 16:20:32,092 DEBUG   SenderThread:8188 [sender.py:send():303] send: config
+2023-01-03 16:20:32,093 DEBUG   SenderThread:8188 [sender.py:send():303] send: tbrecord
+2023-01-03 16:20:32,364 ERROR   Thread-33 :8188 [internal_api.py:upload_file():1924] upload_file exception https://storage.googleapis.com/wandb-production.appspot.com/tum-adlr-ss22-02/EigenHunt/2l0zwmy7/../../../anaconda3/envs/dlr/Scripts/rl_zoo3-script.py?Expires=1672845630&GoogleAccessId=wandb-production%40appspot.gserviceaccount.com&Signature=uck0VKy70ECuOq6EpV%2Bg%2FawBaHflpTe6LfMd4w669yhj2G0%2BlAaVqCa%2BY%2BljFeEAVnUuVCgATSptrNuk%2FVj1NcJ6rjYuDWN9s4Ou1By1emu5xHis7awTLdn%2BdspsiAXehEDstOS9EPJwHG8tkBA5%2BrrusECYnXRU%2BLy4fLRAiXUypt0G%2BBtd0WXb8kbI7m397SlzmXumv%2FH%2BCoB2cQ%2FlDiMliTr%2BajzZnCnHym9aWJfuPp8FKbsY06X5IF6A%2FLyeNWgBTt8yp6dKBIYQ1HkOTjVHlnvCbpAybYA%2BtuPzZrYgym9jaratW8h6229WxTmyPSg3M%2B2Kz6AaPnSSlcFmgg%3D%3D: 403 Client Error: Forbidden for url: https://storage.googleapis.com/wandb-production.appspot.com/anaconda3/envs/dlr/Scripts/rl_zoo3-script.py?Expires=1672845630&GoogleAccessId=wandb-production%40appspot.gserviceaccount.com&Signature=uck0VKy70ECuOq6EpV%2Bg%2FawBaHflpTe6LfMd4w669yhj2G0%2BlAaVqCa%2BY%2BljFeEAVnUuVCgATSptrNuk%2FVj1NcJ6rjYuDWN9s4Ou1By1emu5xHis7awTLdn%2BdspsiAXehEDstOS9EPJwHG8tkBA5%2BrrusECYnXRU%2BLy4fLRAiXUypt0G%2BBtd0WXb8kbI7m397SlzmXumv%2FH%2BCoB2cQ%2FlDiMliTr%2BajzZnCnHym9aWJfuPp8FKbsY06X5IF6A%2FLyeNWgBTt8yp6dKBIYQ1HkOTjVHlnvCbpAybYA%2BtuPzZrYgym9jaratW8h6229WxTmyPSg3M%2B2Kz6AaPnSSlcFmgg%3D%3D
+2023-01-03 16:20:32,365 ERROR   Thread-33 :8188 [internal_api.py:upload_file():1926] upload_file request headers: {'User-Agent': 'python-requests/2.28.1', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive', 'Content-Length': '998'}
+2023-01-03 16:20:32,365 ERROR   Thread-33 :8188 [internal_api.py:upload_file():1928] upload_file response body: b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match the signature you provided. Check your Google secret key and signing method.</Message><StringToSign>PUT\n\n\n1672845630\n/wandb-production.appspot.com/anaconda3/envs/dlr/Scripts/rl_zoo3-script.py</StringToSign></Error>"
+2023-01-03 16:20:32,370 ERROR   Thread-33 :8188 [upload_job.py:push():146] Failed to upload file: C:\Users\jandr\AppData\Local\Temp\tmpqmyonii_wandb\11nez6st-../../../anaconda3/envs/dlr/Scripts/rl_zoo3-script.py
+Traceback (most recent call last):
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\apis\normalize.py", line 26, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\sdk\lib\retry.py", line 190, in wrapped_fn
+    return retrier(*args, **kargs)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\sdk\lib\retry.py", line 113, in __call__
+    result = self._call_fn(*args, **kwargs)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\sdk\internal\internal_api.py", line 1950, in upload_file
+    util.sentry_reraise(e)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\util.py", line 222, in sentry_reraise
+    raise exc.with_traceback(sys.exc_info()[2])
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\sdk\internal\internal_api.py", line 1922, in upload_file
+    response.raise_for_status()
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\requests\models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: https://storage.googleapis.com/wandb-production.appspot.com/anaconda3/envs/dlr/Scripts/rl_zoo3-script.py?Expires=1672845630&GoogleAccessId=wandb-production%40appspot.gserviceaccount.com&Signature=uck0VKy70ECuOq6EpV%2Bg%2FawBaHflpTe6LfMd4w669yhj2G0%2BlAaVqCa%2BY%2BljFeEAVnUuVCgATSptrNuk%2FVj1NcJ6rjYuDWN9s4Ou1By1emu5xHis7awTLdn%2BdspsiAXehEDstOS9EPJwHG8tkBA5%2BrrusECYnXRU%2BLy4fLRAiXUypt0G%2BBtd0WXb8kbI7m397SlzmXumv%2FH%2BCoB2cQ%2FlDiMliTr%2BajzZnCnHym9aWJfuPp8FKbsY06X5IF6A%2FLyeNWgBTt8yp6dKBIYQ1HkOTjVHlnvCbpAybYA%2BtuPzZrYgym9jaratW8h6229WxTmyPSg3M%2B2Kz6AaPnSSlcFmgg%3D%3D
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\filesync\upload_job.py", line 141, in push
+    extra_headers=extra_headers,
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\wandb\apis\normalize.py", line 28, in wrapper
+    raise CommError(err.response, err)
+wandb.errors.CommError: <Response [403]>
+2023-01-03 16:20:32,521 INFO    Thread-34 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\AppData\Local\Temp\tmpqmyonii_wandb\1ujzjlvz-diff.patch
+2023-01-03 16:20:32,548 INFO    Thread-32 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\AppData\Local\Temp\tmpqmyonii_wandb\yzkdzxlr-wandb-metadata.json
+2023-01-03 16:20:32,612 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\diff.patch
+2023-01-03 16:20:32,613 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-metadata.json
+2023-01-03 16:20:32,613 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:34,627 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:36,641 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:38,651 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:40,663 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:40,663 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\conda-environment.yaml
+2023-01-03 16:20:42,674 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:44,685 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:46,695 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:47,097 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:20:47,097 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:20:48,705 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:50,732 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:52,762 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:54,784 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:56,808 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:20:56,808 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_created():275] file/dir created: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\conda-environment.yaml
+2023-01-03 16:20:58,867 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:00,880 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\config.yaml
+2023-01-03 16:21:00,880 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:02,381 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:21:02,381 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:21:02,921 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:04,931 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:06,958 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:08,984 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:11,010 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:13,037 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:15,065 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:17,103 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:17,628 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:21:17,628 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:21:19,113 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:21,139 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:23,153 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:25,179 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:27,221 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:29,247 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:31,261 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:31,490 DEBUG   SystemMonitor:8188 [system_monitor.py:_start():130] Starting system metrics aggregation loop
+2023-01-03 16:21:31,491 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:21:32,867 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:21:32,867 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:21:33,301 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:35,327 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:37,354 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:39,396 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:41,422 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:43,432 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:45,460 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:47,488 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:48,200 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:21:48,200 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:21:49,517 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:50,544 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:52,566 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:54,627 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:56,651 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:21:58,674 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:00,702 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:01,492 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:22:02,730 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:03,455 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:22:03,455 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:22:04,757 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:06,786 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:08,808 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:10,837 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:12,864 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:14,889 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:16,920 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:18,777 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:22:18,777 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:22:18,943 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:20,972 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:22,998 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:25,030 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:27,052 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:29,085 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:31,110 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:31,493 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:22:33,129 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:34,062 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:22:34,062 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:22:35,166 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:37,196 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:39,222 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:41,246 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:43,288 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:45,321 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:47,343 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:49,307 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:22:49,307 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:22:49,377 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:51,420 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:53,455 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:55,464 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:57,482 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:22:59,507 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:01,505 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:23:01,534 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:03,568 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:04,595 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:23:04,595 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:23:05,591 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:07,623 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:09,642 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:11,662 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:13,691 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:15,713 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:17,729 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:19,753 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:19,940 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:23:19,940 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:23:21,783 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:25,835 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:27,851 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:29,878 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:31,521 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:23:31,908 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:33,937 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:35,963 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:37,985 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:39,120 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:23:39,121 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:23:40,016 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:42,046 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:44,071 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:46,100 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:48,133 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:50,159 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:52,184 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:54,214 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:54,383 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:23:54,383 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:23:56,242 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:23:58,270 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:00,298 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:01,536 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:24:02,323 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:04,355 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:06,389 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:08,413 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:09,647 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:24:09,647 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:24:10,438 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:12,469 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:14,493 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:16,518 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:18,544 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:20,567 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:22,594 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:23,602 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:24,947 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:24:24,948 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:24:25,630 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:27,659 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:29,685 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:31,543 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:24:31,714 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:33,742 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:35,771 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:37,799 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:39,824 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:40,221 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:24:40,221 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:24:41,863 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:43,917 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:45,945 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:47,975 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:50,001 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:52,044 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:54,055 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:55,483 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:24:55,484 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:24:56,082 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:24:58,112 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:00,126 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:01,548 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:25:02,136 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:04,174 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:06,188 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:08,201 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:10,215 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:10,724 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:25:10,724 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:25:12,227 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:14,239 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:16,252 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:18,263 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:20,277 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:22,290 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:24,303 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:25,992 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:25:25,992 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:25:26,314 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:28,322 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:30,334 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:31,561 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:25:32,349 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:34,362 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:36,380 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:38,390 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:40,403 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:41,238 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:25:41,239 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:25:42,416 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:44,430 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:46,443 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:48,455 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:50,467 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:52,479 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:54,492 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:56,506 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:25:56,506 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:25:56,510 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:25:58,520 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:00,534 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:01,572 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:26:02,548 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:04,559 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:06,588 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:08,618 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:10,647 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:11,761 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:26:11,761 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:26:12,677 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:14,697 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:16,725 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:18,754 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:20,764 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:22,793 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:24,819 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:26,848 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:27,002 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:26:27,002 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:26:28,862 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:30,889 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:31,585 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:26:32,918 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:34,954 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:36,971 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:38,985 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:40,999 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:42,267 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:26:42,267 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:26:43,009 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:45,037 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:47,066 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:49,095 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:51,108 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:53,121 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:55,149 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:57,176 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:26:57,532 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:26:57,532 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:26:59,203 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:01,243 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:01,598 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:27:03,269 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:05,285 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:07,296 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:09,311 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:11,323 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:12,778 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:27:12,778 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:27:13,336 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:15,366 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:17,378 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:19,406 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:21,431 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:23,455 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:25,479 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:27,507 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:28,048 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:27:28,049 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:27:29,535 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:31,564 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:31,611 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:27:33,590 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:35,603 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:37,630 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:39,642 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:41,697 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:43,323 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:27:43,323 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:27:43,726 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:45,750 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:47,783 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:49,806 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:51,818 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:53,846 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:55,860 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:57,893 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:27:58,571 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: stop_status
+2023-01-03 16:27:58,571 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: stop_status
+2023-01-03 16:27:59,917 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:01,620 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:28:01,946 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:03,974 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:06,016 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:08,023 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:09,948 DEBUG   SenderThread:8188 [sender.py:send():303] send: exit
+2023-01-03 16:28:09,948 INFO    SenderThread:8188 [sender.py:send_exit():442] handling exit code: 0
+2023-01-03 16:28:09,948 INFO    SenderThread:8188 [sender.py:send_exit():444] handling runtime: 459
+2023-01-03 16:28:09,949 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file wandb-summary.json with policy end
+2023-01-03 16:28:09,949 INFO    SenderThread:8188 [sender.py:send_exit():450] send defer
+2023-01-03 16:28:09,950 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:09,950 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 0
+2023-01-03 16:28:09,950 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:09,950 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 0
+2023-01-03 16:28:09,950 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 1
+2023-01-03 16:28:09,950 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:09,950 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 1
+2023-01-03 16:28:09,950 INFO    HandlerThread:8188 [system_monitor.py:finish():160] Stopping system monitor
+2023-01-03 16:28:09,962 DEBUG   SystemMonitor:8188 [system_monitor.py:_start():137] Finished system metrics aggregation loop
+2023-01-03 16:28:09,962 INFO    HandlerThread:8188 [interfaces.py:finish():175] Joined cpu
+2023-01-03 16:28:09,963 DEBUG   SystemMonitor:8188 [system_monitor.py:_start():141] Publishing last batch of metrics
+2023-01-03 16:28:09,973 INFO    HandlerThread:8188 [interfaces.py:finish():175] Joined disk
+2023-01-03 16:28:09,999 INFO    HandlerThread:8188 [interfaces.py:finish():175] Joined gpu
+2023-01-03 16:28:09,999 INFO    HandlerThread:8188 [interfaces.py:finish():175] Joined memory
+2023-01-03 16:28:09,999 INFO    HandlerThread:8188 [interfaces.py:finish():175] Joined network
+2023-01-03 16:28:09,999 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:09,999 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 1
+2023-01-03 16:28:09,999 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 2
+2023-01-03 16:28:10,000 DEBUG   SenderThread:8188 [sender.py:send():303] send: stats
+2023-01-03 16:28:10,000 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:10,000 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 2
+2023-01-03 16:28:10,001 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:10,001 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 2
+2023-01-03 16:28:10,001 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 3
+2023-01-03 16:28:10,001 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:10,001 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 3
+2023-01-03 16:28:10,051 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-summary.json
+2023-01-03 16:28:10,051 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:12,059 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:15,831 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:15,831 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: poll_exit
+2023-01-03 16:28:15,831 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 3
+2023-01-03 16:28:15,832 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 4
+2023-01-03 16:28:15,832 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: poll_exit
+2023-01-03 16:28:15,832 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:15,832 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 4
+2023-01-03 16:28:15,832 DEBUG   SenderThread:8188 [sender.py:send():303] send: summary
+2023-01-03 16:28:15,833 INFO    SenderThread:8188 [sender.py:_save_file():1171] saving file wandb-summary.json with policy end
+2023-01-03 16:28:15,833 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:15,833 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 4
+2023-01-03 16:28:15,833 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 5
+2023-01-03 16:28:15,834 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:15,834 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 5
+2023-01-03 16:28:15,834 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:15,834 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 5
+2023-01-03 16:28:15,834 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 6
+2023-01-03 16:28:15,834 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:15,834 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 6
+2023-01-03 16:28:15,834 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:15,834 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 6
+2023-01-03 16:28:15,987 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: keepalive
+2023-01-03 16:28:16,080 INFO    Thread-17 :8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-summary.json
+2023-01-03 16:28:17,301 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 7
+2023-01-03 16:28:17,301 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:17,302 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 7
+2023-01-03 16:28:17,302 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:17,302 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 7
+2023-01-03 16:28:17,302 INFO    SenderThread:8188 [dir_watcher.py:finish():362] shutting down directory watcher
+2023-01-03 16:28:18,089 INFO    SenderThread:8188 [dir_watcher.py:_on_file_modified():292] file/dir modified: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:18,090 INFO    SenderThread:8188 [dir_watcher.py:finish():392] scan: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files
+2023-01-03 16:28:18,090 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\conda-environment.yaml conda-environment.yaml
+2023-01-03 16:28:18,091 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\config.yaml config.yaml
+2023-01-03 16:28:18,091 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\diff.patch diff.patch
+2023-01-03 16:28:18,091 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log output.log
+2023-01-03 16:28:18,094 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\requirements.txt requirements.txt
+2023-01-03 16:28:18,096 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-metadata.json wandb-metadata.json
+2023-01-03 16:28:18,096 INFO    SenderThread:8188 [dir_watcher.py:finish():406] scan save: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-summary.json wandb-summary.json
+2023-01-03 16:28:18,099 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 8
+2023-01-03 16:28:18,101 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:18,101 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 8
+2023-01-03 16:28:18,101 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:18,101 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 8
+2023-01-03 16:28:18,101 INFO    SenderThread:8188 [file_pusher.py:finish():168] shutting down file pusher
+2023-01-03 16:28:18,761 INFO    Thread-39 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\requirements.txt
+2023-01-03 16:28:18,764 INFO    Thread-40 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\wandb-summary.json
+2023-01-03 16:28:18,766 INFO    Thread-37 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\config.yaml
+2023-01-03 16:28:18,766 INFO    Thread-38 :8188 [upload_job.py:push():143] Uploaded file C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\files\output.log
+2023-01-03 16:28:18,970 INFO    Thread-16 :8188 [sender.py:transition_state():463] send defer: 9
+2023-01-03 16:28:18,971 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:18,971 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 9
+2023-01-03 16:28:18,971 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:18,971 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 9
+2023-01-03 16:28:18,972 INFO    SenderThread:8188 [file_pusher.py:join():173] waiting for file pusher
+2023-01-03 16:28:18,972 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 10
+2023-01-03 16:28:18,972 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:18,972 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 10
+2023-01-03 16:28:18,972 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:18,972 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 10
+2023-01-03 16:28:20,190 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 11
+2023-01-03 16:28:20,190 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:20,190 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 11
+2023-01-03 16:28:20,190 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:20,190 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 11
+2023-01-03 16:28:20,190 INFO    SenderThread:8188 [sender.py:transition_state():463] send defer: 12
+2023-01-03 16:28:20,191 DEBUG   SenderThread:8188 [sender.py:send():303] send: final
+2023-01-03 16:28:20,191 DEBUG   SenderThread:8188 [sender.py:send():303] send: footer
+2023-01-03 16:28:20,191 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: defer
+2023-01-03 16:28:20,191 INFO    HandlerThread:8188 [handler.py:handle_request_defer():162] handle defer: 12
+2023-01-03 16:28:20,191 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: defer
+2023-01-03 16:28:20,191 INFO    SenderThread:8188 [sender.py:send_request_defer():459] handle sender defer: 12
+2023-01-03 16:28:20,192 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: poll_exit
+2023-01-03 16:28:20,192 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: poll_exit
+2023-01-03 16:28:20,192 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: server_info
+2023-01-03 16:28:20,192 DEBUG   SenderThread:8188 [sender.py:send_request():317] send_request: server_info
+2023-01-03 16:28:20,194 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: get_summary
+2023-01-03 16:28:20,194 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: sampled_history
+2023-01-03 16:28:25,221 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: keepalive
+2023-01-03 16:28:25,721 INFO    MainThread:8188 [wandb_run.py:_footer_history_summary_info():3408] rendering history
+2023-01-03 16:28:25,721 INFO    MainThread:8188 [wandb_run.py:_footer_history_summary_info():3440] rendering summary
+2023-01-03 16:28:25,721 INFO    MainThread:8188 [wandb_run.py:_footer_sync_info():3364] logging synced files
+2023-01-03 16:28:25,722 DEBUG   HandlerThread:8188 [handler.py:handle_request():139] handle_request: shutdown
+2023-01-03 16:28:25,722 INFO    HandlerThread:8188 [handler.py:finish():814] shutting down handler
+2023-01-03 16:28:26,225 INFO    WriterThread:8188 [datastore.py:close():279] close: C:\Users\jandr\Documents\Terran\Master thesis\EigenDRL\wandb\run-20230103_162029-2l0zwmy7\run-2l0zwmy7.wandb
+2023-01-03 16:28:26,734 INFO    SenderThread:8188 [sender.py:finish():1331] shutting down sender
+2023-01-03 16:28:26,734 INFO    SenderThread:8188 [file_pusher.py:finish():168] shutting down file pusher
+2023-01-03 16:28:26,734 INFO    SenderThread:8188 [file_pusher.py:join():173] waiting for file pusher
+2023-01-03 16:28:26,810 INFO    MainThread:8188 [internal.py:handle_exit():77] Internal process exited

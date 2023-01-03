@@ -1,4 +1,4 @@
-from CONSTANTS import *
+from sim.CONSTANTS import *
 
 import numpy as np
 from scipy.integrate import odeint
@@ -27,7 +27,7 @@ class CPG:
 
     def step(self, omega, mu):
         ts = [self.t_cur, self.t_cur + self.delta_t]
-        xs = odeint(self.eqs_motion, self.x_cur, ts, args=[omega, mu])
+        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(omega, mu))
 
         # Update vars
         self.x_cur = xs[-1]
@@ -42,6 +42,9 @@ class Pendulum:
         self.m = m
         self.x_cur = [q_0, dq_0]
         self.t_cur = t_0
+
+        self.x_traj = [self.x_cur]
+        self.t_traj = [self.t_cur]
 
     def eqs_motion(self, x, t, tau):
         x1 = x[0]
@@ -68,13 +71,21 @@ class Pendulum:
     def get_time(self) -> float:
         return self.t_cur
 
+    def get_state_traj(self):
+        return self.x_traj
+
+    def get_temporal_traj(self):
+        return self.t_traj
+
     def config(self):
         pass
 
     def step(self, tau):
         ts = [self.t_cur, self.t_cur + self.delta_t]
-        xs = odeint(self.eqs_motion, self.x_cur, ts, args=[tau])
+        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(tau,))
 
         # Update vars
         self.x_cur = xs[-1]
         self.t_cur += self.delta_t
+        self.x_traj.append(self.x_cur)
+        self.t_traj.append(self.t_cur)

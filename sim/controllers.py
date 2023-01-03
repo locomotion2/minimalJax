@@ -1,6 +1,3 @@
-from CONSTANTS import *
-
-import numpy as np
 
 
 class constant_output:

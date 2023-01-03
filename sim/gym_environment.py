@@ -1,31 +1,42 @@
-from CONSTANTS import *
+from sim.CONSTANTS import *
 
 import gym
 from gym.spaces import Box
 import numpy as np
 from typing import Callable
-from IPython import display
-import matplotlib.pyplot as plt
 
-from environments import BaseEnvironment
+from sim.environments import BaseEnvironment
 
 
 class BaseGymEnvironment(gym.Env):
-    def __init__(self, sim_handle: BaseEnvironment, reward_func: Callable = None, action_scale=None):
+    def __init__(self, reward_func: Callable = None, action_scale=None):
         super().__init__()
 
         if action_scale is None:
             self.action_scale = [1, 1]
         else:
             self.action_scale = action_scale
+
+        if reward_func is None:
+            self.reward_func = self.default_func
+        else:
+            self.reward_func = reward_func
+
         self.action_space = Box(low=0, high=1, shape=(OUTPUT_SIZE,))
         self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
 
-        self.sim = sim_handle
-        self.reward_func = reward_func
+        self.sim = BaseEnvironment(delta_t=0.01, t_final=2)
         self.E_d = 0
-
         self.rng = np.random.default_rng()
+
+    def default_func(self, state: dict):
+        E_d = state['Energy_des']
+        E_k, E_p = state['Energies']
+        E_t = E_k + E_p
+
+        r_E = float(np.exp(-((E_t - E_d) / 0.3) ** 2))
+
+        return r_E * 0.1
 
     def new_target_energy(self):
         self.E_d = self.rng.uniform(0, MAX_ENERGY / 2)
@@ -34,7 +45,7 @@ class BaseGymEnvironment(gym.Env):
         p = self.sim.get_positions()
         E = self.sim.get_energies()
         state = {'positions': p, 'Energy_des': self.E_d, 'Energies': E}
-        obs = np.concatenate(p, self.E_d / MAX_ENERGY)
+        obs = np.concatenate([p, [self.E_d / MAX_ENERGY]])
 
         return state, obs
 
@@ -59,22 +70,4 @@ class BaseGymEnvironment(gym.Env):
         return obs
 
     def render(self, mode="human"):
-        pass
-        # display.clear_output(wait=True)
-        # plt.clf()
-        # # plt.figure(figsize=(10,7))
-        #
-        # plt.subplot(2, 1, 1)
-        # plt.plot(t[0:i + 1], rr[0:i + 1], 'b--', linewidth=3)
-        # plt.ylabel(r'$RR$')
-        # plt.legend(['Reflux ratio'], loc='best')
-        #
-        # plt.subplot(2, 1, 2)
-        # plt.plot(t[0:i + 1], sp[0:i + 1], 'k.-', linewidth=1)
-        # plt.plot(t[0:i + 1], xd[0:i + 1], 'r-', linewidth=3)
-        # plt.ylabel(r'$x_d\;(mol/L)$')
-        # plt.legend(['Starting composition', 'Distillate composition'], loc='best')
-        # plt.xlabel('Time (hr)')
-        #
-        # plt.draw()
-        # plt.show()
+        self.sim.render()
