@@ -1,9 +1,0 @@
-!!python/object/apply:collections.OrderedDict
-- - - env_wrapper
-    - stable_baselines3.common.monitor.Monitor
-  - - learning_rate
-    - 0.001
-  - - n_timesteps
-    - 20000
-  - - policy
-    - MlpPolicy
