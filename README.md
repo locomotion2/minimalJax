@@ -1,9 +1,10 @@
 # EigenHunt
-RL:
+
+How to train the model:
 ```
-CUDA_VISIBLE_DEVICES= python train.py --algo tqc --env BertTrotSpeed-v1 --env-kwargs action_repeat:2 --eval-freq -1 -tb logs/tb/bert-trot --save-freq 10000 --save-replay-buffer
-
-CUDA_VISIBLE_DEVICES= python enjoy.py --algo tqc --env BertTrotSpeed-v1 -f logs/ --exp-id 0 -n 1500 --env-kwargs action_repeat:1
-
-CUDA_VISIBLE_DEVICES= python enjoy.py --algo tqc --env BertPronk-v1 -f logs/ --exp-id 0 -n 1500 --env-kwargs action_repeat:1
+python -m rl_zoo3.train --algo tqc --env TestEnvironment-v1 --progress --conf-file .\hyperparams\tqc.yml --env-kwargs render:False --eval-freq 600
+```
+How to run a trained model:
+```
+python -m rl_zoo3.enjoy --algo tqc --env TestEnvironment-v1 --env-kwargs render:True --f .\logs -n 201
 ```

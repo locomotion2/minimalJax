@@ -1,4 +1,4 @@
-g = 9.81
+g = -9.81
 
 INPUT_SIZE = 3
 OUTPUT_SIZE = 2

@@ -34,6 +34,11 @@
       <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084034-24xe7rqf/tmp" />
       <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084104-33gyts93/tmp" />
       <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084509-2gr22bc2/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/anaconda3" />
+      <excludeFolder url="file://$MODULE_DIR$/bert-gym-feat-explore-gaits" />
+      <excludeFolder url="file://$MODULE_DIR$/logs" />
+      <excludeFolder url="file://$MODULE_DIR$/runs" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.7 (dlr)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
