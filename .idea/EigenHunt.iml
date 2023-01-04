@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="PYTHON_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/rl-baselines3-zoo" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sim" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_26/TestEnvironment-v1" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_1" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_2" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_3" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_4" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_5" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_6" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_7" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_25" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_30" />
+      <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_31" />
+      <excludeFolder url="file://$MODULE_DIR$/rl-baselines3-zoo/rl_zoo3.egg-info" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_162029-2l0zwmy7/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_162905-3f2ev9qx/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_162927-3eg2oh8p/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_163744-g7suxltd/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_163825-1x1yea0p/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_163846-3ghvtkwh/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_164637-3m5lu7am/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230103_165152-cdcxgbp3/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_082115-itk8dhr9/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_082158-o619nrgb/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_082351-ny7fqevz/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_082515-2gmo59rx/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_083548-yw3abq4c/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_083959-224vyi1c/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084034-24xe7rqf/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084104-33gyts93/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/wandb/run-20230104_084509-2gr22bc2/tmp" />
+    </content>
+    <orderEntry type="jdk" jdkName="Python 3.7 (dlr)" jdkType="Python SDK" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
