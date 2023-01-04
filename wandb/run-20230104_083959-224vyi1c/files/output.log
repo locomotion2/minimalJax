@@ -1,0 +1,30 @@
+Loading hyperparameters from: .\hyperparams\tqc.yml
+Default hyperparameters for environment (ones being tuned will be overridden):
+OrderedDict([('env_wrapper', 'stable_baselines3.common.monitor.Monitor'),
+             ('learning_rate', 0.001),
+             ('n_timesteps', 2000),
+             ('policy', 'MlpPolicy')])
+Using 1 environments
+Creating test environment
+Using cpu device
+Log path: logs/tqc/TestEnvironment-v1_35
+Logging to runs/TestEnvironment-v1__tqc__3487316714__1672817997\TestEnvironment-v1\TQC_1
+Eval num_timesteps=200, episode_reward=6.24 +/- 7.60
+Episode length: 200.00 +/- 0.00
+---------------------------------
+| eval/              |          |
+|    mean_ep_length  | 200      |
+|    mean_reward     | 6.24     |
+| time/              |          |
+|    total_timesteps | 200      |
+| train/             |          |
+|    actor_loss      | -2.77    |
+|    critic_loss     | 0.00832  |
+|    ent_coef        | 0.907    |
+|    ent_coef_loss   | -0.331   |
+|    learning_rate   | 0.001    |
+|    n_updates       | 99       |
+---------------------------------
+New best mean reward!
+[35m  14%[39m [38m━━━━━━━━━━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m281/2,000 [39m [ [33m0:00:05[39m < [36m0:00:51[39m , [31m34 it/s[39m ]
+[?25hSaving to logs/tqc/TestEnvironment-v1_35

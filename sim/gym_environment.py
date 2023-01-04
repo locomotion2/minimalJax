@@ -9,6 +9,8 @@ from sim.environments import BaseEnvironment
 
 
 class BaseGymEnvironment(gym.Env):
+    metadata = {'render.modes': ['human', 'rgb_array']}
+
     def __init__(self, reward_func: Callable = None, action_scale=None):
         super().__init__()
 
@@ -70,4 +72,9 @@ class BaseGymEnvironment(gym.Env):
         return obs
 
     def render(self, mode="human"):
-        self.sim.render()
+        if mode == 'rgb_array':
+            return None  # return RGB frame suitable for video
+        elif mode == 'human':
+            self.sim.render()
+        else:
+            super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception

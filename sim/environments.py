@@ -43,19 +43,21 @@ class BaseEnvironment:
         return self.model.get_time() >= self.t_final
 
     def restart(self):
+        print("Restarting!")
         self.model = Pendulum(delta_t=self.delta_t)
         self.controller = PID(delta_t=self.delta_t)
         self.generator = CPG(delta_t=self.delta_t, x_0=[0, -1])
 
     def render(self):
         # Get key variables
+        print("I am here!")
         t_traj = self.model.get_temporal_traj()
         x_traj = self.model.get_state_traj()
         q_traj = x_traj[:, 0]
 
         display.clear_output(wait=True)
         plt.clf()
-        # plt.figure(figsize=(10,7))
+        plt.figure(figsize=(10, 7))
 
         # plt.subplot(2, 1, 1)
 

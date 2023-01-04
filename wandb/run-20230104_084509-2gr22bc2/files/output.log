@@ -1,0 +1,64 @@
+Loading hyperparameters from: .\hyperparams\tqc.yml
+Default hyperparameters for environment (ones being tuned will be overridden):
+OrderedDict([('env_wrapper', 'stable_baselines3.common.monitor.Monitor'),
+             ('learning_rate', 0.001),
+             ('n_timesteps', 2000),
+             ('policy', 'MlpPolicy')])
+Using 1 environments
+Creating test environment
+Using cpu device
+Log path: logs/tqc/TestEnvironment-v1_38
+Restarting!
+Logging to runs/TestEnvironment-v1__tqc__2580052660__1672818307\TestEnvironment-v1\TQC_1
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Eval num_timesteps=200, episode_reward=2.62 +/- 2.95
+Episode length: 200.00 +/- 0.00
+---------------------------------
+| eval/              |          |
+|    mean_ep_length  | 200      |
+|    mean_reward     | 2.62     |
+| time/              |          |
+|    total_timesteps | 200      |
+| train/             |          |
+|    actor_loss      | -2.85    |
+|    critic_loss     | 0.00585  |
+|    ent_coef        | 0.907    |
+|    ent_coef_loss   | -0.33    |
+|    learning_rate   | 0.001    |
+|    n_updates       | 99       |
+---------------------------------
+New best mean reward!
+
+
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Restarting!
+Eval num_timesteps=400, episode_reward=4.14 +/- 3.67
+Episode length: 200.00 +/- 0.00
+---------------------------------
+| eval/              |          |
+|    mean_ep_length  | 200      |
+|    mean_reward     | 4.14     |
+| time/              |          |
+|    total_timesteps | 400      |
+| train/             |          |
+|    actor_loss      | -3.25    |
+|    critic_loss     | 0.00683  |
+|    ent_coef        | 0.742    |
+|    ent_coef_loss   | -1       |
+|    learning_rate   | 0.001    |
+|    n_updates       | 299      |
+---------------------------------
+New best mean reward!
+[35m  23%[39m [38m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m460/2,000 [39m [ [33m0:00:10[39m < [36m0:00:46[39m , [31m34 it/s[39m ]
+[?25hSaving to logs/tqc/TestEnvironment-v1_38

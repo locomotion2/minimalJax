@@ -1,0 +1,34 @@
+Traceback (most recent call last):
+  File "C:\Users\jandr\anaconda3\envs\dlr\Scripts\rl_zoo3-script.py", line 33, in <module>
+    sys.exit(load_entry_point('rl-zoo3', 'console_scripts', 'rl_zoo3')())
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\cli.py", line 22, in main
+    known_scripts[script_name]()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\train.py", line 259, in train
+    results = exp_manager.setup_experiment()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 190, in setup_experiment
+    self.create_callbacks()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 504, in create_callbacks
+    self.create_envs(self.n_eval_envs, eval_env=True),
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 614, in create_envs
+    monitor_kwargs=self.monitor_kwargs,
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\stable_baselines3\common\env_util.py", line 108, in make_vec_env
+    return vec_env_cls([make_env(i + start_index) for i in range(n_envs)], **vec_env_kwargs)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\stable_baselines3\common\vec_env\dummy_vec_env.py", line 26, in __init__
+    self.envs = [fn() for fn in env_fns]
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\stable_baselines3\common\vec_env\dummy_vec_env.py", line 26, in <listcomp>
+    self.envs = [fn() for fn in env_fns]
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\stable_baselines3\common\env_util.py", line 85, in _init
+    env = env_id(**env_kwargs)
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 600, in make_env
+    env = spec.make(**kwargs)
+  File "C:\Users\jandr\anaconda3\envs\dlr\lib\site-packages\gym\envs\registration.py", line 90, in make
+    env = cls(**_kwargs)
+TypeError: __init__() got an unexpected keyword argument 'render'
+Loading hyperparameters from: .\hyperparams\tqc.yml
+Default hyperparameters for environment (ones being tuned will be overridden):
+OrderedDict([('env_wrapper', 'stable_baselines3.common.monitor.Monitor'),
+             ('learning_rate', 0.001),
+             ('n_timesteps', 2000),
+             ('policy', 'MlpPolicy')])
+Using 1 environments
+Creating test environment

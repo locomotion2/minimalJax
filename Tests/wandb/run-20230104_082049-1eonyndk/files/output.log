@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "C:\Users\jandr\anaconda3\envs\dlr\Scripts\rl_zoo3-script.py", line 33, in <module>
+    sys.exit(load_entry_point('rl-zoo3', 'console_scripts', 'rl_zoo3')())
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\cli.py", line 22, in main
+    known_scripts[script_name]()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\train.py", line 259, in train
+    results = exp_manager.setup_experiment()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 186, in setup_experiment
+    hyperparams, saved_hyperparams = self.read_hyperparameters()
+  File "c:\users\jandr\documents\terran\master thesis\eigendrl\rl-baselines3-zoo\rl_zoo3\exp_manager.py", line 290, in read_hyperparameters
+    with open(self.config) as f:
+FileNotFoundError: [Errno 2] No such file or directory: '.\\hyperparams\\tqc.yml'
+Loading hyperparameters from: .\hyperparams\tqc.yml
