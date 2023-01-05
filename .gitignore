@@ -4,3 +4,5 @@
 /rl-baselines3-zoo/
 /runs/
 /wandb/
+/sim.egg-info/
+/Tests/anaconda3/

@@ -3,15 +3,32 @@ from sim.CONSTANTS import *
 import numpy as np
 from scipy.integrate import odeint
 
+# TODO: Look into abstract classes, see how to implement methods with variable params
 
 class CPG:
-    def __init__(self, t_0: float = 0, delta_t: float = 0.001, x_0=None):
+    def __init__(self, t_0: float = 0, x_0: list = None, delta_t: float = MIN_TIMESTEP):
+        self.t_0 = t_0
         self.delta_t = delta_t
         self.t_cur = t_0
         if x_0 is None:
-            self.x_cur = np.asarray([0, 0])
+            self.x_0 = np.asarray([0, 0])
         else:
-            self.x_cur = x_0
+            self.x_0 = x_0
+        self.x_cur = self.x_0
+
+        self.x_traj = np.asarray([self.x_cur])
+        self.t_traj = self.t_cur
+        self.coils = 0
+
+    def restart(self, t_0: float = None, x_0: list = None):
+        if t_0 is not None:
+            self.t_0 = t_0
+
+        if x_0 is not None:
+            self.x_0 = np.asarray(x_0)
+
+        self.t_cur = self.t_0
+        self.x_cur = self.x_0
 
         self.x_traj = np.asarray([self.x_cur])
         self.t_traj = self.t_cur
@@ -39,7 +56,7 @@ class CPG:
         ts = [self.t_cur, self.t_cur + self.delta_t]
         xs = odeint(self.eqs_motion, self.x_cur, ts, args=(omega, mu))
 
-        # Update vars
+        # Detect coiling
         new_angle = np.arctan2(xs[-1][1], xs[-1][0])
         old_angle = np.arctan2(self.x_cur[1], self.x_cur[0])
         if (-np.pi / 2 > new_angle < 0) and (0 < old_angle > np.pi / 2):
@@ -47,6 +64,7 @@ class CPG:
         elif (-np.pi / 2 > old_angle < 0) and (0 < new_angle > np.pi / 2):
             self.coils -= 1
 
+        # Update vars
         self.x_cur = np.asarray(xs[-1])
         self.t_cur += self.delta_t
         self.x_traj = np.append(self.x_traj, [self.x_cur], axis=0)
@@ -54,13 +72,34 @@ class CPG:
 
 
 class Pendulum:
-    def __init__(self, t_0: float = 0, delta_t: float = 0.001, q_0: float = 0, dq_0: float = 0,
-                 l: float = 1, m: float = 0.1):
+    def __init__(self, t_0: float = 0, q_0: float = 0, dq_0: float = 0,
+                 delta_t: float = MIN_TIMESTEP, l: float = 1, m: float = 0.1):
+        self.t_0 = t_0
+        self.q_0 = q_0
+        self.dq_0 = dq_0
+
         self.delta_t = delta_t
         self.l = l
         self.m = m
+
         self.x_cur = np.asarray([q_0, dq_0])
         self.t_cur = t_0
+
+        self.x_traj = np.asarray([self.x_cur])
+        self.t_traj = self.t_cur
+
+    def restart(self, t_0: float = None, q_0: float = None, dq_0: float = None):
+        if t_0 is not None:
+            self.t_0 = t_0
+
+        if q_0 is not None:
+            self.q_0 = q_0
+
+        if dq_0 is not None:
+            self.dq_0 = dq_0
+
+        self.x_cur = np.asarray([self.q_0, self.dq_0])
+        self.t_cur = self.t_0
 
         self.x_traj = np.asarray([self.x_cur])
         self.t_traj = self.t_cur
@@ -87,11 +126,6 @@ class Pendulum:
         res = np.arctan2(p[1], p[0])
         return res + np.pi / 2 + coils * 2 * np.pi
 
-        # if res <= np.pi/2:
-        #     return res + np.pi / 2 + coils * 2 * np.pi
-        # else:
-        #     return res - 3 * np.pi / 2 + coils * 2 * np.pi
-
     def get_energies(self):
         return [1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
                 self.m * -g * self.l * (1 - np.cos(self.x_cur[0]))]
@@ -105,16 +139,9 @@ class Pendulum:
     def get_temporal_traj(self):
         return self.t_traj
 
-    def config(self):
-        pass
-
     def step(self, tau):
         ts = [self.t_cur, self.t_cur + self.delta_t]
         xs = odeint(self.eqs_motion, self.x_cur, ts, args=(tau,))
-        # if xs[-1][0] > np.pi:
-        #     xs[-1][0] += -2 * np.pi
-        # elif xs[-1][0] <= -np.pi:
-        #     xs[-1][0] += 2 * np.pi
 
         # Update vars
         self.x_cur = np.asarray(xs[-1])

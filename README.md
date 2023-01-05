@@ -8,3 +8,7 @@ How to run a trained model:
 ```
 python -m rl_zoo3.enjoy --algo tqc --env TestEnvironment-v1 --env-kwargs render:True --f .\logs -n 201
 ```
+How to plot the learning curve:
+```
+python .\rl-baselines3-zoo\scripts\plot_train.py --algo tqc --env TestEnvironment-v1 -f .\logs
+```

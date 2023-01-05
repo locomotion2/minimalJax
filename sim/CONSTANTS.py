@@ -1,6 +1,19 @@
+# Physical
 g = -9.81
 
+# Simulation
+MIN_TIMESTEP = 0.001
+FINAL_TIME = 2
+
+# Learning
 INPUT_SIZE = 3
 OUTPUT_SIZE = 2
+MAX_ENERGY = 20
+ACTION_SCALE = [10, 2]
+MIN_SCORE = 150
+GROWTH_RATE = 0.01
+MAX_GROWTH = 1
 
-MAX_ENERGY = 2
+# Miscelaneous
+FIG_SIZE = (8, 7)
+VIZ_RATE = 2

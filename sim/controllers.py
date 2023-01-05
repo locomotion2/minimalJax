@@ -1,7 +1,9 @@
+from sim.CONSTANTS import *
+
 import numpy as np
 
 
-class constant_output:
+class ConstantOutput:
     def __init__(self, value: float = 0):
         self.value = value
 
@@ -10,13 +12,21 @@ class constant_output:
 
 
 class PID:
-    def __init__(self, delta_t: float = 0.001, P: float = 0.001,
-                 I: float = 0, D: float = 0):
+    def __init__(self, delta_t: float = MIN_TIMESTEP, gains: list = None):
         self.delta_t = delta_t
-        self.P = P
-        self.I = I
-        self.D = D
+        if gains is None:
+            self.gains = [1, 0, 0]
+        else:
+            self.gains = gains
 
+        self.q_d_prev = 0
+        self.e_P_accum = 0
+
+        self.tau_traj = np.asarray([0])
+        self.q_d_traj = np.asarray([0])
+        self.e_traj = np.asarray([np.asarray([0, 0, 0])])
+
+    def restart(self):
         self.q_d_prev = 0
         self.e_P_accum = 0
 
@@ -47,8 +57,11 @@ class PID:
         e_D = dq_cur
 
         # Calc. Force
-        tau = self.P * e_P + self.I * e_I + self.D * e_D
-        e = np.asarray([self.P * e_P, self.I * e_I, self.D * e_D])
+        [P, I, D] = self.gains
+        e = np.asarray([P * e_P, I * e_I, D * e_D])
+        tau = e.sum()
+
+        # Track in vectors
         self.e_traj = np.append(self.e_traj, [e], axis=0)
         self.tau_traj = np.append(self.tau_traj, tau)
         self.q_d_traj = np.append(self.q_d_traj, q_d)
