@@ -1,6 +1,6 @@
 from sim.CONSTANTS import *
 
-from sim.controllers import PID
+from sim.controllers import PID, PIDvel
 from sim.models import CPG, Pendulum
 
 from IPython import display
@@ -10,22 +10,14 @@ import numpy as np
 
 
 class BaseEnvironment:
-    def __init__(self, delta_t: float = MIN_TIMESTEP, t_final: float = FINAL_TIME, render: bool = False):
+    def __init__(self, delta_t: float = MIN_TIMESTEP, t_final: float = FINAL_TIME):
         self.delta_t = delta_t
         self.t_final = t_final
-        self.render = render
 
         self.model = Pendulum(delta_t=self.delta_t)
         self.controller = PID(delta_t=self.delta_t, gains=[15, 0.1, -0.75])
+        # self.controller = PIDvel(delta_t=self.delta_t, gains=[15, 0.1, 0.3])
         self.generator = CPG(delta_t=self.delta_t, x_0=[0, -1])
-
-        if render:
-            # display.clear_output(wait=True)
-            plt.figure('System', figsize=FIG_SIZE)
-            plt.clf()
-            plt.ion()
-            plt.show()
-            # plt.figure(figsize=(10, 7))
 
     def step(self, action: np.ndarray):
         # Get RL params
@@ -47,8 +39,11 @@ class BaseEnvironment:
         # Apply controller action and update model
         self.model.step(tau)
 
-    def get_positions(self):
-        return self.model.get_cartesian_pos()
+    def get_state_model(self):
+        return [self.model.get_cartesian_pos(), self.model.get_cartesian_vel()]
+
+    def get_state_generator(self):
+        return self.generator.get_cartesian_pos()
 
     def get_energies(self):
         return self.model.get_energies()
@@ -62,9 +57,9 @@ class BaseEnvironment:
         self.generator.restart()
 
         # display.clear_output(wait=True)
-        plt.clf()
+        # plt.clf()
 
-    def plot(self): # TODO: Implement easy closing, transfer methods to underlying classes
+    def plot(self):  # TODO: Implement easy closing, transfer methods to underlying classes
         try:
             plt.figure('System')
 
@@ -72,8 +67,8 @@ class BaseEnvironment:
             # Config. pos against time
             t_traj = self.model.get_temporal_traj()
             x_traj_model = self.model.get_state_traj()
-            q_traj_model = ((x_traj_model[:, 0] + np.pi) % (2*np.pi)) - np.pi
-            q_d_traj = ((self.controller.get_desired_traj() + np.pi) % (2*np.pi)) - np.pi
+            q_traj_model = ((x_traj_model[:, 0] + np.pi) % (2 * np.pi)) - np.pi
+            q_d_traj = ((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi
             ax = plt.subplot(2, 2, 1)
             ax.clear()
             plt.plot(t_traj, q_traj_model * 180 / np.pi, 'b--', linewidth=1)
@@ -81,6 +76,7 @@ class BaseEnvironment:
             plt.ylabel(r'$Angle (rad)$')
             plt.xlabel('Time (s)')
             plt.legend(['Sys. traj.', 'Des. traj.'], loc='best')
+            plt.axis([0, self.t_final, 180, -180])
 
             # Pendulum simulation
             ax = plt.subplot(2, 2, 2)
@@ -120,6 +116,7 @@ class BaseEnvironment:
             plt.ylabel(r'$Force (Nm)$')
             plt.xlabel('Time (s)')
             plt.legend(['Cont. Out', '$e_P$', '$e_I$', '$e_D$'], loc='best')
+            ax.set_xlim([0, self.t_final])
 
             # RL
 

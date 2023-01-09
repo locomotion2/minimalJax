@@ -116,6 +116,11 @@ class Pendulum:
     def get_cartesian_pos(self):
         return [self.l * np.sin(self.x_cur[0]), - self.l * np.cos(self.x_cur[0])]
 
+    def get_cartesian_vel(self):
+        q = self.x_cur[0]
+        dq = self.x_cur[1]
+        return [self.l * dq * np.cos(q), self.l * dq * np.sin(q)]
+
     def get_config_pos(self):
         return self.x_cur[0]
 
