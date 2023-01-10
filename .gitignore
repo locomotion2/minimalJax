@@ -7,3 +7,5 @@
 /sim.egg-info/
 /Tests/anaconda3/
 /tmp/
+
+__pycache__
