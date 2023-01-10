@@ -3,6 +3,7 @@ from sim.CONSTANTS import *
 import numpy as np
 from scipy.integrate import odeint
 
+
 # TODO: Look into abstract classes, see how to implement methods with variable params
 
 class CPG:
@@ -146,7 +147,7 @@ class Pendulum:
 
     def step(self, tau):
         ts = [self.t_cur, self.t_cur + self.delta_t]
-        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(tau,))
+        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(tau,))  # TODO: Check how fast this is
 
         # Update vars
         self.x_cur = np.asarray(xs[-1])
