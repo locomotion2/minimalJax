@@ -1,6 +1,6 @@
 from sim.CONSTANTS import *
 
-from sim.controllers import PID, PIDvel
+from sim.controllers import PID_pos_vel_damping, PID_pos_vel_tracking_num, PID_pos_vel_tracking_modeled
 from sim.models import CPG, Pendulum
 
 from IPython import display
@@ -10,34 +10,65 @@ import numpy as np
 
 
 class BaseEnvironment:
-    def __init__(self, delta_t: float = MIN_TIMESTEP, t_final: float = FINAL_TIME):
-        self.delta_t = delta_t
+    def __init__(self, delta_t_learning: float = MIN_TIMESTEP, delta_t_system: float = MIN_TIMESTEP,
+                 t_final: float = FINAL_TIME, mode: str = 'equilibrium', solve: bool = False):
+        self.delta_t_system = delta_t_system
+        self.delta_t_learning = delta_t_learning
         self.t_final = t_final
+        self.t_elapsed = 0
+        self.solve = solve
+        self.mode = mode
 
-        self.model = Pendulum(delta_t=self.delta_t)
-        self.controller = PID(delta_t=self.delta_t, gains=[15, 0.1, -0.75])
-        # self.controller = PIDvel(delta_t=self.delta_t, gains=[15, 0.1, 0.3])
-        self.generator = CPG(delta_t=self.delta_t, x_0=[0, -1])
+        # Define parameters
+        controller_params = {'delta_t': self.delta_t_system,
+                             'gains': [0.5, 0.0, 0.5]}
+
+        # Build components
+        self.model = Pendulum(delta_t=self.delta_t_system)
+        self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
+        self.generator = CPG(delta_t=self.delta_t_learning, x_0=[0, -1])
 
     def step(self, action: np.ndarray):
         # Get RL params
         omega = action[0]
         mu = action[1]
 
-        # Generate next point in path
-        self.generator.step(omega, mu)
-        p = self.generator.get_cartesian_pos()
+        # Obtain solution from model to compare results
+        [q_d_sol, dq_d_sol] = self.model.solve(self.t_elapsed)
 
-        # Run through inverse kins and get the current state from model
-        q_d = self.model.inverse_kins(p, self.generator.coils)
-        q_cur = self.model.get_config_pos()
-        dq_cur = self.model.get_config_speed()
+        if not self.solve:
+            # Generate next point in path
+            self.generator.step(omega, mu)
+            p = self.generator.get_cartesian_pos()
+            v = self.generator.get_cartesian_vel()
 
-        # Run this through controller, get force
-        tau = self.controller.input(q_d, q_cur, dq_cur)
+            # Run through inverse kins
+            [q_d, dq_d] = self.model.inverse_kins(p, v, self.generator.coils)
+        else:
+            [q_d, dq_d] = [q_d_sol, dq_d_sol]
 
-        # Apply controller action and update model
-        self.model.step(tau)
+        # Run the controller at a higher rate
+        relative_time = 0
+        tau = 0  # Container for the last resulting torque
+        while relative_time < self.delta_t_learning:
+            # Get the current model state
+            q_cur = self.model.get_config_pos()
+            dq_cur = self.model.get_config_speed()
+
+            # Run through controller, get force
+            step_inputs = {'q_d': q_d, 'dq_d': dq_d, 'q_cur': q_cur, 'dq_cur': dq_cur}
+            tau = self.controller.input(inputs=step_inputs)
+
+            # Apply controller action and update model
+            self.model.step(tau)
+
+            # Update the time
+            relative_time += self.delta_t_system
+
+        # Save latest trajectory for plotting
+        self.model.update_trajectories()
+        self.controller.update_trajectories(q_d, tau)
+        self.t_elapsed += relative_time
 
     def get_state_model(self):
         return [self.model.get_cartesian_pos(), self.model.get_cartesian_vel()]
@@ -51,10 +82,11 @@ class BaseEnvironment:
     def is_done(self):
         return self.model.get_time() >= self.t_final
 
-    def restart(self):
-        self.model.restart()
+    def restart(self, E_d: float = 0):
+        self.model.restart(mode=self.mode, E_d=E_d)
         self.controller.restart()
         self.generator.restart()
+        self.t_elapsed = 0
 
         # display.clear_output(wait=True)
         # plt.clf()
@@ -125,3 +157,5 @@ class BaseEnvironment:
             plt.pause(0.00001)
         except KeyboardInterrupt:
             plt.close(fig=plt.figure('System'))
+            plt.close(fig=plt.figure('Reward'))
+            raise KeyboardInterrupt

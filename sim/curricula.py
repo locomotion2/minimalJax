@@ -38,7 +38,7 @@ class UniformGrowthCurriculum(BaseCurriculum):
     def grow(self):
         if self.range[1] < MAX_GROWTH:
             self.range[1] += self.growth_rate
-        print(f"New max. energy: {self.range[1]: .2f}J")
+            print(f"New max. energy: {self.range[1]: .2f}J")
 
     def check_criterion(self, score, E):
         if score >= self.min_score and self.E_max - self.growth_rate < E:

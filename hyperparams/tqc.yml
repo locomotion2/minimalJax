@@ -2,6 +2,8 @@ TestEnvironment-v1:
   n_timesteps: 100000
   learning_starts: 100
   policy: 'MlpPolicy'
-  learning_rate: 0.005
+  # learning_rate: 0.005
+  learning_rate: 0.0005
+
 #  env_wrapper: stable_baselines3.common.monitor.Monitor
 #  vec_env_wrapper: stable_baselines3.common.vec_env.DummyVecEnv

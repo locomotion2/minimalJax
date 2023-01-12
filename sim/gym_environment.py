@@ -6,7 +6,7 @@ import numpy as np
 from typing import Callable
 import matplotlib.pyplot as plt
 import matplotlib
-import pyautogui as pg
+# import pyautogui as pg
 
 from sim.environments import BaseEnvironment
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
@@ -33,17 +33,25 @@ class BaseGymEnvironment(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
     def __init__(self, reward_func: Callable = None, curriculum: BaseCurriculum = None, action_scale=None,
-                 render: bool = False, energy_command: float = None, starting_range: list = None):
+                 render: bool = False, energy_command: float = None, starting_range: list = None,
+                 mode: str = 'equilibrium', solve: bool = False):
         super().__init__()
 
         # Handle inputs
+        self.solve = solve
+
+        if mode in {'speed', 'position', 'equilibrium'}:
+            self.mode = mode
+        else:
+            raise Exception('Selected initial condition mode is unknown.')
+
         if action_scale is None:
             self.action_scale = ACTION_SCALE
         else:
             self.action_scale = action_scale
 
-        if starting_range is None:
-            var_range = [0, 0]
+        if starting_range is None:  # This implies that a curriculum is not wanted
+            var_range = [0, 1]
         else:
             var_range = starting_range
 
@@ -69,8 +77,7 @@ class BaseGymEnvironment(gym.Env):
         if self.visualize:
             # display.clear_output(wait=True)
             # matplotlib.use("TkAgg")
-            width, height = pg.size()
-            print(width)
+            # width, height = pg.size()
             fig_reward = plt.figure('Reward', figsize=FIG_SIZE)
             move_figure(fig_reward, 0, 0)
             plt.clf()
@@ -78,7 +85,7 @@ class BaseGymEnvironment(gym.Env):
             # plt.show()
 
             fig_system = plt.figure('System', figsize=FIG_SIZE)
-            move_figure(fig_system, width/2, 0)
+            move_figure(fig_system, 1920/2, 0)
             plt.clf()
             # plt.ion()
             # plt.show()
@@ -86,31 +93,33 @@ class BaseGymEnvironment(gym.Env):
         # Build environment
         self.action_space = Box(low=-1, high=1, shape=(OUTPUT_SIZE,))
         self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
-        self.sim = BaseEnvironment(delta_t=ACTUAL_TIMESTEP, t_final=ACTUAL_FINAL_TIME)
+        self.sim = BaseEnvironment(delta_t_learning=ACTUAL_TIMESTEP, delta_t_system=MIN_TIMESTEP,
+                                   t_final=ACTUAL_FINAL_TIME, mode=self.mode, solve=self.solve)
 
         # Tracking / help variables
         self.r_epi = 0
         self.cur_step = 0
-        self.r_traj = np.asarray([0])
+        self.r_traj = np.asarray([self.r_epi])
         self.E_t_traj = np.asarray([0])
 
     def default_func(self, state: dict):
+        # Force punishment
+        tau = state['Torque']
+        cost_torque = gaus(tau, 0.2)
+
         # Energy rewards
         E_d = state['Energy_des']
         E_k, E_p = state['Energies']
         E_t = E_k + E_p
-        cost_E_t = gaus(E_t - E_d, 0.3)
+        cost_E_t = gaus(E_t - E_d, 0.25)
         cost_E_k = gaus(E_k - E_d, 0.3) * gaus(E_p, 0.3)
         cost_E_p = gaus(E_p - E_d, 0.1) * gaus(E_k, 0.3)
-
-        # Force punishment
-        tau = state['Torque']
-        cost_torque = gaus(tau)
 
         # Total reward
         # r_step = 0.4 * r_E + 0.6 * r_tau
         costs = np.asarray([cost_E_t, cost_E_k, cost_E_p, cost_torque])
-        weights = np.asarray([0.2, 0.4, 0.1, 0.3])
+        # weights = np.asarray([0.2, 0.4, 0.1, 0.3])
+        weights = np.asarray([0.5, 0.0, 0.0, 0.5])
         cost_step = np.dot(costs, weights)
 
         # Tracking data
@@ -150,31 +159,36 @@ class BaseGymEnvironment(gym.Env):
         return state, obs
 
     def step(self, action):
-        # Format and take action
-        # action[0] += 1
-        action[1] = 0.5
-        # print(action)
-        action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
-        self.sim.step(action)
+        try:
+            # Format and take action
+            # action[0] += 1  #  Enable this for tuning
+            action[1] = 0.5  # TODO: Train without this
+            action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
+            self.sim.step(action)
 
-        # Extract data for learning
-        state, obs = self.gather_data()
-        reward = self.reward_func(state)
-        done = self.sim.is_done()
-        info = {}  # TODO: Add some debugging info
+            # Extract data for learning
+            state, obs = self.gather_data()
+            reward = self.reward_func(state)
+            done = self.sim.is_done()
+            info = {}  # TODO: Add some debugging info
 
-        # March forwards
-        self.cur_step += 1
+            # March forwards
+            self.cur_step += 1
 
-        return obs, reward, done, info
+            return obs, reward, done, info
+        except KeyboardInterrupt:
+            del self.sim
+
+        return None
 
     def reset(self):
-        self.sim.restart()
         self.new_target_energy()
+        self.sim.restart(self.E_d)
+
         self.r_epi = 0
         self.cur_step = 0
-        self.r_traj = np.asarray([0])
-        self.E_t_traj = np.asarray([0])
+        self.r_traj = np.asarray([self.r_epi])
+        self.E_t_traj = np.asarray([self.E_d])
         _, obs = self.gather_data()
 
         return obs
@@ -198,6 +212,7 @@ class BaseGymEnvironment(gym.Env):
         ax = plt.subplot(2, 1, 2)
         ax.clear()
         ax.set_xlim([0, self.sim.t_final])
+        ax.set_ylim([0, 1.5])
         plt.plot(t_traj, self.E_t_traj, 'b--', linewidth=1)
         plt.plot(t_traj, E_d_traj, 'g--', linewidth=1)
         plt.ylabel(r'Energy (J)')
@@ -209,15 +224,11 @@ class BaseGymEnvironment(gym.Env):
 
     def render(self, mode="human"):
         if mode == 'rgb_array':
-            width, height = pg.size()
-            return np.asarray(pg.screenshot(region=(0, 0, width, height)))
+            return
+            # width, height = pg.size()
+            # return np.asarray(pg.screenshot(region=(0, 0, width, height)))
         elif mode == 'human':
             pass
         else:
             super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception
 
-    # def __del__(self):
-    #     plt.figure('System')
-    #     plt.ion()
-    #     plt.figure('Reward')
-    #     plt.ion()
