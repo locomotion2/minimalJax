@@ -20,13 +20,22 @@ class BaseEnvironment:
         self.mode = mode
 
         # Define parameters
+        pendulum_params = {'delta_t': self.delta_t_system,
+                           'state_size': 2,
+                           'num_dof': 1
+                           }
         controller_params = {'delta_t': self.delta_t_system,
-                             'gains': [0.5, 0.0, 0.5]}
+                             'gains': [0.5, 0.0, 0.5]
+                             }
+        generator_params = {'delta_t': self.delta_t_learning,
+                            'state_size': 2,
+                            'num_dof': 2
+                            }
 
         # Build components
-        self.model = Pendulum(delta_t=self.delta_t_system)
+        self.model = Pendulum(params=pendulum_params)
         self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
-        self.generator = CPG(delta_t=self.delta_t_learning, x_0=[0, -1])
+        self.generator = CPG(params=generator_params)
 
     def step(self, action: np.ndarray):
         # Get RL params
@@ -34,16 +43,17 @@ class BaseEnvironment:
         mu = action[1]
 
         # Obtain solution from model to compare results
-        [q_d_sol, dq_d_sol] = self.model.solve(self.t_elapsed)
+        [q_d_sol, dq_d_sol] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
 
         if not self.solve:
             # Generate next point in path
-            self.generator.step(omega, mu)
-            p = self.generator.get_cartesian_pos()
-            v = self.generator.get_cartesian_vel()
+            self.generator.step({'omega': omega, 'mu': mu})
+            self.generator.update_trajectories()
+            coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
+            [p, v] = self.generator.get_cartesian_state()
 
             # Run through inverse kins
-            [q_d, dq_d] = self.model.inverse_kins(p, v, self.generator.coils)
+            [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
         else:
             [q_d, dq_d] = [q_d_sol, dq_d_sol]
 
@@ -51,16 +61,15 @@ class BaseEnvironment:
         relative_time = 0
         tau = 0  # Container for the last resulting torque
         while relative_time < self.delta_t_learning:
-            # Get the current model state
-            q_cur = self.model.get_config_pos()
-            dq_cur = self.model.get_config_speed()
+            # Get the current model state in joint coords
+            [q_cur, dq_cur] = self.model.get_joint_state()
 
             # Run through controller, get force
             step_inputs = {'q_d': q_d, 'dq_d': dq_d, 'q_cur': q_cur, 'dq_cur': dq_cur}
             tau = self.controller.input(inputs=step_inputs)
 
             # Apply controller action and update model
-            self.model.step(tau)
+            self.model.step({'tau': tau})
 
             # Update the time
             relative_time += self.delta_t_system
@@ -71,10 +80,11 @@ class BaseEnvironment:
         self.t_elapsed += relative_time
 
     def get_state_model(self):
-        return [self.model.get_cartesian_pos(), self.model.get_cartesian_vel()]
+        return self.model.get_cartesian_state()
 
     def get_state_generator(self):
-        return self.generator.get_cartesian_pos()
+        [p, v] = self.generator.get_cartesian_state()
+        return p
 
     def get_energies(self):
         return self.model.get_energies()
@@ -83,9 +93,9 @@ class BaseEnvironment:
         return self.model.get_time() >= self.t_final
 
     def restart(self, E_d: float = 0):
-        self.model.restart(mode=self.mode, E_d=E_d)
+        self.model.restart({'mode': self.mode, 'E_d': E_d})
         self.controller.restart()
-        self.generator.restart()
+        self.generator.restart({'x_0': [0, -1]})
         self.t_elapsed = 0
 
         # display.clear_output(wait=True)
@@ -113,7 +123,7 @@ class BaseEnvironment:
             # Pendulum simulation
             ax = plt.subplot(2, 2, 2)
             ax.clear()
-            [px_model, py_model] = self.model.get_cartesian_pos()
+            [px_model, py_model] = self.model.get_cartesian_state()[0]
             plt.plot([0, px_model], [0, py_model], 'k*-', linewidth=2)
             plt.ylabel(r'$Vert. Pos. (m)$')
             plt.xlabel('Hor. Pos. (m)')
@@ -150,11 +160,12 @@ class BaseEnvironment:
             plt.legend(['Cont. Out', '$e_P$', '$e_I$', '$e_D$'], loc='best')
             ax.set_xlim([0, self.t_final])
 
-            # RL
+            # TODO: RL
 
             # Show and wait
             plt.draw()
-            plt.pause(0.00001)
+            # plt.pause(0.00001)
+
         except KeyboardInterrupt:
             plt.close(fig=plt.figure('System'))
             plt.close(fig=plt.figure('Reward'))

@@ -20,3 +20,14 @@ MAX_GROWTH = 1
 # Miscellaneous
 FIG_SIZE = (9, 9)
 VIZ_RATE = 1
+
+
+# Help functions
+def default(dictionary, key, canon):
+    try:
+        if dictionary[key] is None:
+            return canon
+        else:
+            return dictionary[key]
+    except KeyError:
+        return canon

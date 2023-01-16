@@ -116,9 +116,7 @@ class BaseGymEnvironment(gym.Env):
         cost_E_p = gaus(E_p - E_d, 0.1) * gaus(E_k, 0.3)
 
         # Total reward
-        # r_step = 0.4 * r_E + 0.6 * r_tau
         costs = np.asarray([cost_E_t, cost_E_k, cost_E_p, cost_torque])
-        # weights = np.asarray([0.2, 0.4, 0.1, 0.3])
         weights = np.asarray([0.5, 0.0, 0.0, 0.5])
         cost_step = np.dot(costs, weights)
 
@@ -128,8 +126,11 @@ class BaseGymEnvironment(gym.Env):
 
         # Plotting
         if self.visualize and self.cur_step % VIZ_RATE == 0:
-            self.sim.plot()
-            self.plot_reward()
+            try:
+                self.sim.plot()
+                self.plot_reward()
+            except KeyboardInterrupt:
+                raise KeyboardInterrupt
 
         # Tracking the episode
         self.r_epi += cost_step
@@ -148,7 +149,7 @@ class BaseGymEnvironment(gym.Env):
         E = self.sim.get_energies()
 
         # CPG data
-        p_gen = self.sim.get_state_generator()
+        p_gen = self.sim.get_state_generator()  # TODO: Test to feed in the CPG position as well
 
         tau = self.sim.controller.get_force_traj()[-1]
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Pos_gen': p_gen, 'Energy_des': self.E_d,
@@ -162,7 +163,7 @@ class BaseGymEnvironment(gym.Env):
         try:
             # Format and take action
             # action[0] += 1  #  Enable this for tuning
-            action[1] = 0.5  # TODO: Train without this
+            # action[1] = 0.5  # TODO: Train without this
             action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
             self.sim.step(action)
 
@@ -172,12 +173,19 @@ class BaseGymEnvironment(gym.Env):
             done = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
-            # March forwards
+            # March on
             self.cur_step += 1
 
+            # Handle episode end
+            if done:
+                info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
+
             return obs, reward, done, info
+
         except KeyboardInterrupt:
             del self.sim
+            print("Closing the program due to Keyboard interrupt.")
+            self.close()
 
         return None
 
@@ -194,33 +202,39 @@ class BaseGymEnvironment(gym.Env):
         return obs
 
     def plot_reward(self):
-        t_traj = self.sim.model.get_temporal_traj()
-        E_d_traj = np.ones(np.shape(t_traj)) * self.E_d
+        try:
+            t_traj = self.sim.model.get_temporal_traj()
+            E_d_traj = np.ones(np.shape(t_traj)) * self.E_d
 
-        plt.figure('Reward')
+            plt.figure('Reward')
 
-        # Reward vs time
-        ax = plt.subplot(2, 1, 1)
-        ax.clear()
-        plt.axis([0, self.sim.t_final, 0, 1])
-        plt.plot(t_traj, self.r_traj, 'y--', linewidth=1)
-        plt.ylabel(r'Reward')
-        plt.xlabel('Time (s)')
-        # plt.legend(['Pend. traj.'], loc='best')
+            # Reward vs time
+            ax = plt.subplot(2, 1, 1)
+            ax.clear()
+            plt.axis([0, self.sim.t_final, 0, 1])
+            plt.plot(t_traj, self.r_traj, 'y--', linewidth=1)
+            plt.ylabel(r'Reward')
+            plt.xlabel('Time (s)')
+            # plt.legend(['Pend. traj.'], loc='best')
 
-        # Energies vs time
-        ax = plt.subplot(2, 1, 2)
-        ax.clear()
-        ax.set_xlim([0, self.sim.t_final])
-        ax.set_ylim([0, 1.5])
-        plt.plot(t_traj, self.E_t_traj, 'b--', linewidth=1)
-        plt.plot(t_traj, E_d_traj, 'g--', linewidth=1)
-        plt.ylabel(r'Energy (J)')
-        plt.xlabel('Time (s)')
-        plt.legend([r'$E_t$', r'$E_d$'], loc='best')
+            # Energies vs time
+            ax = plt.subplot(2, 1, 2)
+            ax.clear()
+            ax.set_xlim([0, self.sim.t_final])
+            ax.set_ylim([0, 1.5])
+            plt.plot(t_traj, self.E_t_traj, 'b--', linewidth=1)
+            plt.plot(t_traj, E_d_traj, 'g--', linewidth=1)
+            plt.ylabel(r'Energy (J)')
+            plt.xlabel('Time (s)')
+            plt.legend([r'$E_t$', r'$E_d$'], loc='best')
 
-        plt.draw()
-        plt.pause(0.00001)
+            plt.draw()
+            plt.pause(0.0001)
+
+        except KeyboardInterrupt:
+            plt.close(fig=plt.figure('System'))
+            plt.close(fig=plt.figure('Reward'))
+            raise KeyboardInterrupt
 
     def render(self, mode="human"):
         if mode == 'rgb_array':
