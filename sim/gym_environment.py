@@ -40,7 +40,7 @@ class BaseGymEnvironment(gym.Env):
         # Handle inputs
         self.solve = solve
 
-        if mode in {'speed', 'position', 'equilibrium'}:
+        if mode in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
             self.mode = mode
         else:
             raise Exception('Selected initial condition mode is unknown.')
@@ -71,6 +71,8 @@ class BaseGymEnvironment(gym.Env):
         else:
             self.inference = True
             self.E_d = energy_command
+
+        self.maintain_plot = True
 
         # Rendering
         self.visualize = render
@@ -103,6 +105,12 @@ class BaseGymEnvironment(gym.Env):
         self.E_t_traj = np.asarray([0])
 
     def default_func(self, state: dict):
+        # Cartesian reward
+        pos_model = state['Pos_model']
+        pos_gen = state['Pos_gen']
+        dist = np.linalg.norm(pos_model - pos_gen)
+        cost_cart = gaus(dist, 0.1)
+
         # Force punishment
         tau = state['Torque']
         cost_torque = gaus(tau, 0.2)
@@ -116,12 +124,19 @@ class BaseGymEnvironment(gym.Env):
         cost_E_p = gaus(E_p - E_d, 0.1) * gaus(E_k, 0.3)
 
         # Total reward
-        costs = np.asarray([cost_E_t, cost_E_k, cost_E_p, cost_torque])
-        weights = np.asarray([0.5, 0.0, 0.0, 0.5])
+        costs = np.asarray([cost_E_t, cost_E_k, cost_E_p, cost_torque, cost_cart])
+        weights = np.asarray([0.4, 0.0, 0.0, 0.3, 0.3])
         cost_step = np.dot(costs, weights)
 
+        return cost_step
+
+    def tracking_plotting(self, reward: float, state: dict):
+        # Handle inputs
+        E_k, E_p = state['Energies']
+        E_t = E_k + E_p
+
         # Tracking data
-        self.r_traj = np.append(self.r_traj, cost_step)
+        self.r_traj = np.append(self.r_traj, reward)
         self.E_t_traj = np.append(self.E_t_traj, E_t)
 
         # Plotting
@@ -133,9 +148,7 @@ class BaseGymEnvironment(gym.Env):
                 raise KeyboardInterrupt
 
         # Tracking the episode
-        self.r_epi += cost_step
-
-        return cost_step
+        self.r_epi += reward
 
     def new_target_energy(self):
         if not self.inference:
@@ -163,7 +176,6 @@ class BaseGymEnvironment(gym.Env):
         try:
             # Format and take action
             # action[0] += 1  #  Enable this for tuning
-            # action[1] = 0.5  # TODO: Train without this
             action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
             self.sim.step(action)
 
@@ -173,11 +185,17 @@ class BaseGymEnvironment(gym.Env):
             done = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
+            # Plot & track
+            self.tracking_plotting(reward, state)
+
             # March on
             self.cur_step += 1
 
             # Handle episode end
             if done:
+                if self.visualize and self.maintain_plot:
+                    plt.ioff()
+                    plt.show()
                 info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
 
             return obs, reward, done, info
@@ -190,14 +208,23 @@ class BaseGymEnvironment(gym.Env):
         return None
 
     def reset(self):
+        # Reset system
         self.new_target_energy()
         self.sim.restart(self.E_d)
 
-        self.r_epi = 0
+        # Gather data from the new episode
+        state, obs = self.gather_data()
+        reward = self.reward_func(state)
+
+        # Reset tracking
+        E_k, E_p = state['Energies']
+        E_t = E_k + E_p
+        self.r_traj = np.asarray([reward])  # TODO: The plotting looks off
+        self.E_t_traj = np.asarray([E_t])
+
+        # Reset help variables
+        self.r_epi = reward
         self.cur_step = 0
-        self.r_traj = np.asarray([self.r_epi])
-        self.E_t_traj = np.asarray([self.E_d])
-        _, obs = self.gather_data()
 
         return obs
 

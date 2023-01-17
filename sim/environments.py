@@ -113,35 +113,42 @@ class BaseEnvironment:
             q_d_traj = ((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi
             ax = plt.subplot(2, 2, 1)
             ax.clear()
+            plt.plot(t_traj, q_d_traj * 180 / np.pi, 'g--', linewidth=3, alpha=0.5)
             plt.plot(t_traj, q_traj_model * 180 / np.pi, 'b--', linewidth=1)
-            plt.plot(t_traj, q_d_traj * 180 / np.pi, 'g--', linewidth=1)
             plt.ylabel(r'$Angle (rad)$')
             plt.xlabel('Time (s)')
-            plt.legend(['Sys. traj.', 'Des. traj.'], loc='best')
+            plt.legend(['Des. traj.', 'Sys. traj.'], loc='best')
             plt.axis([0, self.t_final, 180, -180])
 
-            # Pendulum simulation
+            # Pendulum simulation and CPG path
             ax = plt.subplot(2, 2, 2)
             ax.clear()
             [px_model, py_model] = self.model.get_cartesian_state()[0]
-            plt.plot([0, px_model], [0, py_model], 'k*-', linewidth=2)
-            plt.ylabel(r'$Vert. Pos. (m)$')
-            plt.xlabel('Hor. Pos. (m)')
-            # plt.legend(['Pendulum'], loc='best')
-            plt.axis([-1.1, 1.1, -1.1, 1.1])
-
-            # CPG
-            # [px_traj, py_traj] = self.generator.get_cartesian_pos()
             x_traj_CPG = self.generator.get_state_traj()
             px_traj = x_traj_CPG[:, 0]
             py_traj = x_traj_CPG[:, 1]
+            plt.plot([0, px_model], [0, py_model], 'b*-', linewidth=1)
+            plt.plot(px_traj, py_traj, 'g*-', linewidth=1, alpha=0.2)
+            plt.ylabel(r'$Y-Pos. (m)$')
+            plt.xlabel(r'$X-Pos. (m)$')
+            plt.legend(['Pendulum', 'CPG'], loc='best')
+            window = 1.5
+            plt.axis([-window, window, -window, window])
+
+            # RL-params
             ax = plt.subplot(2, 2, 3)
             ax.clear()
-            plt.plot(px_traj, py_traj, 'k*-', linewidth=1)
-            plt.ylabel(r'$Vert. Pos. (m)$')
-            plt.xlabel('Hor. Pos. (m)')
-            # plt.legend(['CPG'], loc='best')
-            plt.axis([-2.1, 2.1, -2.1, 2.1])
+            param_traj = self.generator.get_parametric_traj()
+            param_x_traj = param_traj[:, 0]
+            param_y_traj = param_traj[:, 1]**2
+            plt.plot(param_x_traj, param_y_traj, 'o--', linewidth=2, alpha=0.4, color='purple')
+            plt.ylabel(r'$\omega\,(hz)$')
+            plt.xlabel(r'$\mu^2\,(m)$')
+            # plt.legend(['Pendulum', 'CPG'], loc='best')
+            # window = 1.5
+            [h_window, v_window] = ACTION_SCALE
+            v_window = v_window**2
+            plt.axis([-h_window, h_window, 0, v_window])
 
             # PID controller
             tau_traj = self.controller.get_force_traj()
@@ -151,16 +158,14 @@ class BaseEnvironment:
             e_D = e_traj[:, 2]
             ax = plt.subplot(2, 2, 4)
             ax.clear()
-            plt.plot(t_traj, tau_traj, 'y--', linewidth=2)
-            plt.plot(t_traj, e_P, 'b--', linewidth=1)
-            plt.plot(t_traj, e_I, 'k--', linewidth=1)
-            plt.plot(t_traj, e_D, 'g--', linewidth=1)
+            plt.plot(t_traj, tau_traj, '--', linewidth=2, color='orange')
+            plt.plot(t_traj, e_P, 'b--', linewidth=1, alpha=0.7)
+            plt.plot(t_traj, e_I, 'k--', linewidth=1, alpha=0.3)
+            plt.plot(t_traj, e_D, 'g--', linewidth=1, alpha=0.7)
             plt.ylabel(r'$Force (Nm)$')
             plt.xlabel('Time (s)')
             plt.legend(['Cont. Out', '$e_P$', '$e_I$', '$e_D$'], loc='best')
             ax.set_xlim([0, self.t_final])
-
-            # TODO: RL
 
             # Show and wait
             plt.draw()

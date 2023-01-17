@@ -8,15 +8,15 @@ from abc import ABC, abstractmethod
 # TODO: Look into abstract classes, see how to implement methods with variable params
 
 def project(u: np.ndarray, v: np.ndarray):
-    v_norm = np.sqrt(sum(v ** 2))
-    return (np.dot(u, v) / v_norm ** 2) * v
+    v_norm = np.linalg.norm(v)
+    return (u @ v / v_norm ** 2) * v
 
 
 class baseModel(ABC):
     def __init__(self, params: dict = None):
         # Load params
-        self.t_0 = default(params, 't_0', 0)
-        self.delta_t = default(params, 'delta_t', MIN_TIMESTEP)
+        self.t_0 = params.get('t_0', 0)
+        self.delta_t = params.get('delta_t', MIN_TIMESTEP)
         self.state_size = params['state_size']
         self.num_dof = params['num_dof']
 
@@ -39,7 +39,7 @@ class baseModel(ABC):
 
     def restart(self, params: dict = None):
         # Handle inputs
-        self.t_0 = default(params, 't_0', self.t_0)
+        self.t_0 = params.get('t_0', self.t_0)
 
         # Set up initial state conditions
         self.select_initial(params)
@@ -98,11 +98,16 @@ class CPG(baseModel):
     def __init__(self, params: dict = None):
         super().__init__(params)
         self.omega_cur = 0
-        self.mu_cur = 0
+        self.mu_cur = 1
         self.coils = 0
+
+        params_cpg = np.asarray([0, 1])
+        self.params_traj = np.asarray([params_cpg])
 
     def restart(self, params: dict = None):
         super().restart(params)
+        params_cpg = np.asarray([0, 1])
+        self.params_traj = np.asarray([params_cpg])
         self.coils = 0
 
     def eqs_motion(self, x, t, params):
@@ -117,19 +122,10 @@ class CPG(baseModel):
 
         return [dx1, dx2]
 
-    def get_cartesian_state(self):
-        params = {'mu': self.mu_cur, 'omega': self.omega_cur}
-
-        p = self.x_cur
-        v = self.eqs_motion(self.x_cur, 0, params)
-
-        return [p, v]
-
-    def get_state_traj(self):
-        return self.x_traj
-
-    def get_temporal_traj(self):
-        return self.t_traj
+    def update_trajectories(self):
+        super().update_trajectories()
+        params = np.asarray([self.omega_cur, self.mu_cur])
+        self.params_traj = np.append(self.params_traj, [params], axis=0)
 
     def detect_coiling(self):
         x_new = self.x_cur
@@ -145,11 +141,26 @@ class CPG(baseModel):
         return self.coils
 
     def select_initial(self, params: dict = None):
-        self.x_0 = default(params, 'x_0', self.x_0)
+        self.x_0 = params.get('x_0', self.x_0)
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
 
-        return self.x_0
+    def get_cartesian_state(self):
+        params = {'mu': self.mu_cur, 'omega': self.omega_cur}
+
+        p = self.x_cur
+        v = self.eqs_motion(self.x_cur, 0, params)
+
+        return [p, v]
+
+    def get_state_traj(self):
+        return self.x_traj
+
+    def get_temporal_traj(self):
+        return self.t_traj
+
+    def get_parametric_traj(self):
+        return self.params_traj
 
     def solve(self, t):
         pass
@@ -167,30 +178,53 @@ class CPG(baseModel):
 class Pendulum(baseModel):
     def __init__(self, params: dict = None):
         super().__init__(params)
-        self.l = default(params, 'l', 1)
-        self.m = default(params, 'm', 0.1)
+        self.l = params.get('l', 1)
+        self.m = params.get('m', 0.1)
+        self.rng = np.random.default_rng()
 
     def select_initial(self, params: dict = None):
+
+        def inverse_kinetic(E: float = 0):
+            return (1 / self.l) * np.sqrt(2 * E / self.m)
+
+        def inverse_potential(E: float = 0):
+            return np.arccos(1 + E / (self.m * self.l * g))
+
         # Handle inputs
-        mode = default(params, 'mode', 'equilibrium')
-        E_d = default(params, 'E_d', 0)
+        mode = params.get('mode', 'equilibrium')
+        E_d = params.get('E_d', 0)
 
-        # Initialize initial conditions
-        q_0 = 0
-        dq_0 = 0
-
-        # Choose based on case
+        # Choose energies based on mode
+        alpha = self.rng.uniform(0, 1)
+        beta = self.rng.uniform(0, 1)
+        # print(alpha)
+        # print(beta)
+        E_k = 0
+        E_p = 0
         if mode == 'speed':
-            dq_0 = (1 / self.l) * np.sqrt(2 * E_d / self.m)
+            E_k = E_d
+            E_p = 0
         elif mode == 'position':
-            q_0 = np.arccos(1 + E_d / (self.m * self.l * g))
+            E_k = 0
+            E_p = E_d
+        elif mode == 'random_des':
+            E_k = alpha * E_d
+            E_p = (1 - alpha) * E_d
+        elif mode == 'random':
+            E_rand = beta * MAX_ENERGY / 20
+            E_k = alpha * E_rand
+            E_p = (1 - alpha) * E_rand
+            # print(E_k)
+            # print(E_p)
+
+        # Calculate starting positions
+        q_0 = inverse_potential(E_p)
+        dq_0 = inverse_kinetic(E_k)
 
         # Initialize tracking arrays
         self.x_0 = [q_0, dq_0]
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
-
-        return self.x_0
 
     def eqs_motion(self, x, t, params):
         tau = params['tau']
