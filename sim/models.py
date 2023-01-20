@@ -70,9 +70,10 @@ class baseModel(ABC):
         ts = [self.t_cur, self.t_cur + self.delta_t]
         xs = odeint(self.eqs_motion, self.x_cur, ts, args=(params,))  # TODO: Check how fast this is
 
-        # Update vars
+        # Update vars  # TODO: Tricker this off in learning to increase speed
         self.x_cur = np.asarray(xs[-1])
         self.p_cur = self.get_cartesian_state()[0]
+        self.E_cur = sum(self.get_energies())
         self.t_cur += self.delta_t
 
     def update_trajectories(self):

@@ -97,7 +97,6 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = 0
         self.cur_step = 0
         self.r_traj = np.asarray([self.r_epi])
-        self.E_t_traj = np.asarray([0])
 
     def default_func(self, state: dict):
         # Cartesian reward
@@ -125,14 +124,9 @@ class BaseGymEnvironment(gym.Env):
 
         return cost_step
 
-    def tracking(self, reward: float, state: dict):
-        # Handle inputs
-        E_k, E_p = state['Energies']
-        E_t = E_k + E_p
-
+    def tracking(self, reward: float):
         # Tracking data
         self.r_traj = np.append(self.r_traj, reward)
-        self.E_t_traj = np.append(self.E_t_traj, E_t)
 
         # Tracking the episode
         self.r_epi += reward
@@ -173,7 +167,7 @@ class BaseGymEnvironment(gym.Env):
             info = {}  # TODO: Add some debugging info
 
             # Track variables
-            self.tracking(reward, state)
+            self.tracking(reward)
 
             # March on
             self.cur_step += 1
@@ -203,10 +197,7 @@ class BaseGymEnvironment(gym.Env):
         reward = self.reward_func(state)
 
         # Reset tracking
-        E_k, E_p = state['Energies']
-        E_t = E_k + E_p
-        self.r_traj = np.asarray([reward])  # TODO: The plotting looks off
-        self.E_t_traj = np.asarray([E_t])
+        self.r_traj = np.asarray([reward])  # TODO: The plotting looks off, the starting value is weird
 
         # Reset help variables
         self.r_epi = reward
@@ -237,8 +228,8 @@ class BaseGymEnvironment(gym.Env):
             # Pendulum simulation and CPG path
             [sim_model_data, sim_CPG_data, sim_CPG_traj_data] = sim_data
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
-            active_lines[0], = plt.plot('x_model', 'y_model', 'b*-', linewidth=1, data=sim_model_data)
-            active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=4, alpha=0.6, color='gold', data=sim_CPG_data)
+            active_lines[0], = plt.plot('x_model', 'y_model', 'bo-', linewidth=2, data=sim_model_data)
+            active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange', data=sim_CPG_data)
             plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.2, data=sim_CPG_traj_data)
             plt.ylabel(r'$Y-Pos. (m)$')
             plt.xlabel(r'$X-Pos. (m)$')
@@ -277,7 +268,7 @@ class BaseGymEnvironment(gym.Env):
             reward_data = pd.concat([time_data, reward_data], axis=1)
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.axis([0, self.sim.t_final, 0, 1])
-            plt.plot('time', 'reward', 'y--', linewidth=1, data=reward_data)
+            plt.plot('time', 'reward', '--', linewidth=3, color='gold', data=reward_data)
             plt.ylabel(r'$Reward$')
             plt.xlabel(r'$Time (s)$')
             plt.legend(['Step reward'], loc='best')
