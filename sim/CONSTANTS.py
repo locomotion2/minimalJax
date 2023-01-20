@@ -6,6 +6,7 @@ MIN_TIMESTEP = 0.001
 FINAL_TIME = 2
 ACTUAL_TIMESTEP = 0.05
 ACTUAL_FINAL_TIME = 5
+MAX_TORQUE = 10
 
 # Learning
 INPUT_SIZE = 7
@@ -18,8 +19,10 @@ GROWTH_RATE = 0.05
 MAX_GROWTH = 1
 
 # Miscellaneous
-FIG_SIZE = (9, 9)
-VIZ_RATE = 1
+FIG_SIZE = (18, 9)
+FIG_COORDS = [2, 3]
+VIZ_RATE = 2
+LINE_DIST = 1000
 
 
 # Help functions

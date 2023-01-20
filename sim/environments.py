@@ -5,6 +5,8 @@ from sim.models import CPG, Pendulum
 
 from IPython import display
 import matplotlib.pyplot as plt
+import pandas as pd
+# import seaborn as sns
 
 import numpy as np
 
@@ -36,6 +38,8 @@ class BaseEnvironment:
         self.model = Pendulum(params=pendulum_params)
         self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
         self.generator = CPG(params=generator_params)
+
+        # sns.set()
 
     def step(self, action: np.ndarray):
         # Get RL params
@@ -101,54 +105,54 @@ class BaseEnvironment:
         # display.clear_output(wait=True)
         # plt.clf()
 
-    def plot(self):  # TODO: Implement easy closing, transfer methods to underlying classes
-        try:
-            plt.figure('System')
+    def animate(self, step: int = 0, lines: [plt.Line2D] = None):
+        p_traj_model = self.model.get_cartesian_traj()
+        [px_model, py_model] = p_traj_model[step]
+        lines[0].set_xdata([0, px_model])
+        lines[0].set_ydata([0, py_model])
 
-            # Model
+        p_traj_CPG = self.generator.get_state_traj()
+        [px_CPG, py_CPG] = p_traj_CPG[step]
+        lines[1].set_xdata(px_CPG)
+        lines[1].set_ydata(py_CPG)
+
+        param_traj = self.generator.get_parametric_traj()
+        param_x_traj = param_traj[:, 0]
+        param_y_traj = param_traj[:, 1] ** 2
+        param_x = param_x_traj[step]
+        param_y = param_y_traj[step]
+        lines[2].set_xdata(param_x)
+        lines[2].set_ydata(param_y)
+
+    def prepare_plot(self):  # TODO: Implement easy closing, transfer methods to underlying classes
+        try:
             # Config. pos against time
             t_traj = self.model.get_temporal_traj()
             x_traj_model = self.model.get_state_traj()
-            q_traj_model = ((x_traj_model[:, 0] + np.pi) % (2 * np.pi)) - np.pi
-            q_d_traj = ((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi
-            ax = plt.subplot(2, 2, 1)
-            ax.clear()
-            plt.plot(t_traj, q_d_traj * 180 / np.pi, 'g--', linewidth=3, alpha=0.5)
-            plt.plot(t_traj, q_traj_model * 180 / np.pi, 'b--', linewidth=1)
-            plt.ylabel(r'$Angle (rad)$')
-            plt.xlabel('Time (s)')
-            plt.legend(['Des. traj.', 'Sys. traj.'], loc='best')
-            plt.axis([0, self.t_final, 180, -180])
+            q_traj_model = (((x_traj_model[:, 0] + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
+            q_d_traj = (((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
+            system_data = pd.DataFrame({'time': t_traj, 'des_traj': q_d_traj, 'cur_traj': q_traj_model})
 
             # Pendulum simulation and CPG path
-            ax = plt.subplot(2, 2, 2)
-            ax.clear()
-            [px_model, py_model] = self.model.get_cartesian_state()[0]
+            p_traj_model = self.model.get_cartesian_traj()
+            [px_model, py_model] = p_traj_model[0]
+            p_traj_CPG = self.generator.get_state_traj()
+            [px_CPG, py_CPG] = p_traj_CPG[0]
             x_traj_CPG = self.generator.get_state_traj()
             px_traj = x_traj_CPG[:, 0]
             py_traj = x_traj_CPG[:, 1]
-            plt.plot([0, px_model], [0, py_model], 'b*-', linewidth=1)
-            plt.plot(px_traj, py_traj, 'g*-', linewidth=1, alpha=0.2)
-            plt.ylabel(r'$Y-Pos. (m)$')
-            plt.xlabel(r'$X-Pos. (m)$')
-            plt.legend(['Pendulum', 'CPG'], loc='best')
-            window = 1.5
-            plt.axis([-window, window, -window, window])
+            sim_model_data = pd.DataFrame({'x_model': [0, px_model], 'y_model': [0, py_model]})
+            sim_CPG_data = pd.DataFrame({'x_CPG': px_CPG, 'y_CPG': py_CPG}, index=[0])
+            sim_CPG_traj_data = pd.DataFrame({'x_traj_CPG': px_traj, 'y_traj_CPG': py_traj})
 
             # RL-params
-            ax = plt.subplot(2, 2, 3)
-            ax.clear()
             param_traj = self.generator.get_parametric_traj()
             param_x_traj = param_traj[:, 0]
-            param_y_traj = param_traj[:, 1]**2
-            plt.plot(param_x_traj, param_y_traj, 'o--', linewidth=2, alpha=0.4, color='purple')
-            plt.ylabel(r'$\omega\,(hz)$')
-            plt.xlabel(r'$\mu^2\,(m)$')
-            # plt.legend(['Pendulum', 'CPG'], loc='best')
-            # window = 1.5
-            [h_window, v_window] = ACTION_SCALE
-            v_window = v_window**2
-            plt.axis([-h_window, h_window, 0, v_window])
+            param_y_traj = param_traj[:, 1] ** 2
+            param_x = param_x_traj[0]
+            param_y = param_y_traj[0]
+            rl_param_data = pd.DataFrame({'mu': param_x, 'omega': param_y}, index=[0])
+            rl_traj_data = pd.DataFrame({'mu_traj': param_x_traj, 'omega_traj': param_y_traj})
 
             # PID controller
             tau_traj = self.controller.get_force_traj()
@@ -156,20 +160,14 @@ class BaseEnvironment:
             e_P = e_traj[:, 0]
             e_I = e_traj[:, 1]
             e_D = e_traj[:, 2]
-            ax = plt.subplot(2, 2, 4)
-            ax.clear()
-            plt.plot(t_traj, tau_traj, '--', linewidth=2, color='orange')
-            plt.plot(t_traj, e_P, 'b--', linewidth=1, alpha=0.7)
-            plt.plot(t_traj, e_I, 'k--', linewidth=1, alpha=0.3)
-            plt.plot(t_traj, e_D, 'g--', linewidth=1, alpha=0.7)
-            plt.ylabel(r'$Force (Nm)$')
-            plt.xlabel('Time (s)')
-            plt.legend(['Cont. Out', '$e_P$', '$e_I$', '$e_D$'], loc='best')
-            ax.set_xlim([0, self.t_final])
+            controller_data = pd.DataFrame({'time': t_traj, 'torque': tau_traj, 'e_P': e_P, 'e_I': e_I, 'e_D': e_D})
 
-            # Show and wait
-            plt.draw()
-            # plt.pause(0.00001)
+            # Energies Plot
+            E_traj = self.model.get_energy_traj()
+            energy_data = pd.DataFrame({'time': t_traj, 'energy': E_traj})
+
+            return [system_data, [sim_model_data, sim_CPG_data, sim_CPG_traj_data],
+                    [rl_param_data, rl_traj_data], controller_data, energy_data]
 
         except KeyboardInterrupt:
             plt.close(fig=plt.figure('System'))

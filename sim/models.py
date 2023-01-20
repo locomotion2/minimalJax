@@ -20,15 +20,25 @@ class baseModel(ABC):
         self.state_size = params['state_size']
         self.num_dof = params['num_dof']
 
-        # Initialize variables
+        # State tracking
         self.x_0 = [0] * self.state_size
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
 
-        # TODO: This is currently unused
+        # Joint position tracking TODO: This is currently unused
         self.q_0 = np.asarray([0] * self.num_dof)
         self.q_cur = np.asarray(self.q_0)
         self.q_traj = np.asarray([self.q_cur])
+
+        # Cartesian position tracking
+        self.p_0 = self.get_cartesian_state()[0]
+        self.p_cur = np.asarray(self.p_0)
+        self.p_traj = np.asarray([self.p_cur])
+
+        # Energy Tracking
+        self.E_0 = sum(self.get_energies())
+        self.E_cur = np.asarray(self.E_0)
+        self.E_traj = np.asarray([self.E_cur])
 
         self.t_cur = self.t_0
         self.t_traj = self.t_cur
@@ -62,10 +72,13 @@ class baseModel(ABC):
 
         # Update vars
         self.x_cur = np.asarray(xs[-1])
+        self.p_cur = self.get_cartesian_state()[0]
         self.t_cur += self.delta_t
 
     def update_trajectories(self):
         self.x_traj = np.append(self.x_traj, [self.x_cur], axis=0)
+        self.p_traj = np.append(self.p_traj, [self.p_cur], axis=0)
+        self.E_traj = np.append(self.E_traj, [self.E_cur], axis=0)
         self.t_traj = np.append(self.t_traj, self.t_cur)
 
     @abstractmethod
@@ -90,19 +103,25 @@ class baseModel(ABC):
     def get_state_traj(self):
         return self.x_traj
 
+    def get_cartesian_traj(self):
+        return self.p_traj
+
+    def get_energy_traj(self):
+        return self.E_traj
+
     def get_temporal_traj(self):
         return self.t_traj
 
 
 class CPG(baseModel):
     def __init__(self, params: dict = None):
-        super().__init__(params)
         self.omega_cur = 0
         self.mu_cur = 1
         self.coils = 0
 
         params_cpg = np.asarray([0, 1])
         self.params_traj = np.asarray([params_cpg])
+        super().__init__(params)
 
     def restart(self, params: dict = None):
         super().restart(params)
@@ -145,6 +164,15 @@ class CPG(baseModel):
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
 
+        self.p_0 = self.get_cartesian_state()[0].tolist()
+        self.p_cur = np.asarray(self.p_0)
+        self.p_traj = np.asarray([self.p_cur])
+
+        self.E_0 = sum(self.get_energies())
+        self.E_cur = np.asarray(self.E_0)
+        self.E_traj = np.asarray([self.E_cur])
+
+
     def get_cartesian_state(self):
         params = {'mu': self.mu_cur, 'omega': self.omega_cur}
 
@@ -172,15 +200,15 @@ class CPG(baseModel):
         pass
 
     def get_energies(self):
-        pass
+        return [0, 0]
 
 
 class Pendulum(baseModel):
     def __init__(self, params: dict = None):
-        super().__init__(params)
         self.l = params.get('l', 1)
         self.m = params.get('m', 0.1)
         self.rng = np.random.default_rng()
+        super().__init__(params)
 
     def select_initial(self, params: dict = None):
 
@@ -197,8 +225,6 @@ class Pendulum(baseModel):
         # Choose energies based on mode
         alpha = self.rng.uniform(0, 1)
         beta = self.rng.uniform(0, 1)
-        # print(alpha)
-        # print(beta)
         E_k = 0
         E_p = 0
         if mode == 'speed':
@@ -211,11 +237,9 @@ class Pendulum(baseModel):
             E_k = alpha * E_d
             E_p = (1 - alpha) * E_d
         elif mode == 'random':
-            E_rand = beta * MAX_ENERGY / 20
+            E_rand = beta * MAX_ENERGY / 20  # TODO: Change into it's own constant
             E_k = alpha * E_rand
             E_p = (1 - alpha) * E_rand
-            # print(E_k)
-            # print(E_p)
 
         # Calculate starting positions
         q_0 = inverse_potential(E_p)
@@ -225,6 +249,10 @@ class Pendulum(baseModel):
         self.x_0 = [q_0, dq_0]
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
+
+        self.p_0 = self.get_cartesian_state()[0]
+        self.p_cur = np.asarray(self.p_0)
+        self.p_traj = np.asarray([self.p_cur])
 
     def eqs_motion(self, x, t, params):
         tau = params['tau']

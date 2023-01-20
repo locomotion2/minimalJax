@@ -1,3 +1,5 @@
+import pandas as pd
+
 from sim.CONSTANTS import *
 
 import gym
@@ -6,6 +8,8 @@ import numpy as np
 from typing import Callable
 import matplotlib.pyplot as plt
 import matplotlib
+import seaborn as sns
+# import pandas as pd
 # import pyautogui as pg
 
 from sim.environments import BaseEnvironment
@@ -72,25 +76,16 @@ class BaseGymEnvironment(gym.Env):
             self.inference = True
             self.E_d = energy_command
 
-        self.maintain_plot = True
-
         # Rendering
         self.visualize = render
         if self.visualize:
             # display.clear_output(wait=True)
             # matplotlib.use("TkAgg")
             # width, height = pg.size()
-            fig_reward = plt.figure('Reward', figsize=FIG_SIZE)
-            move_figure(fig_reward, 0, 0)
-            plt.clf()
-            # plt.ion()
-            # plt.show()
 
-            fig_system = plt.figure('System', figsize=FIG_SIZE)
-            move_figure(fig_system, 1920/2, 0)
-            plt.clf()
-            # plt.ion()
-            # plt.show()
+            sns.set()
+            figure = plt.figure('Vizualization', figsize=FIG_SIZE)
+            move_figure(figure, 0, 0)
 
         # Build environment
         self.action_space = Box(low=-1, high=1, shape=(OUTPUT_SIZE,))
@@ -130,7 +125,7 @@ class BaseGymEnvironment(gym.Env):
 
         return cost_step
 
-    def tracking_plotting(self, reward: float, state: dict):
+    def tracking(self, reward: float, state: dict):
         # Handle inputs
         E_k, E_p = state['Energies']
         E_t = E_k + E_p
@@ -138,14 +133,6 @@ class BaseGymEnvironment(gym.Env):
         # Tracking data
         self.r_traj = np.append(self.r_traj, reward)
         self.E_t_traj = np.append(self.E_t_traj, E_t)
-
-        # Plotting
-        if self.visualize and self.cur_step % VIZ_RATE == 0:
-            try:
-                self.sim.plot()
-                self.plot_reward()
-            except KeyboardInterrupt:
-                raise KeyboardInterrupt
 
         # Tracking the episode
         self.r_epi += reward
@@ -185,17 +172,16 @@ class BaseGymEnvironment(gym.Env):
             done = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
-            # Plot & track
-            self.tracking_plotting(reward, state)
+            # Track variables
+            self.tracking(reward, state)
 
             # March on
             self.cur_step += 1
 
             # Handle episode end
             if done:
-                if self.visualize and self.maintain_plot:
-                    plt.ioff()
-                    plt.show()
+                if self.visualize:
+                    self.plot()
                 info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
 
             return obs, reward, done, info
@@ -228,40 +214,142 @@ class BaseGymEnvironment(gym.Env):
 
         return obs
 
-    def plot_reward(self):
+    def plot(self):
         try:
-            t_traj = self.sim.model.get_temporal_traj()
-            E_d_traj = np.ones(np.shape(t_traj)) * self.E_d
+            figure = plt.figure('Vizualization')
+            active_lines = [plt.Line2D] * 3
+            index = 1
 
-            plt.figure('Reward')
+            # Prepare the underlying system to plot and unpack data
+            data = self.sim.prepare_plot()
+            [system_data, sim_data, rl_data, controller_data, energy_data] = data
+
+            # Config. pos against time
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.plot('time', 'des_traj', 'g--', data=system_data, linewidth=3, alpha=0.5)
+            plt.plot('time', 'cur_traj', 'b--', data=system_data, linewidth=1)
+            plt.ylabel(r'$Angle (rad)$')
+            plt.xlabel('Time (s)')
+            plt.legend(['Des. traj.', 'Sys. traj.'], loc='best')
+            plt.axis([0, self.sim.t_final, 180, -180])
+            index += 1
+
+            # Pendulum simulation and CPG path
+            [sim_model_data, sim_CPG_data, sim_CPG_traj_data] = sim_data
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            active_lines[0], = plt.plot('x_model', 'y_model', 'b*-', linewidth=1, data=sim_model_data)
+            active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=4, alpha=0.6, color='gold', data=sim_CPG_data)
+            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.2, data=sim_CPG_traj_data)
+            plt.ylabel(r'$Y-Pos. (m)$')
+            plt.xlabel(r'$X-Pos. (m)$')
+            plt.legend(['Pendulum', 'CPG', 'Path'], loc='best')
+            window = 1.5
+            plt.axis([-window, window, -window, window])
+            index += 1
+
+            # RL-params
+            [rl_param_data, rl_traj_data] = rl_data
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.plot('mu_traj', 'omega_traj', '*-', linewidth=1, alpha=0.4, color='fuchsia', data=rl_traj_data)
+            active_lines[2], = plt.plot('mu', 'omega', 'o', linewidth=2, alpha=0.7, color='purple', data=rl_param_data)
+            plt.ylabel(r'$\omega\,(hz)$')
+            plt.xlabel(r'$\mu^2\,(m)$')
+            [h_window, v_window] = ACTION_SCALE
+            v_window = v_window ** 2
+            plt.axis([-h_window, h_window, 0, v_window])
+            index += 1
+
+            # PID controller
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.axis([0, self.sim.t_final, -MAX_TORQUE, MAX_TORQUE])
+            plt.plot('time', 'torque', '--', linewidth=2, color='orange', data=controller_data)
+            plt.plot('time', 'e_P', 'b--', linewidth=1, alpha=0.7, data=controller_data)
+            plt.plot('time', 'e_I', 'k--', linewidth=1, alpha=0.3, data=controller_data)
+            plt.plot('time', 'e_D', 'g--', linewidth=1, alpha=0.7, data=controller_data)
+            plt.ylabel(r'$Force (Nm)$')
+            plt.xlabel('Time (s)')
+            plt.legend(['Cont. Out', '$e_P$', '$e_I$', '$e_D$'], loc='best')
+            index += 1
 
             # Reward vs time
-            ax = plt.subplot(2, 1, 1)
-            ax.clear()
+            time_data = system_data.loc[:, 'time']
+            reward_data = pd.DataFrame({'reward': self.r_traj})
+            reward_data = pd.concat([time_data, reward_data], axis=1)
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.axis([0, self.sim.t_final, 0, 1])
-            plt.plot(t_traj, self.r_traj, 'y--', linewidth=1)
-            plt.ylabel(r'Reward')
-            plt.xlabel('Time (s)')
-            # plt.legend(['Pend. traj.'], loc='best')
+            plt.plot('time', 'reward', 'y--', linewidth=1, data=reward_data)
+            plt.ylabel(r'$Reward$')
+            plt.xlabel(r'$Time (s)$')
+            plt.legend(['Step reward'], loc='best')
+            index += 1
 
             # Energies vs time
-            ax = plt.subplot(2, 1, 2)
-            ax.clear()
-            ax.set_xlim([0, self.sim.t_final])
-            ax.set_ylim([0, 1.5])
-            plt.plot(t_traj, self.E_t_traj, 'b--', linewidth=1)
-            plt.plot(t_traj, E_d_traj, 'g--', linewidth=1)
-            plt.ylabel(r'Energy (J)')
-            plt.xlabel('Time (s)')
+            E_d_traj = np.ones(len(time_data)) * self.E_d
+            energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj}), energy_data], axis=1)
+            plt.subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.axis([0, self.sim.t_final, 0, 1.5])  # TODO: Set to constants
+            plt.plot('time', 'energy', 'b--', linewidth=1, data=energy_data)
+            plt.plot('time', 'energy_des', 'g--', linewidth=1, data=energy_data)
+            plt.ylabel(r'$Energy (J)$')
+            plt.xlabel(r'$Time (s)$')
             plt.legend([r'$E_t$', r'$E_d$'], loc='best')
-
-            plt.draw()
+            index += 1
+            
+            # Show the plots
+            figure.canvas.draw()
             plt.pause(0.0001)
+
+            # Animate plots
+            self.animate(figure, active_lines)
+
+            # Leave the plot open
+            plt.ioff()  # TODO: Look at what this actually does
+            plt.show()
 
         except KeyboardInterrupt:
             plt.close(fig=plt.figure('System'))
             plt.close(fig=plt.figure('Reward'))
             raise KeyboardInterrupt
+
+    def animate(self, figure, active_lines):
+        # Helping variables
+        time = 0
+        x_0 = [0, 0]
+        y_0 = [-LINE_DIST, LINE_DIST]
+        
+        # Types of plots for animation
+        passive_plots_indeces = (0, 3, 4, 5)
+        
+        # Define the lines that will be animated
+        passive_plots = [figure.get_axes()[i] for i in passive_plots_indeces]
+        plot_num = len(passive_plots)
+        passive_lines = [plt.Line2D] * plot_num
+        
+        # Initialize the passive lines
+        for i in range(plot_num):
+            passive_lines[i], = passive_plots[i].plot(x_0, y_0, 'r', alpha=0.5)
+
+        def line_animation_step(time: float = 0, line: [plt.Line2D] = None):
+            x = [time, time]
+            y = [-LINE_DIST, LINE_DIST]
+            line.set_ydata(y)
+            line.set_xdata(x)
+            
+        # Main animation loop
+        step = 0
+        while time < ACTUAL_FINAL_TIME:
+            # Update passive line positions
+            for i in range(plot_num):
+                line_animation_step(time, passive_lines[i])
+
+            # Animate the complex plots
+            self.sim.animate(step, active_lines)
+
+            # Update vars and figure
+            time += ACTUAL_TIMESTEP * VIZ_RATE
+            step += VIZ_RATE
+            figure.canvas.draw()
+            figure.canvas.flush_events()
 
     def render(self, mode="human"):
         if mode == 'rgb_array':
@@ -272,4 +360,3 @@ class BaseGymEnvironment(gym.Env):
             pass
         else:
             super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception
-
