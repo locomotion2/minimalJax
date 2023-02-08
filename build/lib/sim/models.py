@@ -1,12 +1,8 @@
-import sys
-
-sys.path.insert(1, '/home/gonz_jm/Documents/thesis_workspace/EigenHunt/pendulum-orbits/')
-from links_and_joints.planar_dynamical_system.generated.rr import RR as DoublePendulumBackend
-
+from pendulum-orbits
 from sim.CONSTANTS import *
 
 import numpy as np
-from scipy.integrate import odeint, solve_ivp
+from scipy.integrate import odeint
 from abc import ABC, abstractmethod
 
 
@@ -34,7 +30,7 @@ class baseModel(ABC):
         self.q_traj = np.asarray([self.q_cur])
 
         # Cartesian position tracking
-        self.p_0 = self.get_link_cartesian_positions()
+        self.p_0 = self.get_cartesian_state()[0]
         self.p_cur = np.asarray(self.p_0)
         self.p_traj = np.asarray([self.p_cur])
 
@@ -48,42 +44,38 @@ class baseModel(ABC):
 
     @abstractmethod
     def select_initial(self, params: dict = None):
-        raise NotImplementedError
+        pass
 
     def restart(self, params: dict = None):
         # Handle inputs
         self.t_0 = params.get('t_0', self.t_0)
 
         # Set up initial state conditions
-        p_0 = self.select_initial(params)
+        self.select_initial(params)
 
         # Set up time and tracking
         self.t_cur = self.t_0
         self.t_traj = self.t_cur
 
-        return p_0
-
     @abstractmethod
-    def eqs_motion(self, t, x, u):
-        raise NotImplementedError
+    def eqs_motion(self, x, t, u):
+        pass
 
     @abstractmethod
     def inverse_kins(self, params: dict = None):
-        raise NotImplementedError
+        pass
 
-    @profile
     def step(self, params: dict = None):
         ts = [self.t_cur, self.t_cur + self.delta_t]
-        # xs = odeint(self.eqs_motion, self.x_cur, ts, args=(params,), rtol=1.49012e-6, atol=1.49012e-8)  # default tolerances: 1.49012e-8.
-        output = solve_ivp(self.eqs_motion, ts, self.x_cur, method='RK23', args=(params,), rtol=1e-2, atol=1e-5)  # default tolerances: rtol=1e-3, atol=1e-6
+        xs = odeint(self.eqs_motion, self.x_cur, ts, args=(params,))  # TODO: Check how fast this is
 
-        # Update vars  # TODO: Turn this off in learning to increase speed
-        self.x_cur = np.asarray(output.y[:, -1])
-        self.p_cur = self.get_link_cartesian_positions()
+        # Update vars  # TODO: Tricker this off in learning to increase speed
+        self.x_cur = np.asarray(xs[-1])
+        self.p_cur = self.get_cartesian_state()[0]
         self.E_cur = sum(self.get_energies())
         self.t_cur += self.delta_t
 
-    def update_trajectories(self):  # TODO: Look into the axis paran
+    def update_trajectories(self):
         self.x_traj = np.append(self.x_traj, [self.x_cur], axis=0)
         self.p_traj = np.append(self.p_traj, [self.p_cur], axis=0)
         self.E_traj = np.append(self.E_traj, [self.E_cur], axis=0)
@@ -91,26 +83,22 @@ class baseModel(ABC):
 
     @abstractmethod
     def solve(self, t):
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def get_cartesian_state(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_link_cartesian_positions(self):
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def get_joint_state(self):
-        raise NotImplementedError
+        pass
 
     def get_time(self):
         return self.t_cur
 
     @abstractmethod
     def get_energies(self):
-        raise NotImplementedError
+        pass
 
     def get_state_traj(self):
         return self.x_traj
@@ -141,7 +129,7 @@ class CPG(baseModel):
         self.params_traj = np.asarray([params_cpg])
         self.coils = 0
 
-    def eqs_motion(self, t, x, params):
+    def eqs_motion(self, x, t, params):
         self.mu_cur = params['mu']
         self.omega_cur = params['omega']
 
@@ -176,7 +164,7 @@ class CPG(baseModel):
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
 
-        self.p_0 = self.get_link_cartesian_positions().tolist() # TODO: Change the function, maybe it solves the problem with tolist()
+        self.p_0 = self.get_cartesian_state()[0].tolist()
         self.p_cur = np.asarray(self.p_0)
         self.p_traj = np.asarray([self.p_cur])
 
@@ -188,12 +176,9 @@ class CPG(baseModel):
         params = {'mu': self.mu_cur, 'omega': self.omega_cur}
 
         p = self.x_cur
-        v = self.eqs_motion(0, self.x_cur, params)
+        v = self.eqs_motion(self.x_cur, 0, params)
 
         return [p, v]
-
-    def get_link_cartesian_positions(self):
-        return self.get_cartesian_state()[0]
 
     def get_state_traj(self):
         return self.x_traj
@@ -219,10 +204,8 @@ class CPG(baseModel):
 
 class Pendulum(baseModel):
     def __init__(self, params: dict = None):
-        if params.get('Inherited', False):
-            self.l = params.get('l', 1)
-            self.m = params.get('m', 0.1)
-
+        self.l = params.get('l', 1)
+        self.m = params.get('m', 0.1)
         self.rng = np.random.default_rng()
         super().__init__(params)
 
@@ -266,11 +249,11 @@ class Pendulum(baseModel):
         self.x_cur = np.asarray(self.x_0)
         self.x_traj = np.asarray([self.x_cur])
 
-        self.p_0 = self.get_cartesian_state()[0] # TODO: Change to the new function, also implelemt the new function!
+        self.p_0 = self.get_cartesian_state()[0]
         self.p_cur = np.asarray(self.p_0)
         self.p_traj = np.asarray([self.p_cur])
 
-    def eqs_motion(self, t, x, params):
+    def eqs_motion(self, x, t, params):
         tau = params['tau']
 
         x1 = x[0]
@@ -309,9 +292,7 @@ class Pendulum(baseModel):
         return [theta_corrected, omega]
 
     def get_joint_state(self):
-        q = self.x_cur[0:self.num_dof]
-        dq = self.x_cur[self.num_dof:]
-        return [q, dq]
+        return self.x_cur
 
     def get_cartesian_state(self):
         q = self.x_cur[0]
@@ -326,132 +307,5 @@ class Pendulum(baseModel):
         return [1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
                 self.m * -g * self.l * (1 - np.cos(self.x_cur[0]))]
 
-
 class DoublePendulum(Pendulum):
-    def __init__(self, params: dict = None):
-        self.l = params.get('l', (0.5, 0.5))
-        self.m = params.get('m', (0.05, 0.05))
-        self.backend = DoublePendulumBackend(
-            l=self.l,
-            m=self.m,
-            g=-g,
-            k=(0, 0),
-            qr=(0, 0)
-        )
-        params['Inherited'] = True
-        super().__init__(params)
 
-    def select_initial(self, params: dict = None):
-
-        def inverse_kinetic(E: float = 0):
-            raise NotImplementedError
-
-        def inverse_potential(E: float = 0):
-            raise NotImplementedError
-
-        # Handle inputs
-        mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0)
-
-        # Choose energies based on mode
-        alpha = self.rng.uniform(0, 1)
-        beta = self.rng.uniform(0, 1)
-        E_k = 0
-        E_p = 0
-        if mode == 'speed':
-            E_k = E_d
-            E_p = 0
-        elif mode == 'position':
-            E_k = 0
-            E_p = E_d
-        elif mode == 'random_des':
-            E_k = alpha * E_d
-            E_p = (1 - alpha) * E_d
-        elif mode == 'random':
-            E_rand = beta * MAX_ENERGY / 20  # TODO: Change into it's own constant
-            E_k = alpha * E_rand
-            E_p = (1 - alpha) * E_rand
-
-        # Calculate starting positions # TODO: implement the inverse energy functions (ask Arne)
-        # q_0 = inverse_potential(E_p)
-        # dq_0 = inverse_kinetic(E_k)
-        q_0 = [self.rng.uniform(-np.pi, 0), self.rng.uniform(3*-np.pi/4, 3*np.pi/4)]
-        # q_0 = [-np.pi/2, np.pi/10]
-        # q_0 = [-np.pi/2, 0]
-        # q_0 = [-np.pi / 2, np.pi/4]
-        dq_0 = [0.0, 0.0]
-
-        # Initialize tracking arrays
-        self.x_0 = np.append(q_0, dq_0)
-        self.x_cur = np.asarray(self.x_0)
-        self.x_traj = np.asarray([self.x_cur])
-
-        self.p_0 = self.get_link_cartesian_positions()
-        self.p_cur = np.asarray(self.p_0)
-        self.p_traj = np.asarray([self.p_cur])
-
-        # Returns the initial position in cartesian coordinates
-        return self.get_cartesian_state()[0]
-
-    def eqs_motion(self, t, x, params):
-        tau = params['tau']
-        def dummy_controller(t, q, dq):
-            return tau
-        eqs_backend = self.backend.create_dynamics(controllers=[dummy_controller])  # get eqs of motion
-
-        return eqs_backend(0, x)
-
-    def solve(self, t: float):
-        raise NotImplementedError
-
-    def inverse_kins(self, params: dict = None):
-        p = params['pos']
-        v = params['speed']
-        # coils = params['coils']
-
-        # Check reacheability
-        r_0 = np.linalg.norm(p)
-        if r_0 > np.sum(self.l):
-            p = p / r_0 * np.sum(self.l)
-
-        # Calculate joint position
-        q0 = self.x_cur[0:self.num_dof]
-        q = self.backend.bad_invkin(p, q0=q0, K=1.0, tol=1e-2, max_steps=100)
-        # TODO: Look into the coiling
-
-        # Calculate the joint speed
-        dq = np.linalg.pinv(self.backend.jacobian(q))[:, 0:-1] @ v
-
-        return [q, dq]
-
-    def get_cartesian_state(self):
-        # Get joint positions and speeds
-        q = self.x_cur[0:self.num_dof]
-        dq = self.x_cur[self.num_dof:]
-
-        # Calculate the cart. positions and speeds
-        p = self.backend.forward_kinematics(q)[0:-1]
-        v = (self.backend.jacobian(q) @ dq)[0:-1]
-
-        return [p, v]
-
-    def get_link_cartesian_positions(self):
-        # Get joint positions
-        q = self.x_cur[0:self.num_dof]
-
-        # Calculate the link positions
-        p = self.backend.forward_kinematics_for_each_link(q)
-        p = p[:, 0:-1]
-
-        return p
-
-    def get_energies(self):
-        # Get joint positions and speeds
-        q = self.x_cur[0:self.num_dof]
-        dq = self.x_cur[self.num_dof:]
-
-        # Calculate energies
-        E_pot = self.backend.potential_energy(q, absolute=False)
-        E_kin = self.backend.kinetic_energy(q, dq)
-
-        return [E_pot, E_kin]

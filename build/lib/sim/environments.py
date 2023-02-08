@@ -1,7 +1,7 @@
 from sim.CONSTANTS import *
 
 from sim.controllers import PID_pos_vel_damping, PID_pos_vel_tracking_num, PID_pos_vel_tracking_modeled
-from sim.models import CPG, Pendulum, DoublePendulum
+from sim.models import CPG, Pendulum
 
 from IPython import display
 import matplotlib.pyplot as plt
@@ -9,9 +9,6 @@ import pandas as pd
 # import seaborn as sns
 
 import numpy as np
-import warnings
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class BaseEnvironment:
@@ -23,17 +20,14 @@ class BaseEnvironment:
         self.t_elapsed = 0
         self.solve = solve
         self.mode = mode
-        self.state_size = 4
-        self.num_dof = 2
 
         # Define parameters
         pendulum_params = {'delta_t': self.delta_t_system,
-                           'state_size': self.state_size,
-                           'num_dof': self.num_dof
+                           'state_size': 2,
+                           'num_dof': 1
                            }
         controller_params = {'delta_t': self.delta_t_system,
-                             'gains': [0.5, 0.0, 0.5],
-                             'num_dof': self.num_dof
+                             'gains': [0.5, 0.0, 0.5]
                              }
         generator_params = {'delta_t': self.delta_t_learning,
                             'state_size': 2,
@@ -41,14 +35,19 @@ class BaseEnvironment:
                             }
 
         # Build components
-        self.model = DoublePendulum(params=pendulum_params)
+        self.model = Pendulum(params=pendulum_params)
         self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
         self.generator = CPG(params=generator_params)
+
+        # sns.set()
 
     def step(self, action: np.ndarray):
         # Get RL params
         omega = action[0]
         mu = action[1]
+
+        # Obtain solution from model to compare results
+        [q_d_sol, dq_d_sol] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
 
         if not self.solve:
             # Generate next point in path
@@ -59,10 +58,7 @@ class BaseEnvironment:
 
             # Run through inverse kins
             [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
-            # [q_d, dq_d] = [[0, 0], [0, 0]]
         else:
-            # Obtain solution from model to compare results
-            [q_d_sol, dq_d_sol] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
             [q_d, dq_d] = [q_d_sol, dq_d_sol]
 
         # Run the controller at a higher rate
@@ -77,7 +73,6 @@ class BaseEnvironment:
             tau = self.controller.input(inputs=step_inputs)
 
             # Apply controller action and update model
-            # tau = [0.0, 0.0]
             self.model.step({'tau': tau})
 
             # Update the time
@@ -94,8 +89,9 @@ class BaseEnvironment:
     def get_joint_state_model(self):
         return self.model.get_joint_state()
 
-    def get_cartesian_state_generator(self):
-        return self.generator.get_cartesian_state()
+    def get_state_generator(self):
+        [p, v] = self.generator.get_cartesian_state()
+        return p
 
     def get_energies(self):
         return self.model.get_energies()
@@ -104,19 +100,19 @@ class BaseEnvironment:
         return self.model.get_time() >= self.t_final
 
     def restart(self, E_d: float = 0):
-        p_0 = self.model.restart({'mode': self.mode, 'E_d': E_d})
+        self.model.restart({'mode': self.mode, 'E_d': E_d})
         self.controller.restart()
-        self.generator.restart({'x_0': p_0})
+        self.generator.restart({'x_0': [0, -1]})
         self.t_elapsed = 0
+
+        # display.clear_output(wait=True)
+        # plt.clf()
 
     def animate(self, step: int = 0, lines: [plt.Line2D] = None):
         p_traj_model = self.model.get_cartesian_traj()
-        px_model = p_traj_model[step, :, 0]
-        py_model = p_traj_model[step, :, 1]
-        px_model = np.concatenate(([0], px_model), axis=0)
-        py_model = np.concatenate(([0], py_model), axis=0)
-        lines[0].set_xdata(px_model)
-        lines[0].set_ydata(py_model)
+        [px_model, py_model] = p_traj_model[step]
+        lines[0].set_xdata([0, px_model])
+        lines[0].set_ydata([0, py_model])
 
         p_traj_CPG = self.generator.get_state_traj()
         [px_CPG, py_CPG] = p_traj_CPG[step]
@@ -133,37 +129,22 @@ class BaseEnvironment:
 
     def prepare_plot(self):  # TODO: Implement easy closing, transfer methods to underlying classes
         try:
-            # Time dataframe
-            t_traj = self.model.get_temporal_traj()
-            time_data = pd.DataFrame({'time': t_traj})
-
             # Config. pos against time
+            t_traj = self.model.get_temporal_traj()
             x_traj_model = self.model.get_state_traj()
-            q_traj_model = (((x_traj_model[:, 0:self.num_dof] + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi # TODO: This will spell trouble
+            q_traj_model = (((x_traj_model[:, 0] + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
             q_d_traj = (((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
-            system_data = pd.DataFrame({})
-            for i in range(self.num_dof):
-                des_name = f'des_traj_{i}'
-                cur_name = f'cur_traj_{i}'
-                des_temp_data = pd.DataFrame({des_name: q_d_traj[:, i]})
-                cur_temp_data = pd.DataFrame({cur_name: q_traj_model[:, i]})
-                system_data = pd.concat([system_data, des_temp_data, cur_temp_data], axis=1)
-            system_data = pd.concat([time_data, system_data], axis=1)
+            system_data = pd.DataFrame({'time': t_traj, 'des_traj': q_d_traj, 'cur_traj': q_traj_model})
 
             # Pendulum simulation and CPG path
             p_traj_model = self.model.get_cartesian_traj()
-            px_model = p_traj_model[0, :, 0]
-            py_model = p_traj_model[0, :, 1]
-            px_model = np.concatenate(([0], px_model), axis=0)
-            py_model = np.concatenate(([0], py_model), axis=0)
-
+            [px_model, py_model] = p_traj_model[0]
             p_traj_CPG = self.generator.get_state_traj()
             [px_CPG, py_CPG] = p_traj_CPG[0]
             x_traj_CPG = self.generator.get_state_traj()
             px_traj = x_traj_CPG[:, 0]
             py_traj = x_traj_CPG[:, 1]
-
-            sim_model_data = pd.DataFrame({'x_model': px_model, 'y_model': py_model})
+            sim_model_data = pd.DataFrame({'x_model': [0, px_model], 'y_model': [0, py_model]})
             sim_CPG_data = pd.DataFrame({'x_CPG': px_CPG, 'y_CPG': py_CPG}, index=[0])
             sim_CPG_traj_data = pd.DataFrame({'x_traj_CPG': px_traj, 'y_traj_CPG': py_traj})
 

@@ -1,8 +1,8 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="sim",
-    packages=[package for package in find_packages() if package.startswith("sim")],
+    name="EigenHunt",
+    packages=[package for package in find_packages() if (package.startswith("sim") or package.startswith("pendulum-orbits/links_and_joints"))],
     install_requires=["gym", "numpy"],
     extras_require={
         "tests": [

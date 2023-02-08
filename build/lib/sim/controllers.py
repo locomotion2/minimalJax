@@ -12,8 +12,6 @@ class BaseController(ABC):
         else:
             self.delta_t = delta_t
 
-        self.n_dof = params.get('num_dof', 2)
-
     @abstractmethod
     def input(self, inputs: dict = None):
         pass
@@ -44,21 +42,21 @@ class basePIDController(BaseController):
         else:
             self.gains = gains
 
-        self.q_d_prev = [0] * self.n_dof
-        self.e_P_accum = [0] * self.n_dof
+        self.q_d_prev = 0
+        self.e_P_accum = 0
 
         # Storage and help variables
-        self.e_cur = [0] * self.n_dof
+        self.e_cur = 0
         self.tau_traj = np.asarray([0])
-        self.q_d_traj = np.asarray([np.asarray([0] * self.n_dof)])
+        self.q_d_traj = np.asarray([0])
         self.e_traj = np.asarray([np.asarray([0, 0, 0])])
 
     def restart(self):
-        self.q_d_prev = [0] * self.n_dof
-        self.e_P_accum = [0] * self.n_dof
+        self.q_d_prev = 0
+        self.e_P_accum = 0
 
         self.tau_traj = np.asarray([0])
-        self.q_d_traj = np.asarray([np.asarray([0] * self.n_dof)])
+        self.q_d_traj = np.asarray([0])
         self.e_traj = np.asarray([np.asarray([0, 0, 0])])
 
     def get_force_traj(self):
@@ -76,9 +74,9 @@ class basePIDController(BaseController):
 
     def update_trajectories(self, q_d, tau):
         # Tracking vectors
-        self.e_traj = np.append(self.e_traj, [np.linalg.norm(self.e_cur, axis=1)], axis=0) # TODO: This needs to change for the larger dims
-        self.tau_traj = np.append(self.tau_traj, [np.linalg.norm(tau, axis=0)], axis=0)
-        self.q_d_traj = np.append(self.q_d_traj, [q_d], axis=0)
+        self.e_traj = np.append(self.e_traj, [self.e_cur], axis=0)
+        self.tau_traj = np.append(self.tau_traj, tau)
+        self.q_d_traj = np.append(self.q_d_traj, q_d)
 
 
 class PID_pos_vel_damping(basePIDController):
@@ -138,7 +136,6 @@ class PID_pos_vel_tracking_num(basePIDController):
 
         return tau
 
-
 class PID_pos_vel_tracking_modeled(basePIDController):
     def __init__(self, params: dict = None):
         super().__init__(params)
@@ -157,12 +154,13 @@ class PID_pos_vel_tracking_modeled(basePIDController):
         e_I = self.e_P_accum
 
         # Calc. D error
+        # dq_d = (q_d - self.q_d_prev) / self.delta_t
         self.q_d_prev = q_d
         e_D = dq_d - dq_cur
 
         # Calc. Force
         [P, I, D] = self.gains
         self.e_cur = np.asarray([P * e_P, I * e_I, D * e_D])
-        tau = np.asarray(self.e_cur.sum(axis=0))  # TODO: This can be an issue
+        tau = self.e_cur.sum()
 
         return tau

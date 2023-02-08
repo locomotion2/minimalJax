@@ -109,7 +109,7 @@ class BaseGymEnvironment(gym.Env):
         tau = state['Torque']
         dq_model = state['Joint_vel']
         power_model = tau * dq_model
-        cost_torque = gaus(np.linalg.norm(tau), 0.2)
+        cost_torque = gaus(tau, 0.2)
 
         # Energy rewards
         E_d = state['Energy_des']
@@ -146,7 +146,7 @@ class BaseGymEnvironment(gym.Env):
         E = self.sim.get_energies()
 
         # CPG data
-        p_gen, _ = self.sim.get_cartesian_state_generator()  # TODO: Test to feed in the CPG position as well
+        p_gen = self.sim.get_state_generator()  # TODO: Test to feed in the CPG position as well
 
         tau = self.sim.controller.get_force_traj()[-1]
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Pos_gen': p_gen, 'Joint_pos': q_model,
@@ -159,7 +159,7 @@ class BaseGymEnvironment(gym.Env):
     def step(self, action):
         try:
             # Format and take action
-            # action[0] += 1  # Enable this for tuning
+            # action[0] += 1  #  Enable this for tuning
             action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
             self.sim.step(action)
 
@@ -186,7 +186,7 @@ class BaseGymEnvironment(gym.Env):
         except KeyboardInterrupt:
             # del self.sim
             print("Closing the program due to Keyboard interrupt.")
-            # self.close()
+            self.close()
 
         return None
 
@@ -220,15 +220,11 @@ class BaseGymEnvironment(gym.Env):
 
             # Config. pos against time
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
-            legend_entries = []
-            for i in range(int((len(system_data.columns) - 1) / 2)):
-                plt.plot('time', f'des_traj_{i}', '--', data=system_data, linewidth=3, alpha=0.5)
-                plt.plot('time', f'cur_traj_{i}', '--', data=system_data, linewidth=1)
-                legend_entries.append(f'Des. traj. #{i}')
-                legend_entries.append(f'Sys. traj. #{i}')
+            plt.plot('time', 'des_traj', 'g--', data=system_data, linewidth=3, alpha=0.5)
+            plt.plot('time', 'cur_traj', 'b--', data=system_data, linewidth=1)
             plt.ylabel(r'$Angle (rad)$')
             plt.xlabel('Time (s)')
-            plt.legend(legend_entries, loc='best')
+            plt.legend(['Des. traj.', 'Sys. traj.'], loc='best')
             plt.axis([0, self.sim.t_final, 180, -180])
             index += 1
 
@@ -236,8 +232,7 @@ class BaseGymEnvironment(gym.Env):
             [sim_model_data, sim_CPG_data, sim_CPG_traj_data] = sim_data
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             active_lines[0], = plt.plot('x_model', 'y_model', 'bo-', linewidth=2, data=sim_model_data)
-            active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange',
-                                        data=sim_CPG_data)
+            active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange', data=sim_CPG_data)
             plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.2, data=sim_CPG_traj_data)
             plt.ylabel(r'$Y-Pos. (m)$')
             plt.xlabel(r'$X-Pos. (m)$')
@@ -293,7 +288,7 @@ class BaseGymEnvironment(gym.Env):
             plt.xlabel(r'$Time (s)$')
             plt.legend([r'$E_t$', r'$E_d$'], loc='best')
             index += 1
-
+            
             # Show the plots
             figure.canvas.draw()
             plt.pause(0.0001)
@@ -315,15 +310,15 @@ class BaseGymEnvironment(gym.Env):
         time = 0
         x_0 = [0, 0]
         y_0 = [-LINE_DIST, LINE_DIST]
-
+        
         # Types of plots for animation
         passive_plots_indeces = (0, 3, 4, 5)
-
+        
         # Define the lines that will be animated
         passive_plots = [figure.get_axes()[i] for i in passive_plots_indeces]
         plot_num = len(passive_plots)
         passive_lines = [plt.Line2D] * plot_num
-
+        
         # Initialize the passive lines
         for i in range(plot_num):
             passive_lines[i], = passive_plots[i].plot(x_0, y_0, 'r', alpha=0.5)
@@ -333,7 +328,7 @@ class BaseGymEnvironment(gym.Env):
             y = [-LINE_DIST, LINE_DIST]
             line.set_ydata(y)
             line.set_xdata(x)
-
+            
         # Main animation loop
         step = 0
         while time < ACTUAL_FINAL_TIME:

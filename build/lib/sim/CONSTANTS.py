@@ -34,7 +34,3 @@ def default(dictionary, key, canon):
             return dictionary[key]
     except KeyError:
         return canon
-
-
-def debug_print(text: str = None, obj=None):
-    print(f'{text}: {obj}')
