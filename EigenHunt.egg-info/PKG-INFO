@@ -1,0 +1,11 @@
+Metadata-Version: 2.1
+Name: EigenHunt
+Version: 0.7.0
+Summary: Gym env for fitting the CPG.
+Home-page: 
+Author: Andres Gonzalez
+Author-email: j.andregon15@gmail.com
+License: MIT
+Keywords: reinforcement-learning-algorithms reinforcement-learning machine-learning
+Description-Content-Type: text/markdown
+Provides-Extra: tests
