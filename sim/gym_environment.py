@@ -12,12 +12,13 @@ import seaborn as sns
 # import pandas as pd
 # import pyautogui as pg
 
-from sim.environments import BaseEnvironment
+from sim.environments import DoublePendulumEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
+from sim.reward_functions import default_func
 
 
-def gaus(value: float, width: float = 0.3):
-    return float(np.exp(-(value / width) ** 2))
+def p_norm(x, p):
+    return np.power(np.sum(np.power(x, p)), 1 / p)
 
 
 def move_figure(f, x, y):
@@ -36,39 +37,29 @@ def move_figure(f, x, y):
 class BaseGymEnvironment(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, reward_func: Callable = None, curriculum: BaseCurriculum = None, action_scale=None,
-                 render: bool = False, energy_command: float = None, starting_range: list = None,
-                 mode: str = 'equilibrium', solve: bool = False):
+    def __init__(self, **kwargs):
         super().__init__()
 
         # Handle inputs
-        self.solve = solve
+        self.solve = kwargs.get('solve', False)
 
-        if mode in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
-            self.mode = mode
-        else:
-            raise Exception('Selected initial condition mode is unknown.')
+        self.mode = kwargs.get('mode', 'equilibrium')
+        if self.mode not in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
+            raise ValueError('Selected initial condition mode is unknown.')
 
-        if action_scale is None:
-            self.action_scale = ACTION_SCALE
-        else:
-            self.action_scale = action_scale
+        self.action_scale = kwargs.get('action_scale', ACTION_SCALE)
+        self.final_time = kwargs.get('final_time', FINAL_TIME)
+        starting_range = kwargs.get('starting_range', [0, 1.2])
 
-        if starting_range is None:  # This implies that a curriculum is not wanted
-            var_range = [0, 1]
-        else:
-            var_range = starting_range
+        self.reward_func = kwargs.get('reward_func', default_func)
 
-        if reward_func is None:
-            self.reward_func = self.default_func
-        else:
-            self.reward_func = reward_func
-
+        curriculum = kwargs.get('curriculum', None)
         if curriculum is None:
-            self.curriculum = UniformGrowthCurriculum(starting_range=var_range)
+            self.curriculum = UniformGrowthCurriculum(starting_range=starting_range)
         else:
             self.curriculum = curriculum
 
+        energy_command = kwargs.get('energy_command', None)
         if energy_command is None:
             self.inference = False
             self.E_d = 0
@@ -77,12 +68,8 @@ class BaseGymEnvironment(gym.Env):
             self.E_d = energy_command
 
         # Rendering
-        self.visualize = render
+        self.visualize = kwargs.get('render', False)
         if self.visualize:
-            # display.clear_output(wait=True)
-            # matplotlib.use("TkAgg")
-            # width, height = pg.size()
-
             sns.set()
             figure = plt.figure('Vizualization', figsize=FIG_SIZE)
             move_figure(figure, 0, 0)
@@ -90,45 +77,18 @@ class BaseGymEnvironment(gym.Env):
         # Build environment
         self.action_space = Box(low=-1, high=1, shape=(OUTPUT_SIZE,))
         self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
-        self.sim = BaseEnvironment(delta_t_learning=ACTUAL_TIMESTEP, delta_t_system=MIN_TIMESTEP,
-                                   t_final=ACTUAL_FINAL_TIME, mode=self.mode, solve=self.solve)
+        self.sim = DoublePendulumEnv(params={'delta_t_learning': ACTUAL_TIMESTEP, 'delta_t_system': MIN_TIMESTEP,
+                                             't_final': self.final_time, 'mode': self.mode, 'solve': self.solve})
 
         # Tracking / help variables
         self.r_epi = 0
         self.cur_step = 0
-        self.r_traj = np.asarray([self.r_epi])
+        self.r_num = 3
+        self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
 
-    def default_func(self, state: dict):
-        # Cartesian reward
-        pos_model = state['Pos_model']
-        pos_gen = state['Pos_gen']
-        dist = np.linalg.norm(pos_model - pos_gen)
-        cost_cart = gaus(dist, 0.1)
-
-        # Force punishment
-        tau = state['Torque']
-        dq_model = state['Joint_vel']
-        power_model = tau * dq_model
-        cost_torque = gaus(np.linalg.norm(tau), 0.2)
-
-        # Energy rewards
-        E_d = state['Energy_des']
-        E_k, E_p = state['Energies']
-        E_t = E_k + E_p
-        cost_E_t = gaus(E_t - E_d, 0.25)
-        cost_E_k = gaus(E_k - E_d, 0.3) * gaus(E_p, 0.3)
-        cost_E_p = gaus(E_p - E_d, 0.1) * gaus(E_k, 0.3)
-
-        # Total reward
-        costs = np.asarray([cost_E_t, cost_E_k, cost_E_p, cost_torque, cost_cart])
-        weights = np.asarray([0.4, 0.0, 0.0, 0.3, 0.3])
-        cost_step = np.dot(costs, weights)
-
-        return cost_step
-
-    def tracking(self, reward: float):
+    def tracking(self, reward: float, costs: list):
         # Tracking data
-        self.r_traj = np.append(self.r_traj, reward)
+        self.r_traj = np.append(self.r_traj, [np.concatenate([[reward], costs], axis=0)], axis=0)
 
         # Tracking the episode
         self.r_epi += reward
@@ -141,18 +101,30 @@ class BaseGymEnvironment(gym.Env):
 
     def gather_data(self):
         # Model data
-        p_model, v_model = self.sim.get_cartesian_state_model()  # TODO: Rename this stuff
+        p_model, v_model = self.sim.get_cartesian_state_model()
         q_model, dq_model = self.sim.get_joint_state_model()
-        E = self.sim.get_energies()
+        E_model = self.sim.get_energies()
 
         # CPG data
-        p_gen, _ = self.sim.get_cartesian_state_generator()  # TODO: Test to feed in the CPG position as well
+        # p_gen = self.sim.get_cartesian_state_generator()
+        q_gen, dq_gen = self.sim.get_joint_state_generator()
+        params_gen = self.sim.get_params_generator()
 
-        tau = self.sim.controller.get_force_traj()[-1]
-        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Pos_gen': p_gen, 'Joint_pos': q_model,
-                 'Joint_vel': dq_model, 'Energy_des': self.E_d, 'Energies': E, 'Torque': tau}
-        obs = np.concatenate([p_model, np.asarray(v_model) / MAX_SPEED,
-                              np.asarray(p_gen) / ACTION_SCALE[1], [self.E_d / MAX_ENERGY]])
+        # Controller data
+        tau = self.sim.controller.get_force()
+
+        # Build data packages
+        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
+                 'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
+                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
+        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
+                              np.asarray(q_gen) / ACTION_SCALE[1], np.asarray(dq_gen) / MAX_SPEED,
+                              [self.E_d / MAX_ENERGY]])
+
+        # obs_temp = obs.copy()
+        # obs_temp[np.abs(obs_temp) < 1] = 0
+        # # debug_print('observations', obs[np.abs(obs) > 1])
+        # debug_print('observations', obs_temp)
 
         return state, obs
 
@@ -160,17 +132,17 @@ class BaseGymEnvironment(gym.Env):
         try:
             # Format and take action
             # action[0] += 1  # Enable this for tuning
-            action = np.multiply(self.action_scale, action)  # TODO: Format in its own function
-            self.sim.step(action)
+            action = np.multiply(self.action_scale, action)  # Scale up the action
+            self.sim.step({'action': action, 'E_d': self.E_d, 'inference': self.inference})
 
             # Extract data for learning
             state, obs = self.gather_data()
-            reward = self.reward_func(state)
+            reward, costs = self.reward_func(state)
             done = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
             # Track variables
-            self.tracking(reward)
+            self.tracking(reward, costs)
 
             # March on
             self.cur_step += 1
@@ -185,22 +157,23 @@ class BaseGymEnvironment(gym.Env):
 
         except KeyboardInterrupt:
             # del self.sim
-            print("Closing the program due to Keyboard interrupt.")
             # self.close()
-
-        return None
+            print("Closing the program due to Keyboard interrupt.")
+            raise KeyboardInterrupt
 
     def reset(self):
+
         # Reset system
         self.new_target_energy()
-        self.sim.restart(self.E_d)
+        self.sim.restart({'E_d': self.E_d})
 
         # Gather data from the new episode
         state, obs = self.gather_data()
-        reward = self.reward_func(state)
+        reward, costs = self.reward_func(state)
 
         # Reset tracking
-        self.r_traj = np.asarray([reward])  # TODO: The plotting looks off, the starting value is weird
+        self.r_traj = np.append(self.r_traj, [np.concatenate([[reward], costs], axis=0)],
+                                axis=0)  # TODO: The plotting looks off, the starting value is weird
 
         # Reset help variables
         self.r_epi = reward
@@ -211,55 +184,117 @@ class BaseGymEnvironment(gym.Env):
     def plot(self):
         try:
             figure = plt.figure('Vizualization')
-            active_lines = [plt.Line2D] * 3
+            active_lines = [plt.Line2D] * 5
             index = 1
 
             # Prepare the underlying system to plot and unpack data
             data = self.sim.prepare_plot()
-            [system_data, sim_data, rl_data, controller_data, energy_data] = data
+            [system_data, sim_data, sim_data_joints, rl_data, controller_data, energy_data] = data
+
+            # Perform some calculations
+            [rl_param_data, rl_traj_data] = rl_data
+            [sim_model_data, sim_CPG_data, sim_CPG_traj_data] = sim_data
+            [sim_model_data_joints, sim_model_traj_data_joints, sim_CPG_data_joints,
+             sim_CPG_traj_data_joints] = sim_data_joints
+
+            omega_traj = rl_traj_data['omega_traj'].to_numpy()
+            # omega_avg = p_norm(omega_traj, 50)
+            omega_avg = np.abs(omega_traj).mean()  # Todo: Find a better approximation, ask Antonin
+            omega_var = np.abs(omega_traj).var()
+            print(f'Omega: {omega_avg}')
+            print(f'Omega Variance: {omega_var}')
+            omega_avg = omega_avg + omega_var
+            period = 2 * np.pi / omega_avg
+            print(f'Period: {period}')
+            x_omega = np.asarray([omega_avg, omega_avg])
+            x_period = np.asarray([period, period])
+            n_lines = int(np.ceil(self.sim.t_final / period))
+            y_0 = [-LINE_DIST, LINE_DIST]
+
+            param_gen_traj = rl_traj_data['gen'].to_numpy()
+            # time_points = system_data['time'].to_numpy()
+            # time_points = np.multiply(time_points, param_gen_traj)
+            # time_points = time_points[time_points != 0]
+            cpg_traj_x = sim_CPG_traj_data['x_traj_CPG'].to_numpy()
+            cpg_traj_y = sim_CPG_traj_data['y_traj_CPG'].to_numpy()
+            cpg_traj_x = np.multiply(cpg_traj_x, param_gen_traj)
+            cpg_traj_y = np.multiply(cpg_traj_y, param_gen_traj)
+            cpg_traj_x = cpg_traj_x[cpg_traj_x != 0]
+            cpg_traj_y = cpg_traj_y[cpg_traj_y != 0]
+
+            cpg_joint_traj_x = sim_CPG_traj_data_joints['x_traj_CPG'].to_numpy()
+            cpg_joint_traj_y = sim_CPG_traj_data_joints['y_traj_CPG'].to_numpy()
+            cpg_joint_traj_x = np.multiply(cpg_joint_traj_x, param_gen_traj)
+            cpg_joint_traj_y = np.multiply(cpg_joint_traj_y, param_gen_traj)
+            cpg_joint_traj_x = cpg_joint_traj_x[cpg_joint_traj_x != 0]
+            cpg_joint_traj_y = cpg_joint_traj_y[cpg_joint_traj_y != 0]
 
             # Config. pos against time
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.title('Joint pos. of sys. and CPG in time')
             legend_entries = []
             for i in range(int((len(system_data.columns) - 1) / 2)):
                 plt.plot('time', f'des_traj_{i}', '--', data=system_data, linewidth=3, alpha=0.5)
                 plt.plot('time', f'cur_traj_{i}', '--', data=system_data, linewidth=1)
                 legend_entries.append(f'Des. traj. #{i}')
                 legend_entries.append(f'Sys. traj. #{i}')
+            for n in range(n_lines):
+                plt.plot(x_period * n, y_0, '--', alpha=0.3)
             plt.ylabel(r'$Angle (rad)$')
             plt.xlabel('Time (s)')
             plt.legend(legend_entries, loc='best')
-            plt.axis([0, self.sim.t_final, 180, -180])
+            plt.axis([0, self.sim.t_final, 2 * 180, 2 * -180])
             index += 1
 
             # Pendulum simulation and CPG path
-            [sim_model_data, sim_CPG_data, sim_CPG_traj_data] = sim_data
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.title('System sim. and CPG in cart. coordinates')
+            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data)
             active_lines[0], = plt.plot('x_model', 'y_model', 'bo-', linewidth=2, data=sim_model_data)
             active_lines[1], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange',
                                         data=sim_CPG_data)
-            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.2, data=sim_CPG_traj_data)
+            plt.plot(cpg_traj_x, cpg_traj_y, 'o', linewidth=2, alpha=0.2, color='purple')
             plt.ylabel(r'$Y-Pos. (m)$')
             plt.xlabel(r'$X-Pos. (m)$')
-            plt.legend(['Pendulum', 'CPG', 'Path'], loc='best')
+            plt.legend(['CPG Path', 'Pendulum', 'Oscillator', 'Pot. Gen. Pts.'], loc='best')
             window = 1.5
             plt.axis([-window, window, -window, window])
             index += 1
 
-            # RL-params
-            [rl_param_data, rl_traj_data] = rl_data
+            # Pendulum simulation and CPG path in joint coords
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
-            plt.plot('mu_traj', 'omega_traj', '*-', linewidth=1, alpha=0.2, color='fuchsia', data=rl_traj_data)
-            active_lines[2], = plt.plot('mu', 'omega', 'o', linewidth=2, alpha=0.7, color='purple', data=rl_param_data)
+            plt.title('System sim. and CPG in joint. coordinates')
+            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data_joints)
+            plt.plot('x_traj_model', 'y_traj_model', '*-', linewidth=1, alpha=0.4, color='lightblue',
+                     data=sim_model_traj_data_joints)
+            active_lines[2], = plt.plot('x_model', 'y_model', 'bo', linewidth=10, data=sim_model_data_joints)
+            active_lines[3], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange',
+                                        data=sim_CPG_data_joints)
+            plt.plot(cpg_joint_traj_x, cpg_joint_traj_y, 'o', linewidth=2, alpha=0.2, color='purple')
+            plt.ylabel(r'$q_2 (rad)$')
+            plt.xlabel(r'$q_1 (rad)$')
+            plt.legend(['CPG Path', 'Model Path', 'Pendulum', 'Oscillator'], loc='best')
+            window = 180
+            plt.axis([-window, window, -window, window])
+            index += 1
+
+            # RL-params
+            figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.title('Output of the RL-algorithm, param. of the CPG')
+            plt.plot('omega_traj', 'mu_traj', '*-', linewidth=1, alpha=0.2, color='fuchsia', data=rl_traj_data)
+            active_lines[4], = plt.plot('omega', 'mu', 'o', linewidth=2, alpha=0.7, color='purple', data=rl_param_data)
+            plt.plot(x_omega, y_0, '--', alpha=0.5, color='purple')
+            plt.plot(-x_omega, y_0, '--', alpha=0.5, color='purple')
             plt.xlabel(r'$\omega\,(hz)$')
             plt.ylabel(r'$\mu^2\,(m^2)$')
-            [h_window, v_window] = ACTION_SCALE
-            v_window = v_window ** 2
-            plt.axis([-h_window, h_window, 0, v_window])
+            [h_window, v_window] = ACTION_SCALE[0:2]
+            # v_window = v_window ** 2
+            plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])
             index += 1
 
             # PID controller
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.title('Output of the PID controller and sys. torque')
             plt.axis([0, self.sim.t_final, -MAX_TORQUE, MAX_TORQUE])
             plt.plot('time', 'torque', '--', linewidth=2, color='orange', data=controller_data)
             plt.plot('time', 'e_P', 'b--', linewidth=1, alpha=0.7, data=controller_data)
@@ -272,20 +307,27 @@ class BaseGymEnvironment(gym.Env):
 
             # Reward vs time
             time_data = system_data.loc[:, 'time']
-            reward_data = pd.DataFrame({'reward': self.r_traj})
+            reward_data = pd.DataFrame(
+                {'reward': self.r_traj[:, 0], 'cos_E': self.r_traj[:, 1], 'cos_tau': self.r_traj[:, 2],
+                 'cos_pos': self.r_traj[:, 3]})
             reward_data = pd.concat([time_data, reward_data], axis=1)
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
-            plt.axis([0, self.sim.t_final, 0, 1])
-            plt.plot('time', 'reward', '--', linewidth=3, color='gold', data=reward_data)
+            plt.title('Reward breakdown of the episode')
+            plt.axis([0, self.sim.t_final, 0, 1.1])
+            plt.plot('time', 'reward', '-', linewidth=3, color='gold', data=reward_data)
+            plt.plot('time', 'cos_E', '--', linewidth=1, alpha=0.5, color='black', data=reward_data)
+            plt.plot('time', 'cos_tau', '--', linewidth=1, alpha=0.5, color='orange', data=reward_data)
+            plt.plot('time', 'cos_pos', '--', linewidth=1, alpha=0.5, color='blue', data=reward_data)
             plt.ylabel(r'$Reward$')
             plt.xlabel(r'$Time (s)$')
-            plt.legend(['Step reward'], loc='best')
+            plt.legend(['Step reward', 'E. cost', r'$\tau\,cost$', 'Pos. cost'], loc='best')
             index += 1
 
             # Energies vs time
             E_d_traj = np.ones(len(time_data)) * self.E_d
             energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj}), energy_data], axis=1)
             plt.subplot(FIG_COORDS[0], FIG_COORDS[1], index)
+            plt.title('Energy trajectory in time')
             plt.axis([0, self.sim.t_final, 0, 1.5])  # TODO: Set to constants
             plt.plot('time', 'energy', 'b--', linewidth=1, data=energy_data)
             plt.plot('time', 'energy_des', 'g--', linewidth=1, data=energy_data)
@@ -317,7 +359,7 @@ class BaseGymEnvironment(gym.Env):
         y_0 = [-LINE_DIST, LINE_DIST]
 
         # Types of plots for animation
-        passive_plots_indeces = (0, 3, 4, 5)
+        passive_plots_indeces = (0, 4, 5, 6)
 
         # Define the lines that will be animated
         passive_plots = [figure.get_axes()[i] for i in passive_plots_indeces]
@@ -336,7 +378,7 @@ class BaseGymEnvironment(gym.Env):
 
         # Main animation loop
         step = 0
-        while time < ACTUAL_FINAL_TIME:
+        while time < self.final_time:
             # Update passive line positions
             for i in range(plot_num):
                 line_animation_step(time, passive_lines[i])
@@ -359,3 +401,22 @@ class BaseGymEnvironment(gym.Env):
             pass
         else:
             super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception
+
+
+class EigenHunterCPG(BaseGymEnvironment):
+    def gather_data(self):
+        # Model data
+        p_model, v_model = self.sim.get_cartesian_state_model()
+        q_model, dq_model = self.sim.get_joint_state_model()
+        E_model = self.sim.get_energies()
+
+        # Controller data
+        tau = self.sim.controller.get_force()
+
+        # Build data packages
+        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
+                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
+        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
+                              [self.E_d / MAX_ENERGY]])
+
+        return state, obs
