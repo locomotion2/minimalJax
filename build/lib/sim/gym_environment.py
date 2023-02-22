@@ -193,7 +193,7 @@ class BaseGymEnvironment(gym.Env):
     def reset(self):
         # Reset system
         self.new_target_energy()
-        self.sim.restart(self.E_d)
+        self.sim.restart({'E_d': self.E_d})
 
         # Gather data from the new episode
         state, obs = self.gather_data()

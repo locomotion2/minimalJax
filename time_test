@@ -1,3 +1,12 @@
+Comparing odeint and solve_ivp
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    94       200     335959.3   1679.8     99.8          LSODA default
+    94       200     287051.8   1435.3     99.8          LSODA, rtol=1e-2, atol=1e-5
+    94       200     153770.2    768.9     99.6          RK23, rtol=1e-2, atol=1e-5
+    94       200     160628.2    803.1     99.6          RK23, rtol=1e-2, atol=1e-4
+    94       200     151878.1    759.4     99.6          RK23, rtol=5e-2, atol=1e-5
+
 Reducing Both
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
