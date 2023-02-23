@@ -41,20 +41,27 @@ class BaseGymEnvironment(gym.Env):
         super().__init__()
 
         # Handle inputs
-        solve = kwargs.get('solve', False)
+        params = {
+            'delta_t_learning': ACTUAL_TIMESTEP,
+            'delta_t_system': MIN_TIMESTEP,
+            'solve': kwargs.get('solve', False)
+        }
 
-        mode = kwargs.get('mode', 'equilibrium')
-        if mode not in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
-            raise ValueError('Selected initial condition mode is unknown.')
+        mode = kwargs.get('mode', 'random_des')
+        valid_modes = {'speed', 'position', 'equilibrium', 'random', 'random_des'}
+        if mode not in valid_modes:
+            raise ValueError(f"Selected initial condition mode {mode} is unknown. Valid modes: {valid_modes}")
+        params['mode'] = mode
 
         self.final_time = kwargs.get('final_time', FINAL_TIME)
-        starting_range = kwargs.get('starting_range', [0, 1.2])
+        params['t_final'] = self.final_time
+        params['starting_range'] = kwargs.get('starting_range', [0, 1.2])
 
         self.reward_func = kwargs.get('reward_func', default_func)
 
         curriculum = kwargs.get('curriculum', None)
         if curriculum is None:
-            self.curriculum = UniformGrowthCurriculum(starting_range=starting_range)
+            self.curriculum = UniformGrowthCurriculum(starting_range=params['starting_range'])
         else:
             self.curriculum = curriculum
 
@@ -69,42 +76,55 @@ class BaseGymEnvironment(gym.Env):
         generator = kwargs.get('generator', None)
         self.system = kwargs.get('system', None)
         if generator is None or generator == 'CPG':
-            if self.system is None or self.system == 'DoublePendulumCPG':
+            if self.system is None or self.system == 'DoublePendulum':
                 self.system = DoublePendulumCPGEnv
+                params['state_size'] = 4
+                params['num_dof'] = 2
+                input_size = INPUT_SIZE_DPEND
             elif self.system == 'Pendulum':
                 self.system = PendulumCPGEnv
+                params['state_size'] = 2
+                params['num_dof'] = 1
+                input_size = INPUT_SIZE_PEND
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f"System {self.system} not implemented")
             self.action_scale = kwargs.get('action_scale', ACTION_SCALE_CPG)
             output_size = OUTPUT_SIZE_CPG
         elif generator == 'direct':
-            if self.system is None or self.system == 'DoublePendulumCPG':
+            if self.system is None or self.system == 'DoublePendulum':
                 self.system = DoublePendulumDirectEnv
+                params['state_size'] = 4
+                params['num_dof'] = 2
+
+                input_size = INPUT_SIZE_DPEND
             elif self.system == 'Pendulum':
                 self.system = PendulumDirectEnv
+                params['state_size'] = 2
+                params['num_dof'] = 1
+                input_size = INPUT_SIZE_PEND
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f"System {self.system} not implemented")
             self.action_scale = kwargs.get('action_scale', ACTION_SCALE_DIRECT)
             output_size = OUTPUT_SIZE_DIRECT
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Generator {generator} not implemented")
 
         # Rendering
         self.visualize = kwargs.get('render', False)
         if self.visualize:
             sns.set()
-            figure = plt.figure('Vizualization', figsize=FIG_SIZE)
+            figure = plt.figure('Visualization', figsize=FIG_SIZE)
             move_figure(figure, 0, 0)
 
         # Build environment
         self.action_space = Box(low=-1, high=1, shape=(output_size,))
-        self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
-        self.sim = self.system(params={'delta_t_learning': ACTUAL_TIMESTEP, 'delta_t_system': MIN_TIMESTEP,
-                                             't_final': self.final_time, 'mode': mode, 'solve': solve})
+        self.observation_space = Box(low=-1, high=1, shape=(input_size,))
+        self.sim = self.system(params=params)
 
         # Tracking / help variables
-        self.r_epi = 0
         self.cur_step = 0
+        self.num_dof = params['num_dof']
+        self.r_epi = 0
         self.r_num = 3
         self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
 
@@ -131,6 +151,9 @@ class BaseGymEnvironment(gym.Env):
         # p_gen = self.sim.get_cartesian_state_generator()
         q_gen, dq_gen = self.sim.get_joint_state_generator()
         params_gen = self.sim.get_params_generator()
+        if self.num_dof == 1:
+            q_gen = np.asarray([q_gen[0]])
+            dq_gen = np.asarray([dq_gen[0]])
 
         # Controller data
         tau = self.sim.controller.get_force()
@@ -205,7 +228,7 @@ class BaseGymEnvironment(gym.Env):
 
     def plot(self):
         try:
-            figure = plt.figure('Vizualization')
+            figure = plt.figure('Visualization')
             active_lines = [plt.Line2D] * 5
             index = 1
 
@@ -239,17 +262,17 @@ class BaseGymEnvironment(gym.Env):
             # time_points = time_points[time_points != 0]
             cpg_traj_x = sim_CPG_traj_data['x_traj_CPG'].to_numpy()
             cpg_traj_y = sim_CPG_traj_data['y_traj_CPG'].to_numpy()
-            cpg_traj_x = np.multiply(cpg_traj_x, param_gen_traj)
-            cpg_traj_y = np.multiply(cpg_traj_y, param_gen_traj)
-            cpg_traj_x = cpg_traj_x[cpg_traj_x != 0]
-            cpg_traj_y = cpg_traj_y[cpg_traj_y != 0]
+            temp = np.multiply(cpg_traj_x, param_gen_traj)
+            cpg_traj_x = cpg_traj_x[temp != 0]
+            cpg_traj_y = cpg_traj_y[temp != 0]
+            debug_print('zeros in param', np.size(param_gen_traj[param_gen_traj != 0]))
+            debug_print('zeros in cpg', np.size(cpg_traj_x))
 
             cpg_joint_traj_x = sim_CPG_traj_data_joints['x_traj_CPG'].to_numpy()
             cpg_joint_traj_y = sim_CPG_traj_data_joints['y_traj_CPG'].to_numpy()
-            cpg_joint_traj_x = np.multiply(cpg_joint_traj_x, param_gen_traj)
-            cpg_joint_traj_y = np.multiply(cpg_joint_traj_y, param_gen_traj)
-            cpg_joint_traj_x = cpg_joint_traj_x[cpg_joint_traj_x != 0]
-            cpg_joint_traj_y = cpg_joint_traj_y[cpg_joint_traj_y != 0]
+            temp = np.multiply(cpg_joint_traj_x, param_gen_traj)
+            cpg_joint_traj_x = cpg_joint_traj_x[temp != 0]
+            cpg_joint_traj_y = cpg_joint_traj_y[temp != 0]
 
             # Config. pos against time
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)

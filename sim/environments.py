@@ -21,8 +21,8 @@ class BaseEnvironment(ABC):
         self.t_elapsed = 0
         self.solve = params.get('solve', False)
         self.mode = params.get('mode', 'equilibrium')
-        self.state_size = 4
-        self.num_dof = 2
+        self.state_size = params.get('state_size', 4)
+        self.num_dof = params.get('num_dof', 2)
 
         # Build components
         self.model = None
@@ -103,12 +103,20 @@ class BaseEnvironment(ABC):
 
         # Update positions in joint coords
         q_traj_model_rad = np.rad2deg(self.model.get_joint_traj())
-        qx_model, qy_model = q_traj_model_rad[step]
+        if self.num_dof > 1:
+            qx_model, qy_model = q_traj_model_rad[step]
+        else:
+            qx_model = q_traj_model_rad[step]
+            qy_model = 0
         lines[2].set_xdata(qx_model)
         lines[2].set_ydata(qy_model)
 
         q_traj_CPG = np.rad2deg(q_traj_CPG)
-        qx_CPG, qy_CPG = q_traj_CPG[step] if self.num_dof == 1 else q_traj_CPG[step, :]
+        if self.num_dof > 1:
+            qx_CPG, qy_CPG = q_traj_CPG[step]
+        else:
+            qx_CPG = q_traj_CPG[step]
+            qy_CPG = 0
         lines[3].set_xdata(qx_CPG)
         lines[3].set_ydata(qy_CPG)
 
@@ -171,15 +179,23 @@ class BaseEnvironment(ABC):
             # Pendulum simulation and CPG path in joint coords
             q_traj_model = self.model.get_joint_traj() * 180 / np.pi
             qx_model = q_traj_model[0, 0]
-            qy_model = q_traj_model[0, 1]
             qx_model_traj = q_traj_model[:, 0]
-            qy_model_traj = q_traj_model[:, 1]
+            if self.num_dof > 1:
+                qy_model = q_traj_model[0, 1]
+                qy_model_traj = q_traj_model[:, 1]
+            else:
+                qy_model = 0
+                qy_model_traj = np.asarray([0] * np.size(qx_model_traj))
 
-            if self.num_dof == 1:
-                q_traj_CPG = q_traj_CPG[:, 0]
-            [qx_CPG, qy_CPG] = q_traj_CPG[0] * 180 / np.pi
-            qx_CPG_traj = q_traj_CPG[:, 0] * 180 / np.pi
-            qy_CPG_traj = q_traj_CPG[:, 1] * 180 / np.pi
+            if self.num_dof > 1:
+                [qx_CPG, qy_CPG] = q_traj_CPG[0] * 180 / np.pi
+                qx_CPG_traj = q_traj_CPG[:, 0] * 180 / np.pi
+                qy_CPG_traj = q_traj_CPG[:, 1] * 180 / np.pi
+            else:
+                qx_CPG = q_traj_CPG[0] * 180 / np.pi
+                qy_CPG = 0
+                qx_CPG_traj = q_traj_CPG * 180 / np.pi
+                qy_CPG_traj = np.asarray([0] * np.size(q_traj_CPG))
 
             sim_model_data_joints = pd.DataFrame({'x_model': qx_model, 'y_model': qy_model}, index=[0])
             sim_model_traj_data_joints = pd.DataFrame({'x_traj_model': qx_model_traj, 'y_traj_model': qy_model_traj})
@@ -231,8 +247,12 @@ class CPGEnv(BaseEnvironment):
         action = params.get('action')
 
         # Get RL params
-        omega = action[0:self.num_dof - 1]
-        mu = action[self.num_dof - 1:self.num_dof]
+        if self.num_dof > 1:
+            omega = action[0:self.num_dof - 1]
+            mu = action[self.num_dof - 1:self.num_dof]
+        else:
+            omega = action[0]
+            mu = action[1]
 
         if not self.solve:
             # Generate next point in path
@@ -300,6 +320,45 @@ class PendulumCPGEnv(CPGEnv):
 
         # Build components
         self.model = Pendulum(params=self.config.get('model_params'))
+
+    def step(self, params: dict = None):
+        action = params.get('action')
+
+        # Get RL params
+        if self.num_dof > 1:
+            omega = action[0:self.num_dof - 1]
+            mu = action[self.num_dof - 1:self.num_dof]
+        else:
+            omega = action[0]
+            mu = action[1]
+
+        if not self.solve:
+            # Generate next point in path
+            generator_input = {'omega': omega, 'mu': mu}
+            self.generator.step(generator_input)
+            self.generator.update_trajectories(generator_input)
+            # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
+            # [p, v] = self.generator.get_cartesian_state()
+            [q_d, dq_d] = self.generator.get_joint_state()
+            q_d = np.asarray([q_d[0]])
+            dq_d = np.asarray([dq_d[0]])
+
+            # Run through inverse kins
+            # [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
+            # [q_d, dq_d] = [[0, 0], [0, 0]]
+        else:
+            # Obtain solution from model to compare results
+            [q_d, dq_d] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
+
+        # New step for model
+        params['E'] = np.sum(self.model.get_energies())
+        self.controller.set_target(q_d, dq_d, params=params)
+        self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
+
+        # Save latest trajectory for plotting
+        self.model.update_trajectories()
+        self.controller.update_trajectories(q_d)
+        self.t_elapsed += self.delta_t_learning
 
 
 class PendulumDirectEnv(DirectEnv):

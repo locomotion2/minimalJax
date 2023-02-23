@@ -112,8 +112,7 @@ class basePIDController(BaseController):
 
     def update_trajectories(self, q_d):
         # Tracking vectors
-        error = self.e_cur
-        error = np.linalg.norm(error, axis=1)
+        error = np.linalg.norm(self.e_cur, axis=1)
         tau = self.tau_last
         tau = np.linalg.norm(tau)
         self.e_traj = np.append(self.e_traj, [error], axis=0)  # TODO: This needs to change for the larger dims

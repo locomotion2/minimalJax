@@ -80,7 +80,7 @@ class BaseModel(ABC):
         # Current variables
         self.t_cur = self.t_0
         self.x_cur = np.asarray(self.x_0)
-        self.q_cur = np.asarray(self.q_0)
+        self.q_cur = self.q_0
 
         # Derived variables
         self.p_0 = self.get_link_cartesian_positions()
@@ -91,7 +91,10 @@ class BaseModel(ABC):
         # Tracking variables # Todo: add conditional if eval
         self.t_traj = self.t_cur
         self.x_traj = np.asarray([self.x_cur])
-        self.q_traj = np.asarray([self.q_cur])
+        if self.num_dof > 1:
+            self.q_traj = np.asarray([self.q_cur])
+        else:
+            self.q_traj = np.asarray([[self.q_cur]])
         self.p_traj = np.asarray([self.p_cur])
         self.E_traj = np.asarray([self.E_cur])
 
@@ -118,7 +121,10 @@ class BaseModel(ABC):
         # Restart tracking
         self.t_traj = self.t_cur
         self.x_traj = np.asarray([self.x_cur])
-        self.q_traj = np.asarray([self.q_cur])
+        if self.num_dof > 1:
+            self.q_traj = np.asarray([self.q_cur])
+        else:
+            self.q_traj = np.asarray([[self.q_cur]])
         self.p_traj = np.asarray([self.p_cur])
         self.E_traj = np.asarray([self.E_cur])
 
@@ -459,8 +465,8 @@ class GPG(Generator):
 
             # Define the state matrix
             root = np.ones((num_dof, num_dof))
-            upper = np.triu(root, 1) * omega
-            lower = np.tril(root, -1) * -omega
+            upper = np.multiply(np.triu(root, 1), omega)
+            lower = np.multiply(np.tril(root, -1), -omega)
             diag = np.diag(np.diag(np.full((num_dof, num_dof), psi)))
             A = upper + diag + lower
 
@@ -474,8 +480,6 @@ class GPG(Generator):
     def step(self, params: dict = None):
         # Run the integration
         params['num_dof'] = self.num_dof
-        q_off = np.asarray([np.pi] * self.num_dof)
-        q_off = 0
 
         # Define the integration interval # Todo: clean up, define the ability to have more points
         t_final = params.get('t_final', self.t_cur + self.delta_t)
@@ -484,8 +488,7 @@ class GPG(Generator):
         ts = [self.t_cur, t_final]
 
         # Simulate the system until t_final
-        self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur + q_off})
-        self.x_cur -= q_off
+        self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur})
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
@@ -503,7 +506,10 @@ class GPG(Generator):
         if np.sign(self.omega_cur) != np.sign(self.omega_past):
             change = 1
         self.omega_past = self.omega_cur
-        params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
+        # if self.num_dof > 1:
+        params['input'] = np.asarray([self.omega_cur, self.mu_cur, change])
+        # params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
+
 
         super().update_trajectories(params)
 
