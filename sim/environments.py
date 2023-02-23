@@ -1,13 +1,10 @@
 from sim.CONSTANTS import *
 
-# from sim.controllers import PID_pos_vel_damping, PID_pos_vel_tracking_num, PID_pos_vel_tracking_modeled
 from sim.controllers import PID_pos_vel_tracking_modeled
-from sim.models import CPG, GPG, Pendulum, DoublePendulum
+from sim.models import CPG, GPG, DummyOutput, Pendulum, DoublePendulum
 
-from IPython import display
 import matplotlib.pyplot as plt
 import pandas as pd
-# import seaborn as sns
 
 import numpy as np
 import warnings
@@ -31,6 +28,26 @@ class BaseEnvironment(ABC):
         self.model = None
         self.controller = None
         self.generator = None
+
+        # Define parameters
+        model_params = {'delta_t': self.delta_t_system,
+                        'state_size': self.state_size,
+                        'num_dof': self.num_dof
+                        }
+        controller_params = {'delta_t': self.delta_t_system,
+                             'gains_eigen': [0.1, 0.0, 0.1],
+                             'gains_outer': [0.1, 0.0, 0.1],
+                             'mode': 'maximal',
+                             'num_dof': self.num_dof
+                             }
+        generator_params = {'delta_t': self.delta_t_learning,
+                            'state_size': 2,
+                            'num_dof': 2
+                            }
+        self.config = {'model_params': model_params,
+                       'controller_params': controller_params,
+                       'generator_params': generator_params
+                       }
 
     @abstractmethod
     def step(self, params: dict = None):
@@ -202,30 +219,13 @@ class BaseEnvironment(ABC):
             raise KeyboardInterrupt
 
 
-class DoublePendulumEnv(BaseEnvironment):
+class CPGEnv(BaseEnvironment):
     def __init__(self, params: dict = None):
         super().__init__(params=params)
 
-        # Define parameters
-        model_params = {'delta_t': self.delta_t_system,
-                        'state_size': self.state_size,
-                        'num_dof': self.num_dof
-                        }
-        controller_params = {'delta_t': self.delta_t_system,
-                             'gains_eigen': [0.1, 0.0, 0.1],
-                             'gains_outer': [0.1, 0.0, 0.1],
-                             'mode': 'maximal',
-                             'num_dof': self.num_dof
-                             }
-        generator_params = {'delta_t': self.delta_t_learning,
-                            'state_size': 2,
-                            'num_dof': 2
-                            }
-
         # Build components
-        self.model = DoublePendulum(params=model_params)
-        self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
-        self.generator = GPG(params=generator_params)
+        self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
+        self.generator = GPG(params=self.config.get('generator_params'))
 
     def step(self, params: dict = None):
         action = params.get('action')
@@ -261,21 +261,66 @@ class DoublePendulumEnv(BaseEnvironment):
         self.t_elapsed += self.delta_t_learning
 
 
-class DoublePendulumDirectEnv(DoublePendulumEnv):
+class DirectEnv(BaseEnvironment):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
+        self.generator = DummyOutput(params=self.config.get('generator_params'))
 
     def step(self, params: dict = None):
         action = params.get('action')
 
-        # Get RL params
-        q_d = action[0: self.num_dof]
-        dq_d = action[self.num_dof, 2*self.num_dof]
+        # Get desired joint state
+        q_d_com = action[0:self.num_dof]
+        dq_d_com = action[self.num_dof:2 * self.num_dof]
+
+        # Run through DummyGenerator
+        generator_input = {'q_d': q_d_com, 'dq_d': dq_d_com}
+        self.generator.step(generator_input)
+        self.generator.update_trajectories(generator_input)
+        [q_d, dq_d] = self.generator.get_joint_state()
 
         # New step for model
         params['E'] = np.sum(self.model.get_energies())
         self.controller.set_target(q_d, dq_d, params=params)
-        self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
+        self.model.step(
+            {'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
 
         # Save latest trajectory for plotting
         self.model.update_trajectories()
         self.controller.update_trajectories(q_d)
         self.t_elapsed += self.delta_t_learning
+
+
+class PendulumCPGEnv(CPGEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = Pendulum(params=self.config.get('model_params'))
+
+
+class PendulumDirectEnv(DirectEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = Pendulum(params=self.config.get('model_params'))
+
+
+class DoublePendulumCPGEnv(CPGEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = DoublePendulum(params=self.config.get('model_params'))
+
+
+class DoublePendulumDirectEnv(DirectEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = DoublePendulum(params=self.config.get('model_params'))

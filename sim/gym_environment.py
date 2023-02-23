@@ -12,7 +12,7 @@ import seaborn as sns
 # import pandas as pd
 # import pyautogui as pg
 
-from sim.environments import DoublePendulumEnv
+from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
 
@@ -41,13 +41,12 @@ class BaseGymEnvironment(gym.Env):
         super().__init__()
 
         # Handle inputs
-        self.solve = kwargs.get('solve', False)
+        solve = kwargs.get('solve', False)
 
-        self.mode = kwargs.get('mode', 'equilibrium')
-        if self.mode not in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
+        mode = kwargs.get('mode', 'equilibrium')
+        if mode not in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
             raise ValueError('Selected initial condition mode is unknown.')
 
-        self.action_scale = kwargs.get('action_scale', ACTION_SCALE)
         self.final_time = kwargs.get('final_time', FINAL_TIME)
         starting_range = kwargs.get('starting_range', [0, 1.2])
 
@@ -67,6 +66,29 @@ class BaseGymEnvironment(gym.Env):
             self.inference = True
             self.E_d = energy_command
 
+        generator = kwargs.get('generator', None)
+        self.system = kwargs.get('system', None)
+        if generator is None or generator == 'CPG':
+            if self.system is None or self.system == 'DoublePendulumCPG':
+                self.system = DoublePendulumCPGEnv
+            elif self.system == 'Pendulum':
+                self.system = PendulumCPGEnv
+            else:
+                raise NotImplementedError
+            self.action_scale = kwargs.get('action_scale', ACTION_SCALE_CPG)
+            output_size = OUTPUT_SIZE_CPG
+        elif generator == 'direct':
+            if self.system is None or self.system == 'DoublePendulumCPG':
+                self.system = DoublePendulumDirectEnv
+            elif self.system == 'Pendulum':
+                self.system = PendulumDirectEnv
+            else:
+                raise NotImplementedError
+            self.action_scale = kwargs.get('action_scale', ACTION_SCALE_DIRECT)
+            output_size = OUTPUT_SIZE_DIRECT
+        else:
+            raise NotImplementedError
+
         # Rendering
         self.visualize = kwargs.get('render', False)
         if self.visualize:
@@ -75,10 +97,10 @@ class BaseGymEnvironment(gym.Env):
             move_figure(figure, 0, 0)
 
         # Build environment
-        self.action_space = Box(low=-1, high=1, shape=(OUTPUT_SIZE,))
+        self.action_space = Box(low=-1, high=1, shape=(output_size,))
         self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
-        self.sim = DoublePendulumEnv(params={'delta_t_learning': ACTUAL_TIMESTEP, 'delta_t_system': MIN_TIMESTEP,
-                                             't_final': self.final_time, 'mode': self.mode, 'solve': self.solve})
+        self.sim = self.system(params={'delta_t_learning': ACTUAL_TIMESTEP, 'delta_t_system': MIN_TIMESTEP,
+                                             't_final': self.final_time, 'mode': mode, 'solve': solve})
 
         # Tracking / help variables
         self.r_epi = 0
@@ -117,8 +139,8 @@ class BaseGymEnvironment(gym.Env):
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
                  'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
                  'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
-                              np.asarray(q_gen) / ACTION_SCALE[1], np.asarray(dq_gen) / MAX_SPEED,
+        obs = np.concatenate([np.asarray(q_model) / self.action_scale[1], np.asarray(dq_model) / MAX_SPEED,
+                              np.asarray(q_gen) / self.action_scale[1], np.asarray(dq_gen) / MAX_SPEED,
                               [self.E_d / MAX_ENERGY]])
 
         # obs_temp = obs.copy()
@@ -287,7 +309,7 @@ class BaseGymEnvironment(gym.Env):
             plt.plot(-x_omega, y_0, '--', alpha=0.5, color='purple')
             plt.xlabel(r'$\omega\,(hz)$')
             plt.ylabel(r'$\mu^2\,(m^2)$')
-            [h_window, v_window] = ACTION_SCALE[0:2]
+            [h_window, v_window] = self.action_scale[0:2]
             # v_window = v_window ** 2
             plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])
             index += 1
@@ -401,22 +423,3 @@ class BaseGymEnvironment(gym.Env):
             pass
         else:
             super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception
-
-
-class EigenHunterCPG(BaseGymEnvironment):
-    def gather_data(self):
-        # Model data
-        p_model, v_model = self.sim.get_cartesian_state_model()
-        q_model, dq_model = self.sim.get_joint_state_model()
-        E_model = self.sim.get_energies()
-
-        # Controller data
-        tau = self.sim.controller.get_force()
-
-        # Build data packages
-        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
-                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
-                              [self.E_d / MAX_ENERGY]])
-
-        return state, obs

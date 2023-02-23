@@ -62,7 +62,7 @@ def inverse_grad_desc(var_des, error_func, jacobian_func, name: str = 'variable'
     return q
 
 
-class baseModel(ABC):
+class BaseModel(ABC):
     def __init__(self, params: dict = None):
         # Load params
         self.delta_t = params.get('delta_t', MIN_TIMESTEP)
@@ -220,13 +220,49 @@ class baseModel(ABC):
         return self.t_traj
 
 
-# TODO: Finish this class
-class DummyOutput(baseModel):
+class Generator(BaseModel):
+    def __init__(self, params: dict = None):
+        super().__init__(params)
 
-    def make_eqs_motion(self, params: dict = None):
-        raise NotImplementedError
+        # Define the tracking Todo: add conditional when training
+        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+
+    def restart(self, params: dict = None):
+        super().restart(params)
+
+        # Restart tracking
+        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+
+    def update_trajectories(self, params: dict = None):
+        super().update_trajectories(params=params)
+
+        # Update trajectories
+        self.params_traj = np.append(self.params_traj, [params.get('input')], axis=0)
 
     def select_initial(self, params: dict = None):
+        self.x_0 = params.get('x_0', self.x_0)
+        self.x_cur = np.asarray(self.x_0)
+
+        self.q_0 = self.x_0
+        self.q_cur = np.asarray(self.q_0)
+
+        self.p_0 = [0] * self.num_dof
+        self.p_cur = np.asarray(self.p_0)
+
+    def get_cartesian_state(self):
+        raise NotImplementedError
+
+    def get_link_cartesian_positions(self):
+        return [0] * self.num_dof
+
+    @abstractmethod
+    def get_params(self):
+        raise NotImplementedError
+
+    def get_parametric_traj(self):
+        return self.params_traj
+
+    def solve(self, t):
         raise NotImplementedError
 
     def inverse_kins(self, params: dict = None):
@@ -235,24 +271,54 @@ class DummyOutput(baseModel):
     def forward_kins(self, params: dict = None):
         raise NotImplementedError
 
-    def solve(self, t):
-        raise NotImplementedError
-
-    def get_cartesian_state(self):
-        raise NotImplementedError
-
-    def get_link_cartesian_positions(self):
-        raise NotImplementedError
-
+    @abstractmethod
     def get_joint_state(self):
-        raise NotImplementedError
+        return NotImplementedError
 
     def get_energies(self):
-        raise NotImplementedError
+        return [0, 0]
+
+
+class DummyOutput(Generator):
+    def __init__(self, params: dict = None):
+        super().__init__(params)
+
+        # Define the vel vars
+        self.dq_cur = np.asarray([0] * self.num_dof)
+
+    def step(self, params: dict = None):
+        # Define the integration interval
+        t_final = params.get('t_final', self.t_cur + self.delta_t)
+
+        # Simulate the system until t_final
+        self.x_cur = params.get('q_d')
+
+        # Update the current variables
+        self.p_cur = self.get_link_cartesian_positions()
+        self.q_cur = self.x_cur[0:self.num_dof]
+        self.dq_cur = params.get('dq_d')
+        self.E_cur = sum(self.get_energies())
+        self.t_cur = t_final
+
+    def make_eqs_motion(self, params: dict = None):
+        def dummy_func():
+            return None
+
+        return dummy_func
+
+    def update_trajectories(self, params: dict = None):
+        params['input'] = np.asarray([0] * (self.num_dof + 1))
+        super().update_trajectories(params=params)
+
+    def get_joint_state(self):
+        return [self.q_cur, self.dq_cur]
+
+    def get_params(self):
+        return [0, 0]
 
 
 # TODO: decide what to do with this class, the other can implement this just as well
-class CPG(baseModel):
+class CPG(BaseModel):
     def __init__(self, params: dict = None):
         # Todo: set the sizes of this variables correctly
         self.omega_cur = np.asarray([0] * self.num_dof)
@@ -365,7 +431,8 @@ class CPG(baseModel):
         return [0, 0]
 
 
-class GPG(baseModel):
+class GPG(Generator):
+
     def __init__(self, params: dict = None):
         super().__init__(params)
 
@@ -373,10 +440,6 @@ class GPG(baseModel):
         self.omega_cur = np.asarray([0] * (self.num_dof - 1))
         self.omega_past = np.asarray([0] * (self.num_dof - 1))
         self.mu_cur = np.asarray([0])
-
-        # Define the tracking Todo: add conditional when training
-        self.params_traj = np.asarray(
-            [np.asarray([0] * (self.num_dof + 1))])  # Todo: save also the traj of the escape vel
 
     def make_eqs_motion(self, params: dict = None):
         def eqs_motion(t, x, params):
@@ -408,12 +471,6 @@ class GPG(baseModel):
 
         return eqs_motion
 
-    def restart(self, params: dict = None):
-        super().restart(params)
-
-        # Restart tracking
-        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
-
     def step(self, params: dict = None):
         # Run the integration
         params['num_dof'] = self.num_dof
@@ -441,54 +498,17 @@ class GPG(baseModel):
         self.mu_cur = np.asarray(params['mu'])
 
     def update_trajectories(self, params: dict = None):
-        super().update_trajectories()
-
         # Update trajectories
         change = 0
         if np.sign(self.omega_cur) != np.sign(self.omega_past):
             change = 1
         self.omega_past = self.omega_cur
-        params = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])],
-                                axis=0)  # Todo: need to update the q_escape as well
-        self.params_traj = np.append(self.params_traj, [params], axis=0)
+        params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
 
-    def select_initial(self, params: dict = None):
-        self.x_0 = params.get('x_0', self.x_0)
-        self.x_cur = np.asarray(self.x_0)
-
-        self.q_0 = self.x_0
-        self.q_cur = np.asarray(self.q_0)
-
-        self.p_0 = [0] * self.num_dof
-        self.p_cur = np.asarray(self.p_0)
-
-    def get_cartesian_state(self):
-        raise NotImplementedError
-
-    def get_link_cartesian_positions(self):
-        # raise NotImplementedError
-        return [0] * self.num_dof
+        super().update_trajectories(params)
 
     def get_params(self):
         return [self.omega_cur, self.mu_cur]
-
-    def get_state_traj(self):
-        return self.x_traj
-
-    def get_temporal_traj(self):
-        return self.t_traj
-
-    def get_parametric_traj(self):
-        return self.params_traj
-
-    def solve(self, t):
-        raise NotImplementedError
-
-    def inverse_kins(self, params: dict = None):
-        raise NotImplementedError
-
-    def forward_kins(self, params: dict = None):
-        raise NotImplementedError
 
     def get_joint_state(self):
         q = self.x_cur
@@ -497,11 +517,8 @@ class GPG(baseModel):
 
         return [q[0:self.num_dof], dq[0:self.num_dof]]
 
-    def get_energies(self):
-        return [0, 0]
 
-
-class Pendulum(baseModel):
+class Pendulum(BaseModel):
     def __init__(self, params: dict = None):
         if params.get('not_inherited', True):
             self.l = params.get('l', 1)

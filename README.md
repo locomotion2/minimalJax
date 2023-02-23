@@ -13,7 +13,8 @@ Some useful flags (Defaults):
 solve:False  # Plays the solution of the system instead of the CPG
 mode:'equilibrium'  # {'speed', 'position'} Defines the starting conditions
 render:False  # Allows plotting of the system
-energy_command:None  # Rational value, between 0 and 1 J 
+energy_command:None  # Rational value, between 0 and 1 J
+folder:saved_models # Where to get the model from, the correct model is chosen automatically
 ```
 How to plot the learning curve:
 ```
