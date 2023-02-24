@@ -78,36 +78,35 @@ class BaseGymEnvironment(gym.Env):
         if generator is None or generator == 'CPG':
             if self.system is None or self.system == 'DoublePendulum':
                 self.system = DoublePendulumCPGEnv
-                params['state_size'] = 4
                 params['num_dof'] = 2
-                input_size = INPUT_SIZE_DPEND
             elif self.system == 'Pendulum':
                 self.system = PendulumCPGEnv
-                params['state_size'] = 2
                 params['num_dof'] = 1
-                input_size = INPUT_SIZE_PEND
             else:
                 raise NotImplementedError(f"System {self.system} not implemented")
-            self.action_scale = kwargs.get('action_scale', ACTION_SCALE_CPG)
-            output_size = OUTPUT_SIZE_CPG
+            self.action_scale = np.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
+            omega_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
+            omega_scale[-1] = self.action_scale[-1]
+            self.action_scale = omega_scale
+            output_size = params['num_dof']
         elif generator == 'direct':
             if self.system is None or self.system == 'DoublePendulum':
                 self.system = DoublePendulumDirectEnv
-                params['state_size'] = 4
                 params['num_dof'] = 2
-
-                input_size = INPUT_SIZE_DPEND
             elif self.system == 'Pendulum':
                 self.system = PendulumDirectEnv
-                params['state_size'] = 2
                 params['num_dof'] = 1
-                input_size = INPUT_SIZE_PEND
             else:
                 raise NotImplementedError(f"System {self.system} not implemented")
-            self.action_scale = kwargs.get('action_scale', ACTION_SCALE_DIRECT)
-            output_size = OUTPUT_SIZE_DIRECT
+            self.action_scale = np.asarray(kwargs.get('action_scale', ACTION_SCALE_DIRECT))
+            q_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
+            q_d_scale = np.asarray([self.action_scale[1]] * params['num_dof'])
+            self.action_scale = np.concatenate([q_scale, q_d_scale])
+            output_size = params['num_dof'] * 2
         else:
             raise NotImplementedError(f"Generator {generator} not implemented")
+        params['state_size'] = params['num_dof'] * 2
+        input_size = params['state_size'] * 2 + 1
 
         # Rendering
         self.visualize = kwargs.get('render', False)
@@ -151,9 +150,6 @@ class BaseGymEnvironment(gym.Env):
         # p_gen = self.sim.get_cartesian_state_generator()
         q_gen, dq_gen = self.sim.get_joint_state_generator()
         params_gen = self.sim.get_params_generator()
-        if self.num_dof == 1:
-            q_gen = np.asarray([q_gen[0]])
-            dq_gen = np.asarray([dq_gen[0]])
 
         # Controller data
         tau = self.sim.controller.get_force()
@@ -162,14 +158,13 @@ class BaseGymEnvironment(gym.Env):
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
                  'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
                  'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        obs = np.concatenate([np.asarray(q_model) / self.action_scale[1], np.asarray(dq_model) / MAX_SPEED,
-                              np.asarray(q_gen) / self.action_scale[1], np.asarray(dq_gen) / MAX_SPEED,
-                              [self.E_d / MAX_ENERGY]])
-
-        # obs_temp = obs.copy()
-        # obs_temp[np.abs(obs_temp) < 1] = 0
-        # # debug_print('observations', obs[np.abs(obs) > 1])
-        # debug_print('observations', obs_temp)
+        # debug_print('array', [q_model / self.action_scale[-1], dq_model / MAX_SPEED,
+        #                       q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
+        #                       np.asarray([self.E_d / MAX_ENERGY])])
+        # TODO: maybe add a constant MAX_POSTITION
+        obs = np.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
+                              q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
+                              np.asarray([self.E_d / MAX_ENERGY])])
 
         return state, obs
 
@@ -309,16 +304,17 @@ class BaseGymEnvironment(gym.Env):
             # Pendulum simulation and CPG path in joint coords
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.title('System sim. and CPG in joint. coordinates')
-            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data_joints)
             plt.plot('x_traj_model', 'y_traj_model', '*-', linewidth=1, alpha=0.4, color='lightblue',
                      data=sim_model_traj_data_joints)
+            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data_joints)
+
             active_lines[2], = plt.plot('x_model', 'y_model', 'bo', linewidth=10, data=sim_model_data_joints)
             active_lines[3], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange',
                                         data=sim_CPG_data_joints)
             plt.plot(cpg_joint_traj_x, cpg_joint_traj_y, 'o', linewidth=2, alpha=0.2, color='purple')
             plt.ylabel(r'$q_2 (rad)$')
             plt.xlabel(r'$q_1 (rad)$')
-            plt.legend(['CPG Path', 'Model Path', 'Pendulum', 'Oscillator'], loc='best')
+            plt.legend(['Model Path', 'CPG Path', 'Pendulum', 'Oscillator'], loc='best')
             window = 180
             plt.axis([-window, window, -window, window])
             index += 1
@@ -332,7 +328,8 @@ class BaseGymEnvironment(gym.Env):
             plt.plot(-x_omega, y_0, '--', alpha=0.5, color='purple')
             plt.xlabel(r'$\omega\,(hz)$')
             plt.ylabel(r'$\mu^2\,(m^2)$')
-            [h_window, v_window] = self.action_scale[0:2]
+            h_window = 1 if self.num_dof == 1 else self.action_scale[0]
+            v_window = self.action_scale[-1]
             # v_window = v_window ** 2
             plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])
             index += 1

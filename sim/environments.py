@@ -41,8 +41,8 @@ class BaseEnvironment(ABC):
                              'num_dof': self.num_dof
                              }
         generator_params = {'delta_t': self.delta_t_learning,
-                            'state_size': 2,
-                            'num_dof': 2
+                            'state_size': self.num_dof,
+                            'num_dof': self.num_dof
                             }
         self.config = {'model_params': model_params,
                        'controller_params': controller_params,
@@ -87,8 +87,8 @@ class BaseEnvironment(ABC):
     def animate(self, step: int = 0, lines: [plt.Line2D] = None):
         # Update positions in cartesian coords
         p_traj_model = self.model.get_cartesian_traj()
-        px_model = p_traj_model[step, :, 0] if self.num_dof > 1 else p_traj_model[step, 0]
-        py_model = p_traj_model[step, :, 1] if self.num_dof > 1 else p_traj_model[step, 1]
+        px_model = p_traj_model[step, :, 0] if self.num_dof > 1 else np.asarray([p_traj_model[step, 0]])
+        py_model = p_traj_model[step, :, 1] if self.num_dof > 1 else np.asarray([p_traj_model[step, 1]])
         px_model = np.concatenate(([0], px_model), axis=0)
         py_model = np.concatenate(([0], py_model), axis=0)
         lines[0].set_xdata(px_model)
@@ -122,8 +122,10 @@ class BaseEnvironment(ABC):
 
         # Update param position
         param_traj = self.generator.get_parametric_traj()
-        param_x_traj = param_traj[:, 0]
-        param_y_traj = param_traj[:, 1] ** 2
+        param_x_traj = np.asarray([0] * np.size(param_traj[:, -1]))
+        if self.num_dof != 1:
+            param_x_traj = param_traj[:, 0]
+        param_y_traj = param_traj[:, -2] ** 2
         param_x = param_x_traj[step]
         param_y = param_y_traj[step]
         lines[4].set_xdata(param_x)
@@ -154,8 +156,8 @@ class BaseEnvironment(ABC):
             # Pendulum simulation and CPG path in cartesian coords
             p_traj_model = self.model.get_cartesian_traj()
             if self.num_dof == 1:
-                px_model = p_traj_model[0, 0]
-                py_model = p_traj_model[0, 1]
+                px_model = np.asarray([p_traj_model[0, 0]])
+                py_model = np.asarray([p_traj_model[0, 1]])
             else:
                 px_model = p_traj_model[0, :, 0]
                 py_model = p_traj_model[0, :, 1]
@@ -205,9 +207,11 @@ class BaseEnvironment(ABC):
             # RL-params
             param_traj = self.generator.get_parametric_traj()
             # param_x_traj = np.abs(param_traj[:, 0])
-            param_x_traj = param_traj[:, 0]
-            param_y_traj = param_traj[:, 1] ** 2
-            param_gen_traj = param_traj[:, 2]
+            param_x_traj = np.asarray([0] * np.size(param_traj[:, -1]))
+            if self.num_dof != 1:
+                param_x_traj = param_traj[:, 0]
+            param_y_traj = param_traj[:, -2] ** 2
+            param_gen_traj = param_traj[:, -1]
             param_x = param_x_traj[0]
             param_y = param_y_traj[0]
             rl_param_data = pd.DataFrame({'omega': param_x, 'mu': param_y}, index=[0])
@@ -247,21 +251,20 @@ class CPGEnv(BaseEnvironment):
         action = params.get('action')
 
         # Get RL params
-        if self.num_dof > 1:
-            omega = action[0:self.num_dof - 1]
-            mu = action[self.num_dof - 1:self.num_dof]
-        else:
-            omega = action[0]
-            mu = action[1]
+        omega = np.asarray(action[0:self.num_dof - 1])
+        mu = np.asarray(action[self.num_dof - 1:self.num_dof])
 
         if not self.solve:
             # Generate next point in path
             generator_input = {'omega': omega, 'mu': mu}
+            # debug_print('gen', generator_input)
             self.generator.step(generator_input)
             self.generator.update_trajectories(generator_input)
             # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
             # [p, v] = self.generator.get_cartesian_state()
             [q_d, dq_d] = self.generator.get_joint_state()
+            # debug_print('q_d', q_d)
+            # debug_print('dq_d', dq_d)
 
             # Run through inverse kins
             # [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
@@ -271,13 +274,13 @@ class CPGEnv(BaseEnvironment):
             [q_d, dq_d] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
 
         # New step for model
-        params['E'] = np.sum(self.model.get_energies())
+        params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()
         self.controller.set_target(q_d, dq_d, params=params)
         self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
 
         # Save latest trajectory for plotting
         self.model.update_trajectories()
-        self.controller.update_trajectories(q_d)
+        self.controller.update_trajectories(q_d) # Todo: delete the tracking of the desired position in the cont
         self.t_elapsed += self.delta_t_learning
 
 
@@ -293,8 +296,8 @@ class DirectEnv(BaseEnvironment):
         action = params.get('action')
 
         # Get desired joint state
-        q_d_com = action[0:self.num_dof]
-        dq_d_com = action[self.num_dof:2 * self.num_dof]
+        q_d_com = np.asarray(action[0:self.num_dof])
+        dq_d_com = np.asarray(action[self.num_dof:2 * self.num_dof])
 
         # Run through DummyGenerator
         generator_input = {'q_d': q_d_com, 'dq_d': dq_d_com}
@@ -303,7 +306,7 @@ class DirectEnv(BaseEnvironment):
         [q_d, dq_d] = self.generator.get_joint_state()
 
         # New step for model
-        params['E'] = np.sum(self.model.get_energies())
+        params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()
         self.controller.set_target(q_d, dq_d, params=params)
         self.model.step(
             {'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
@@ -320,45 +323,6 @@ class PendulumCPGEnv(CPGEnv):
 
         # Build components
         self.model = Pendulum(params=self.config.get('model_params'))
-
-    def step(self, params: dict = None):
-        action = params.get('action')
-
-        # Get RL params
-        if self.num_dof > 1:
-            omega = action[0:self.num_dof - 1]
-            mu = action[self.num_dof - 1:self.num_dof]
-        else:
-            omega = action[0]
-            mu = action[1]
-
-        if not self.solve:
-            # Generate next point in path
-            generator_input = {'omega': omega, 'mu': mu}
-            self.generator.step(generator_input)
-            self.generator.update_trajectories(generator_input)
-            # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
-            # [p, v] = self.generator.get_cartesian_state()
-            [q_d, dq_d] = self.generator.get_joint_state()
-            q_d = np.asarray([q_d[0]])
-            dq_d = np.asarray([dq_d[0]])
-
-            # Run through inverse kins
-            # [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
-            # [q_d, dq_d] = [[0, 0], [0, 0]]
-        else:
-            # Obtain solution from model to compare results
-            [q_d, dq_d] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
-
-        # New step for model
-        params['E'] = np.sum(self.model.get_energies())
-        self.controller.set_target(q_d, dq_d, params=params)
-        self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
-
-        # Save latest trajectory for plotting
-        self.model.update_trajectories()
-        self.controller.update_trajectories(q_d)
-        self.t_elapsed += self.delta_t_learning
 
 
 class PendulumDirectEnv(DirectEnv):

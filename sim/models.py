@@ -73,30 +73,27 @@ class BaseModel(ABC):
         self.eqs_motion = self.make_eqs_motion()
 
         # Starting values
-        self.t_0 = params.get('t_0', 0)
-        self.x_0 = [0] * self.state_size
+        self.t_0 = np.asarray([params.get('t_0', 0)]).flatten()
+        self.x_0 = np.asarray([0] * self.state_size)
         self.q_0 = np.asarray([0] * self.num_dof)
 
         # Current variables
         self.t_cur = self.t_0
-        self.x_cur = np.asarray(self.x_0)
+        self.x_cur = self.x_0
         self.q_cur = self.q_0
 
         # Derived variables
         self.p_0 = self.get_link_cartesian_positions()
-        self.E_0 = sum(self.get_energies())
-        self.p_cur = np.asarray(self.p_0)
-        self.E_cur = np.asarray(self.E_0)
+        self.E_0 = np.asarray([sum(self.get_energies())]).flatten()
+        self.p_cur = self.p_0
+        self.E_cur = self.E_0
 
         # Tracking variables # Todo: add conditional if eval
         self.t_traj = self.t_cur
         self.x_traj = np.asarray([self.x_cur])
-        if self.num_dof > 1:
-            self.q_traj = np.asarray([self.q_cur])
-        else:
-            self.q_traj = np.asarray([[self.q_cur]])
+        self.q_traj = np.asarray([self.q_cur])
         self.p_traj = np.asarray([self.p_cur])
-        self.E_traj = np.asarray([self.E_cur])
+        self.E_traj = self.E_cur
 
     @abstractmethod
     def make_eqs_motion(self, params: dict = None):
@@ -115,18 +112,15 @@ class BaseModel(ABC):
 
         # Restart current values (positional values restarted in select_initial)
         self.t_cur = self.t_0
-        self.E_0 = sum(self.get_energies())
-        self.E_cur = np.asarray(self.E_0)
+        self.E_0 = np.asarray([sum(self.get_energies())]).flatten()
+        self.E_cur = self.E_0
 
         # Restart tracking
         self.t_traj = self.t_cur
         self.x_traj = np.asarray([self.x_cur])
-        if self.num_dof > 1:
-            self.q_traj = np.asarray([self.q_cur])
-        else:
-            self.q_traj = np.asarray([[self.q_cur]])
+        self.q_traj = np.asarray([self.q_cur])
         self.p_traj = np.asarray([self.p_cur])
-        self.E_traj = np.asarray([self.E_cur])
+        self.E_traj = self.E_cur
 
         return p_0
 
@@ -141,18 +135,18 @@ class BaseModel(ABC):
     # @profile
     def step(self, params: dict = None):
         # Define the integration interval # Todo: clean up, define the ability to have more points
-        t_final = params.get('t_final', self.t_cur + self.delta_t)
+        t_final = np.asarray([params.get('t_final', self.t_cur + self.delta_t)])
         # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
         # ts = np.linspace(self.t_cur, t_final, num_points)
-        ts = [self.t_cur, t_final]
+        ts = np.asarray([self.t_cur, t_final]).flatten()
 
         # Simulate the system until t_final
         self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur})
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
-        self.q_cur = self.x_cur[0:self.num_dof]
-        self.E_cur = sum(self.get_energies())
+        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
+        self.E_cur = np.asarray([sum(self.get_energies())]).flatten()
         self.t_cur = t_final
 
     # @profile
@@ -164,8 +158,11 @@ class BaseModel(ABC):
         x_0 = params.get('x_0')
 
         # Default working well (default tolerances: rtol=1e-3, atol=1e-6)
+        # debug_print('ts', ts)
+        # debug_print('x_0', x_0)
         output = solve_ivp(eqs, t_span=ts, y0=x_0, method='RK23', args=(eqs_params,), rtol=5e-2, atol=1e-5)
         x_final = np.asarray(output.y[:, -1])
+        # debug_print('x_final', x_final)
 
         # Todo: compare with the current system
         # old
@@ -184,7 +181,7 @@ class BaseModel(ABC):
         self.x_traj = np.append(self.x_traj, [self.x_cur], axis=0)
         self.q_traj = np.append(self.q_traj, [self.q_cur], axis=0)
         self.p_traj = np.append(self.p_traj, [self.p_cur], axis=0)
-        self.E_traj = np.append(self.E_traj, [self.E_cur], axis=0)
+        self.E_traj = np.append(self.E_traj, self.E_cur)
         self.t_traj = np.append(self.t_traj, self.t_cur)
 
     @abstractmethod
@@ -247,19 +244,19 @@ class Generator(BaseModel):
 
     def select_initial(self, params: dict = None):
         self.x_0 = params.get('x_0', self.x_0)
-        self.x_cur = np.asarray(self.x_0)
+        self.x_cur = self.x_0
 
         self.q_0 = self.x_0
-        self.q_cur = np.asarray(self.q_0)
+        self.q_cur = self.q_0
 
-        self.p_0 = [0] * self.num_dof
-        self.p_cur = np.asarray(self.p_0)
+        self.p_0 = np.asarray([0] * self.num_dof)
+        self.p_cur = self.p_0
 
     def get_cartesian_state(self):
         raise NotImplementedError
 
     def get_link_cartesian_positions(self):
-        return [0] * self.num_dof
+        return np.asarray([0] * self.num_dof)
 
     @abstractmethod
     def get_params(self):
@@ -282,7 +279,7 @@ class Generator(BaseModel):
         return NotImplementedError
 
     def get_energies(self):
-        return [0, 0]
+        return np.asarray([0, 0])
 
 
 class DummyOutput(Generator):
@@ -301,9 +298,9 @@ class DummyOutput(Generator):
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
-        self.q_cur = self.x_cur[0:self.num_dof]
+        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
         self.dq_cur = params.get('dq_d')
-        self.E_cur = sum(self.get_energies())
+        self.E_cur = np.asarray([sum(self.get_energies())])
         self.t_cur = t_final
 
     def make_eqs_motion(self, params: dict = None):
@@ -317,10 +314,10 @@ class DummyOutput(Generator):
         super().update_trajectories(params=params)
 
     def get_joint_state(self):
-        return [self.q_cur, self.dq_cur]
+        return np.asarray([self.q_cur, self.dq_cur])
 
     def get_params(self):
-        return [0, 0]
+        return np.asarray([0, 0])
 
 
 # TODO: decide what to do with this class, the other can implement this just as well
@@ -460,24 +457,29 @@ class GPG(Generator):
             num_dof = params['num_dof']
 
             # Calculate help variables
-            x = np.asarray(x, dtype=float)
-            psi = mu ** 2 - np.linalg.norm(x) ** 2
+            q = np.asarray([x], dtype=float).flatten()
+            q_off = 0
+            q = q - np.asarray([q_off] * num_dof)
+            psi = mu ** 2 - np.linalg.norm(q) ** 2
 
             # Define the state matrix
-            root = np.ones((num_dof, num_dof))
-            upper = np.multiply(np.triu(root, 1), omega)
-            lower = np.multiply(np.tril(root, -1), -omega)
-            diag = np.diag(np.diag(np.full((num_dof, num_dof), psi)))
-            A = upper + diag + lower
+            if num_dof != 1:
+                root = np.ones((num_dof, num_dof))
+                upper = np.multiply(np.triu(root, 1), omega)
+                lower = np.multiply(np.tril(root, -1), -omega)
+                diag = np.diag(np.diag(np.full((num_dof, num_dof), psi)))
+                A = upper + diag + lower
+            else:
+                A = psi
 
             # Calculate the state derivatives
-            dq = A @ x
+            dq = A @ q
 
             return dq
 
         return eqs_motion
 
-    def step(self, params: dict = None):
+    def step(self, params: dict = None):  # Todo: check if it's still necesary to have this appart from the other class
         # Run the integration
         params['num_dof'] = self.num_dof
 
@@ -485,20 +487,35 @@ class GPG(Generator):
         t_final = params.get('t_final', self.t_cur + self.delta_t)
         # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
         # ts = np.linspace(self.t_cur, t_final, num_points)
-        ts = [self.t_cur, t_final]
+        ts = np.asarray([self.t_cur, t_final])
 
         # Simulate the system until t_final
         self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur})
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
-        self.E_cur = sum(self.get_energies())
-        self.q_cur = self.x_cur[0:self.num_dof]
+        self.E_cur = np.asarray(sum(self.get_energies()))
+        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
         self.t_cur = t_final
 
         # Update current variables
         self.omega_cur = np.asarray(params['omega'])
         self.mu_cur = np.asarray(params['mu'])
+
+    def simulate(self, params: dict):
+        # Handle inputs
+        eqs = params.get('eqs')
+        eqs_params = params.get('eqs_params')
+        ts = params.get('ts')
+        x_0 = params.get('x_0')
+
+        # Default working well (default tolerances: rtol=1e-3, atol=1e-6)
+        # x_0 -= np.asarray([np.pi/2])
+        output = solve_ivp(eqs, t_span=ts, y0=x_0, method='RK23', args=(eqs_params,), rtol=5e-2, atol=1e-5)
+        x_final = np.asarray(output.y[:, -1])
+        # x_final += np.asarray([np.pi/2])
+
+        return x_final
 
     def update_trajectories(self, params: dict = None):
         # Update trajectories
@@ -506,10 +523,8 @@ class GPG(Generator):
         if np.sign(self.omega_cur) != np.sign(self.omega_past):
             change = 1
         self.omega_past = self.omega_cur
-        # if self.num_dof > 1:
-        params['input'] = np.asarray([self.omega_cur, self.mu_cur, change])
-        # params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
-
+        # params['input'] = np.asarray([self.omega_cur, self.mu_cur, change])
+        params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
 
         super().update_trajectories(params)
 
@@ -517,11 +532,11 @@ class GPG(Generator):
         return [self.omega_cur, self.mu_cur]
 
     def get_joint_state(self):
-        q = self.x_cur
+        q = np.asarray([self.x_cur]).flatten()
         params = {'mu': self.mu_cur, 'omega': self.omega_cur, 'num_dof': self.num_dof}
-        dq = self.eqs_motion(0, q, params)
+        dq = np.asarray([self.eqs_motion(0, q, params)]).flatten()
 
-        return [q[0:self.num_dof], dq[0:self.num_dof]]
+        return [q, dq]
 
 
 class Pendulum(BaseModel):
@@ -541,21 +556,21 @@ class Pendulum(BaseModel):
             x2 = x[1]
             tau = controller(t, x1, x2)
 
-            dx1 = x2
-            dx2 = g / np.linalg.norm(self.l) * np.sin(x1) + 1 / (
+            dx1 = np.asarray([x2])
+            dx2 = g / np.linalg.norm(self.l) * np.cos(x1) + 1 / (
                     np.linalg.norm(self.m) * np.linalg.norm(self.l) ** 2) * tau
 
-            return [dx1, dx2]
+            return np.asarray([dx1, dx2]).flatten()
 
         return eqs_motion
 
     def select_initial(self, params: dict = None):
 
         def inverse_kinetic(E: float = 0):
-            return (1 / self.l) * np.sqrt(2 * E / self.m)
+            return np.asarray([(1 / self.l) * np.sqrt(2 * E / self.m)])
 
         def inverse_potential(E: float = 0):
-            return np.arccos(1 + E / (self.m * self.l * g))
+            return np.asarray([np.arcsin(- E / (self.m * self.l * g) - 1)])
 
         # Handle inputs
         mode = params.get('mode', 'equilibrium')
@@ -585,26 +600,26 @@ class Pendulum(BaseModel):
         dq_0 = inverse_kinetic(E_k)
 
         # Initialize tracking arrays
-        self.x_0 = [q_0, dq_0]
-        self.x_cur = np.asarray(self.x_0)
+        self.x_0 = np.asarray([q_0, dq_0]).flatten()
+        self.x_cur = self.x_0
 
         self.q_0 = q_0
-        self.q_cur = np.asarray(self.q_0)
+        self.q_cur = self.q_0
 
         self.p_0 = self.get_link_cartesian_positions()
-        self.p_cur = np.asarray(self.p_0)
+        self.p_cur = self.p_0
 
-        return [q_0, 0]
+        return q_0
 
-    def solve(self, t: float):
-        [q0, dq0] = self.x_0
+    def solve(self, t: float):  # Todo: This is not up to date
+        [q0, _] = self.x_0
         omega_star = np.sqrt(np.abs(g) / self.l)
         q = q0 * np.cos(omega_star * t)
         dq = - omega_star * q0 * np.sin(omega_star * t)
 
-        return [q, dq]
+        return np.asarray([q, dq])
 
-    def inverse_kins(self, params: dict = None):
+    def inverse_kins(self, params: dict = None):  # Todo: this is not up to date
         # Load params
         p = params['pos']
         v = params['speed']
@@ -621,30 +636,30 @@ class Pendulum(BaseModel):
         omega_sign = np.sign(v_proj[1] / np.sin(theta_corrected))
         omega = omega_sign * omega_abs
 
-        return [theta_corrected, omega]
+        return np.asarray([theta_corrected, omega]).flatten()
 
-    def forward_kins(self, params: dict = None):  # TODO: Expand this in the future to calculate the speeds as wel
+    def forward_kins(self, params: dict = None):  # TODO: Expand this in the future to calculate the speeds as well
         q = params['joints']
-        p = [self.l * np.sin(q), - self.l * np.cos(q)]
-        return np.asarray(p)
+        p = np.asarray([self.l * np.cos(q), self.l * np.sin(q)])
+        return p.flatten()
 
     def get_joint_state(self):
-        q = self.x_cur[0:self.num_dof]
-        dq = self.x_cur[self.num_dof:]
+        q = np.asarray(self.x_cur[0:self.num_dof]).flatten()
+        dq = np.asarray(self.x_cur[self.num_dof:]).flatten()
         return [q, dq]
 
     def get_cartesian_state(self):
         q = self.x_cur[0]
         dq = self.x_cur[1]
 
-        p = [self.l * np.sin(q), - self.l * np.cos(q)]
-        v = [self.l * dq * np.cos(q), self.l * dq * np.sin(q)]
-
+        # Todo: This needs to be replaced by forward kins
+        p = np.asarray([self.l * np.cos(q), self.l * np.sin(q)]).flatten()
+        v = np.asarray([- self.l * dq * np.sin(q), self.l * dq * np.cos(q)]).flatten()
         return [p, v]
 
     def get_link_cartesian_positions(self):
         # Get joint positions
-        q = self.x_cur[0:self.num_dof]
+        q = np.asarray(self.x_cur[0:self.num_dof])
 
         # Calculate the link positions
         p = self.forward_kins({'joints': q})
@@ -652,8 +667,8 @@ class Pendulum(BaseModel):
         return p
 
     def get_energies(self):
-        return [1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
-                self.m * -g * self.l * (1 - np.cos(self.x_cur[0]))]
+        return np.asarray([1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
+                           - self.m * g * self.l * (1 + np.sin(self.x_cur[0]))])
 
 
 class DoublePendulum(Pendulum):
@@ -693,11 +708,11 @@ class DoublePendulum(Pendulum):
             def dEk(q, dq):
                 l = self.l
                 m = self.m
-                dE = [[m[0] * dq[0] * l[0] ** 2 + m[1] * dq[0] * l[0] ** 2
-                       + m[1] * 2 * dq[0] * l[0] * l[1] * np.cos(q[1]) + m[1] * dq[0] * l[1] ** 2
-                       + m[1] * dq[1] * l[0] * l[1] * np.cos(q[1]) + m[1] * dq[1] * l[1] ** 2,
-                       m[1] * dq[0] * l[0] * l[1] * np.cos(q[1])
-                       + m[1] * dq[0] * l[1] ** 2 + m[1] * dq[1] * l[1] ** 2]]
+                dE = np.asarray([[m[0] * dq[0] * l[0] ** 2 + m[1] * dq[0] * l[0] ** 2
+                                  + m[1] * 2 * dq[0] * l[0] * l[1] * np.cos(q[1]) + m[1] * dq[0] * l[1] ** 2
+                                  + m[1] * dq[1] * l[0] * l[1] * np.cos(q[1]) + m[1] * dq[1] * l[1] ** 2,
+                                  m[1] * dq[0] * l[0] * l[1] * np.cos(q[1])
+                                  + m[1] * dq[0] * l[1] ** 2 + m[1] * dq[1] * l[1] ** 2]])
 
                 return dE
 
@@ -712,9 +727,9 @@ class DoublePendulum(Pendulum):
             def dEp(q):
                 l = self.l
                 m = self.m
-                dE = [[-g * m[0] * l[0] * np.cos(q[0]) - g * m[1] * l[0] * np.cos(q[0]) - g * m[1] * l[1] * np.cos(
-                    q[0] + q[1]),
-                       - g * m[1] * l[1] * np.cos(q[0] + q[1])]]
+                dE = np.asarray([[-g * m[0] * l[0] * np.cos(q[0]) - g * m[1] * l[0] * np.cos(q[0]) - g * m[1] * l[1] *
+                                  np.cos(q[0] + q[1]),
+                                  - g * m[1] * l[1] * np.cos(q[0] + q[1])]])
                 return dE
 
             q = inverse_grad_desc(E, self.backend.potential_energy, dEp,
@@ -752,13 +767,13 @@ class DoublePendulum(Pendulum):
 
         # Initialize current positional values
         self.x_0 = np.append(q_0, dq_0)
-        self.x_cur = np.asarray(self.x_0)
+        self.x_cur = self.x_0
 
         self.q_0 = q_0
-        self.q_cur = np.asarray(self.q_0)
+        self.q_cur = self.q_0
 
         self.p_0 = self.get_link_cartesian_positions()
-        self.p_cur = np.asarray(self.p_0)
+        self.p_cur = self.p_0
 
         # Returns the initial position in cartesian coordinates
         return q_0
@@ -808,7 +823,7 @@ class DoublePendulum(Pendulum):
         # Calculate the joint speed
         dq = np.linalg.pinv(self.backend.jacobian(q))[:, 0:-1] @ v
 
-        return [q, dq]
+        return np.asarray([q, dq])
 
     def forward_kins(self, params: dict = None):  # TODO: Expand this in the future to calculate the speeds as wel
         q = params['joints']
@@ -816,22 +831,22 @@ class DoublePendulum(Pendulum):
 
     def get_cartesian_state(self):
         # Get joint positions and speeds
-        q = self.x_cur[0:self.num_dof]
-        dq = self.x_cur[self.num_dof:]
+        q = np.asarray(self.x_cur[0:self.num_dof])
+        dq = np.asarray(self.x_cur[self.num_dof:])
 
         # Calculate the cart. positions and speeds
-        p = self.backend.forward_kinematics(q)[0:-1]
-        v = (self.backend.jacobian(q) @ dq)[0:-1]
+        p = np.asarray(self.backend.forward_kinematics(q)[0:-1])
+        v = np.asarray((self.backend.jacobian(q) @ dq)[0:-1])
 
-        return [p, v]
+        return np.asarray([p, v])
 
     def get_link_cartesian_positions(self):
         # Get joint positions
-        q = self.x_cur[0:self.num_dof]
+        q = np.asarray(self.x_cur[0:self.num_dof])
 
         # Calculate the link positions
         p = self.backend.forward_kinematics_for_each_link(q)
-        p = p[:, 0:-1]
+        p = np.asarray(p[:, 0:-1])
 
         return p
 
@@ -841,7 +856,7 @@ class DoublePendulum(Pendulum):
         dq = self.x_cur[self.num_dof:]
 
         # Calculate energies
-        E_pot = self.backend.potential_energy(q, absolute=False)
-        E_kin = self.backend.kinetic_energy(q, dq)
+        E_pot = np.asarray([self.backend.potential_energy(q, absolute=False)])
+        E_kin = np.asarray([self.backend.kinetic_energy(q, dq)])
 
-        return [E_pot, E_kin]
+        return np.asarray([E_pot, E_kin])

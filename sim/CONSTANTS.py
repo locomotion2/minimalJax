@@ -17,7 +17,7 @@ OUTPUT_SIZE_DIRECT = 4
 MAX_ENERGY = 20
 MAX_SPEED = 40
 ACTION_SCALE_CPG = [6, 2*np.pi]  # Todo: search for a correct scale
-ACTION_SCALE_DIRECT = [np.pi, np.pi, MAX_SPEED/6, MAX_SPEED/6]
+ACTION_SCALE_DIRECT = [np.pi, MAX_SPEED/6]
 
 # Curriculum
 MIN_SCORE = 60

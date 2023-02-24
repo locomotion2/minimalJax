@@ -6,7 +6,7 @@ register(
     kwargs={
         "render": False,
         "energy_command": None,
-        "mode": 'equilibrium',
+        "mode": 'random_des',
         "solve": False,
     },
 )
