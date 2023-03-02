@@ -328,7 +328,7 @@ class BaseGymEnvironment(gym.Env):
             plt.plot(-x_omega, y_0, '--', alpha=0.5, color='purple')
             plt.xlabel(r'$\omega\,(hz)$')
             plt.ylabel(r'$\mu^2\,(m^2)$')
-            h_window = 1 if self.num_dof == 1 else self.action_scale[0]
+            h_window = self.action_scale[0]
             v_window = self.action_scale[-1]
             # v_window = v_window ** 2
             plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])

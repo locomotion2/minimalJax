@@ -19,7 +19,7 @@ def default_func(state: dict):
     # weights_problem = np.asarray([0.7, 0.1, 0.2])
 
     # Define params
-    weights_gaussians = np.asarray([0.3, 0.3, 0.3])
+    weights_gaussians = np.asarray([0.2, 0.3, 0.3])
     weights_problem = np.asarray([0.7, 0.1, 0.2])
     weights_final = np.asarray([1.0, 0.0])
 

@@ -103,6 +103,9 @@ class BaseModel(ABC):
     def select_initial(self, params: dict = None):
         raise NotImplementedError
 
+    def state_to_joints(self):
+        return np.asarray(self.x_cur[0:self.num_dof])
+
     def restart(self, params: dict = None):
         # Handle inputs
         self.t_0 = params.get('t_0', self.t_0)
@@ -139,13 +142,14 @@ class BaseModel(ABC):
         # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
         # ts = np.linspace(self.t_cur, t_final, num_points)
         ts = np.asarray([self.t_cur, t_final]).flatten()
+        # debug_print('ts', ts)
 
         # Simulate the system until t_final
         self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur})
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
-        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
+        self.q_cur = self.state_to_joints()
         self.E_cur = np.asarray([sum(self.get_energies())]).flatten()
         self.t_cur = t_final
 
@@ -158,11 +162,8 @@ class BaseModel(ABC):
         x_0 = params.get('x_0')
 
         # Default working well (default tolerances: rtol=1e-3, atol=1e-6)
-        # debug_print('ts', ts)
-        # debug_print('x_0', x_0)
         output = solve_ivp(eqs, t_span=ts, y0=x_0, method='RK23', args=(eqs_params,), rtol=5e-2, atol=1e-5)
         x_final = np.asarray(output.y[:, -1])
-        # debug_print('x_final', x_final)
 
         # Todo: compare with the current system
         # old
@@ -223,7 +224,7 @@ class BaseModel(ABC):
         return self.t_traj
 
 
-class Generator(BaseModel):
+class JointsGenerator(BaseModel):
     def __init__(self, params: dict = None):
         super().__init__(params)
 
@@ -282,7 +283,77 @@ class Generator(BaseModel):
         return np.asarray([0, 0])
 
 
-class DummyOutput(Generator):
+class PolarGenerator(BaseModel):
+    def __init__(self, params: dict = None):
+        super().__init__(params)
+
+        # Define the tracking Todo: add conditional when training
+        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+
+    def restart(self, params: dict = None):
+        super().restart(params)
+
+        # Restart tracking
+        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+
+    def update_trajectories(self, params: dict = None):
+        super().update_trajectories(params=params)
+
+        # Update trajectories
+        self.params_traj = np.append(self.params_traj, [params.get('input')], axis=0)
+
+    def select_initial(self, params: dict = None):
+        self.x_0 = self.joints_to_polar(params.get('x_0', self.x_0))
+        self.x_cur = self.x_0
+
+        self.q_0 = self.polar_to_joints(self.x_0)[0]
+        self.q_cur = self.polar_to_joints(self.x_cur)[0]
+
+        self.p_0 = np.asarray([0] * self.num_dof)
+        self.p_cur = self.p_0
+
+    def state_to_joints(self):
+        return self.polar_to_joints(self.x_cur[0:self.num_dof])[0]
+
+    @abstractmethod
+    def polar_to_joints(self, state: np.ndarray = None):
+        raise NotImplementedError
+
+    @abstractmethod
+    def joints_to_polar(self, joints: np.ndarray = None):
+        raise NotImplementedError
+
+    def get_cartesian_state(self):
+        raise NotImplementedError
+
+    def get_link_cartesian_positions(self):
+        return np.asarray([0] * self.num_dof)
+
+    @abstractmethod
+    def get_params(self):
+        raise NotImplementedError
+
+    def get_parametric_traj(self):
+        return self.params_traj
+
+    def solve(self, t):
+        raise NotImplementedError
+
+    def inverse_kins(self, params: dict = None):
+        raise NotImplementedError
+
+    def forward_kins(self, params: dict = None):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joint_state(self):
+        return NotImplementedError
+
+    def get_energies(self):
+        return np.asarray([0, 0])
+
+
+class DummyOutput(JointsGenerator):
     def __init__(self, params: dict = None):
         super().__init__(params)
 
@@ -434,15 +505,20 @@ class CPG(BaseModel):
         return [0, 0]
 
 
-class GPG(Generator):
+class GPG(JointsGenerator):
 
     def __init__(self, params: dict = None):
         super().__init__(params)
 
         # Define the RL vars
-        self.omega_cur = np.asarray([0] * (self.num_dof - 1))
-        self.omega_past = np.asarray([0] * (self.num_dof - 1))
-        self.mu_cur = np.asarray([0])
+        if self.num_dof != 1:
+            self.omega_cur = np.asarray([0] * (self.num_dof - 1))
+            self.omega_past = np.asarray([0] * (self.num_dof - 1))
+            self.mu_cur = np.asarray([0])
+        else:
+            self.omega_cur = np.asarray([0])
+            self.omega_past = np.asarray([0])
+            self.mu_cur = None
 
     def make_eqs_motion(self, params: dict = None):
         def eqs_motion(t, x, params):
@@ -456,24 +532,22 @@ class GPG(Generator):
             omega = params['omega']
             num_dof = params['num_dof']
 
-            # Calculate help variables
-            q = np.asarray([x], dtype=float).flatten()
-            q_off = 0
-            q = q - np.asarray([q_off] * num_dof)
-            psi = mu ** 2 - np.linalg.norm(q) ** 2
-
             # Define the state matrix
             if num_dof != 1:
+                # Calculate help variables
+                q = np.asarray([x], dtype=float).flatten()
+                psi = mu ** 2 - np.linalg.norm(q) ** 2
+
+                # Calculate state matrix
                 root = np.ones((num_dof, num_dof))
                 upper = np.multiply(np.triu(root, 1), omega)
                 lower = np.multiply(np.tril(root, -1), -omega)
                 diag = np.diag(np.diag(np.full((num_dof, num_dof), psi)))
                 A = upper + diag + lower
-            else:
-                A = psi
 
-            # Calculate the state derivatives
-            dq = A @ q
+                dq = A @ q
+            else:
+                dq = omega
 
             return dq
 
@@ -482,40 +556,11 @@ class GPG(Generator):
     def step(self, params: dict = None):  # Todo: check if it's still necesary to have this appart from the other class
         # Run the integration
         params['num_dof'] = self.num_dof
-
-        # Define the integration interval # Todo: clean up, define the ability to have more points
-        t_final = params.get('t_final', self.t_cur + self.delta_t)
-        # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
-        # ts = np.linspace(self.t_cur, t_final, num_points)
-        ts = np.asarray([self.t_cur, t_final])
-
-        # Simulate the system until t_final
-        self.x_cur = self.simulate({'eqs': self.eqs_motion, 'eqs_params': params, 'ts': ts, 'x_0': self.x_cur})
-
-        # Update the current variables
-        self.p_cur = self.get_link_cartesian_positions()
-        self.E_cur = np.asarray(sum(self.get_energies()))
-        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
-        self.t_cur = t_final
+        super().step(params=params)
 
         # Update current variables
         self.omega_cur = np.asarray(params['omega'])
         self.mu_cur = np.asarray(params['mu'])
-
-    def simulate(self, params: dict):
-        # Handle inputs
-        eqs = params.get('eqs')
-        eqs_params = params.get('eqs_params')
-        ts = params.get('ts')
-        x_0 = params.get('x_0')
-
-        # Default working well (default tolerances: rtol=1e-3, atol=1e-6)
-        # x_0 -= np.asarray([np.pi/2])
-        output = solve_ivp(eqs, t_span=ts, y0=x_0, method='RK23', args=(eqs_params,), rtol=5e-2, atol=1e-5)
-        x_final = np.asarray(output.y[:, -1])
-        # x_final += np.asarray([np.pi/2])
-
-        return x_final
 
     def update_trajectories(self, params: dict = None):
         # Update trajectories
@@ -539,11 +584,118 @@ class GPG(Generator):
         return [q, dq]
 
 
+class SPG(PolarGenerator):
+
+    def __init__(self, params: dict = None):
+        super().__init__(params)
+
+        # Define the RL vars
+        if self.num_dof != 1:
+            self.omega_cur = np.asarray([0] * (self.num_dof - 1))
+            self.omega_past = np.asarray([0] * (self.num_dof - 1))
+            self.mu_cur = np.asarray([0])
+        else:
+            self.omega_cur = np.asarray([0])
+            self.omega_past = np.asarray([0])
+            self.mu_cur = None
+
+    def make_eqs_motion(self, params: dict = None):
+        def eqs_motion(t, x, params):
+            # Handle the inputs
+            mu = params['mu']
+            omega = params['omega']
+            num_dof = params['num_dof']
+
+            if num_dof != 1:
+                r = x[-1]
+
+                # Calculate state derivs
+                dr = (mu ** 2 - r ** 2) * r
+                dphi = omega
+
+                return np.asarray([dphi, dr], dtype=float).flatten()
+            else:
+                return omega
+
+        return eqs_motion
+
+    def step(self, params: dict = None):  # Todo: check if it's still necesary to have this appart from the other class
+        # Run the integration
+        params['num_dof'] = self.num_dof
+        super().step(params=params)
+
+        # Update current variables
+        self.omega_cur = np.asarray(params['omega'])
+        self.mu_cur = np.asarray(params['mu'])
+
+    def polar_to_joints(self, state: np.ndarray = None):
+        # Handle inputs
+        mu = self.mu_cur
+        omega = self.omega_cur
+        num_dof = self.num_dof
+
+        # Define the state matrix
+        if num_dof != 1:
+            phi = self.x_cur[0:self.num_dof - 1]
+            r = self.x_cur[-1]
+
+            # Calculate help variables
+            q = np.asarray([r * np.cos(phi),
+                            r * np.sin(phi)])
+
+            # Calculate state matrix
+            psi = mu ** 2 - r ** 2
+            root = np.ones((num_dof, num_dof))
+            upper = np.multiply(np.triu(root, 1), -omega)
+            lower = np.multiply(np.tril(root, -1), omega)
+            diag = np.diag(np.diag(np.full((num_dof, num_dof), psi)))
+            A = upper + diag + lower
+
+            dq = A @ q
+        else:
+            q = self.x_cur[0]
+            dq = omega
+
+        q = np.asarray([q], dtype=float).flatten()
+        dq = np.asarray([dq], dtype=float).flatten()
+
+        return [q, dq]
+
+    def joints_to_polar(self, joints: np.ndarray = None):
+        if self.num_dof != 1:
+            r = np.linalg.norm(joints)
+            phi = np.arctan2(joints[1], joints[0])
+
+            return np.asarray([phi, r])
+        else:
+            return joints
+
+    def update_trajectories(self, params: dict = None):
+        # Update trajectories
+        change = 0
+        if np.sign(self.omega_cur) != np.sign(self.omega_past):
+            change = 1
+        self.omega_past = self.omega_cur
+        # params['input'] = np.asarray([self.omega_cur, self.mu_cur, change])
+        params['input'] = np.concatenate([self.omega_cur, self.mu_cur, np.asarray([change])], axis=0)
+
+        super().update_trajectories(params)
+
+    def get_params(self):
+        return [self.omega_cur, self.mu_cur]
+
+    def get_joint_state(self):
+        params = {'mu': self.mu_cur, 'omega': self.omega_cur, 'num_dof': self.num_dof}
+        out = self.polar_to_joints(self.x_cur)
+        return out
+
+
 class Pendulum(BaseModel):
     def __init__(self, params: dict = None):
         if params.get('not_inherited', True):
             self.l = params.get('l', 1)
             self.m = params.get('m', 0.1)
+            self.k_f = params.get('k_f', 0.0)
 
         self.rng = np.random.default_rng()
         super().__init__(params)
@@ -557,8 +709,9 @@ class Pendulum(BaseModel):
             tau = controller(t, x1, x2)
 
             dx1 = np.asarray([x2])
-            dx2 = g / np.linalg.norm(self.l) * np.cos(x1) + 1 / (
-                    np.linalg.norm(self.m) * np.linalg.norm(self.l) ** 2) * tau
+            dx2 = g / np.linalg.norm(self.l) * np.cos(x1) - \
+                  self.k_f * x2 + \
+                  tau / (np.linalg.norm(self.m) * np.linalg.norm(self.l) ** 2)
 
             return np.asarray([dx1, dx2]).flatten()
 

@@ -1,7 +1,7 @@
 from sim.CONSTANTS import *
 
 from sim.controllers import PID_pos_vel_tracking_modeled
-from sim.models import CPG, GPG, DummyOutput, Pendulum, DoublePendulum
+from sim.models import CPG, GPG, SPG, DummyOutput, Pendulum, DoublePendulum
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -32,7 +32,8 @@ class BaseEnvironment(ABC):
         # Define parameters
         model_params = {'delta_t': self.delta_t_system,
                         'state_size': self.state_size,
-                        'num_dof': self.num_dof
+                        'num_dof': self.num_dof,
+                        'k_f': 0.0
                         }
         controller_params = {'delta_t': self.delta_t_system,
                              'gains_eigen': [0.1, 0.0, 0.1],
@@ -122,10 +123,10 @@ class BaseEnvironment(ABC):
 
         # Update param position
         param_traj = self.generator.get_parametric_traj()
-        param_x_traj = np.asarray([0] * np.size(param_traj[:, -1]))
+        param_x_traj = param_traj[:, 0]
+        param_y_traj = np.asarray([0] * np.size(param_traj[:, 0]))
         if self.num_dof != 1:
-            param_x_traj = param_traj[:, 0]
-        param_y_traj = param_traj[:, -2] ** 2
+            param_y_traj = param_traj[:, -2] ** 2
         param_x = param_x_traj[step]
         param_y = param_y_traj[step]
         lines[4].set_xdata(param_x)
@@ -206,11 +207,10 @@ class BaseEnvironment(ABC):
 
             # RL-params
             param_traj = self.generator.get_parametric_traj()
-            # param_x_traj = np.abs(param_traj[:, 0])
-            param_x_traj = np.asarray([0] * np.size(param_traj[:, -1]))
+            param_x_traj = param_traj[:, 0]
+            param_y_traj = np.asarray([0] * np.size(param_traj[:, 0]))
             if self.num_dof != 1:
-                param_x_traj = param_traj[:, 0]
-            param_y_traj = param_traj[:, -2] ** 2
+                param_y_traj = param_traj[:, -2] ** 2
             param_gen_traj = param_traj[:, -1]
             param_x = param_x_traj[0]
             param_y = param_y_traj[0]
@@ -245,14 +245,18 @@ class CPGEnv(BaseEnvironment):
 
         # Build components
         self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
-        self.generator = GPG(params=self.config.get('generator_params'))
+        self.generator = SPG(params=self.config.get('generator_params'))
 
     def step(self, params: dict = None):
         action = params.get('action')
 
         # Get RL params
-        omega = np.asarray(action[0:self.num_dof - 1])
-        mu = np.asarray(action[self.num_dof - 1:self.num_dof])
+        if self.num_dof != 1:
+            omega = np.asarray(action[0:self.num_dof - 1])
+            mu = np.asarray(action[self.num_dof - 1:self.num_dof])
+        else:
+            omega = np.asarray([action[0]])
+            mu = np.asarray([])
 
         if not self.solve:
             # Generate next point in path
@@ -263,8 +267,6 @@ class CPGEnv(BaseEnvironment):
             # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
             # [p, v] = self.generator.get_cartesian_state()
             [q_d, dq_d] = self.generator.get_joint_state()
-            # debug_print('q_d', q_d)
-            # debug_print('dq_d', dq_d)
 
             # Run through inverse kins
             # [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
@@ -280,7 +282,7 @@ class CPGEnv(BaseEnvironment):
 
         # Save latest trajectory for plotting
         self.model.update_trajectories()
-        self.controller.update_trajectories(q_d) # Todo: delete the tracking of the desired position in the cont
+        self.controller.update_trajectories(q_d)  # Todo: delete the tracking of the desired position in the cont
         self.t_elapsed += self.delta_t_learning
 
 
@@ -323,7 +325,6 @@ class PendulumCPGEnv(CPGEnv):
 
         # Build components
         self.model = Pendulum(params=self.config.get('model_params'))
-
 
 class PendulumDirectEnv(DirectEnv):
     def __init__(self, params: dict = None):
