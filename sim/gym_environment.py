@@ -260,8 +260,6 @@ class BaseGymEnvironment(gym.Env):
             temp = np.multiply(cpg_traj_x, param_gen_traj)
             cpg_traj_x = cpg_traj_x[temp != 0]
             cpg_traj_y = cpg_traj_y[temp != 0]
-            debug_print('zeros in param', np.size(param_gen_traj[param_gen_traj != 0]))
-            debug_print('zeros in cpg', np.size(cpg_traj_x))
 
             cpg_joint_traj_x = sim_CPG_traj_data_joints['x_traj_CPG'].to_numpy()
             cpg_joint_traj_y = sim_CPG_traj_data_joints['y_traj_CPG'].to_numpy()

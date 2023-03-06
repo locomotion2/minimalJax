@@ -33,7 +33,7 @@ class BaseEnvironment(ABC):
         model_params = {'delta_t': self.delta_t_system,
                         'state_size': self.state_size,
                         'num_dof': self.num_dof,
-                        'k_f': 0.0
+                        'k_f': 0.1
                         }
         controller_params = {'delta_t': self.delta_t_system,
                              'gains_eigen': [0.1, 0.0, 0.1],
