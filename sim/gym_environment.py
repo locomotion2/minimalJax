@@ -12,7 +12,7 @@ import seaborn as sns
 # import pandas as pd
 # import pyautogui as pg
 
-from sim.environments import DoublePendulumEnv
+from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
 
@@ -41,21 +41,27 @@ class BaseGymEnvironment(gym.Env):
         super().__init__()
 
         # Handle inputs
-        self.solve = kwargs.get('solve', False)
+        params = {
+            'delta_t_learning': ACTUAL_TIMESTEP,
+            'delta_t_system': MIN_TIMESTEP,
+            'solve': kwargs.get('solve', False)
+        }
 
-        self.mode = kwargs.get('mode', 'equilibrium')
-        if self.mode not in {'speed', 'position', 'equilibrium', 'random', 'random_des'}:
-            raise ValueError('Selected initial condition mode is unknown.')
+        mode = kwargs.get('mode', 'random_des')
+        valid_modes = {'speed', 'position', 'equilibrium', 'random', 'random_des'}
+        if mode not in valid_modes:
+            raise ValueError(f"Selected initial condition mode {mode} is unknown. Valid modes: {valid_modes}")
+        params['mode'] = mode
 
-        self.action_scale = kwargs.get('action_scale', ACTION_SCALE)
         self.final_time = kwargs.get('final_time', FINAL_TIME)
-        starting_range = kwargs.get('starting_range', [0, 1.2])
+        params['t_final'] = self.final_time
+        params['starting_range'] = kwargs.get('starting_range', [0, 1.2])
 
         self.reward_func = kwargs.get('reward_func', default_func)
 
         curriculum = kwargs.get('curriculum', None)
         if curriculum is None:
-            self.curriculum = UniformGrowthCurriculum(starting_range=starting_range)
+            self.curriculum = UniformGrowthCurriculum(starting_range=params['starting_range'])
         else:
             self.curriculum = curriculum
 
@@ -67,22 +73,57 @@ class BaseGymEnvironment(gym.Env):
             self.inference = True
             self.E_d = energy_command
 
+        generator = kwargs.get('generator', None)
+        self.system = kwargs.get('system', None)
+        if generator is None or generator == 'CPG':
+            if self.system is None or self.system == 'DoublePendulum':
+                self.system = DoublePendulumCPGEnv
+                params['num_dof'] = 2
+            elif self.system == 'Pendulum':
+                self.system = PendulumCPGEnv
+                params['num_dof'] = 1
+            else:
+                raise NotImplementedError(f"System {self.system} not implemented")
+            self.action_scale = np.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
+            omega_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
+            omega_scale[-1] = self.action_scale[-1]
+            self.action_scale = omega_scale
+            output_size = params['num_dof']
+        elif generator == 'direct':
+            if self.system is None or self.system == 'DoublePendulum':
+                self.system = DoublePendulumDirectEnv
+                params['num_dof'] = 2
+            elif self.system == 'Pendulum':
+                self.system = PendulumDirectEnv
+                params['num_dof'] = 1
+            else:
+                raise NotImplementedError(f"System {self.system} not implemented")
+            self.action_scale = np.asarray(kwargs.get('action_scale', ACTION_SCALE_DIRECT))
+            q_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
+            q_d_scale = np.asarray([self.action_scale[1]] * params['num_dof'])
+            self.action_scale = np.concatenate([q_scale, q_d_scale])
+            output_size = params['num_dof'] * 2
+        else:
+            raise NotImplementedError(f"Generator {generator} not implemented")
+        params['state_size'] = params['num_dof'] * 2
+        input_size = params['state_size'] * 2 + 1
+
         # Rendering
         self.visualize = kwargs.get('render', False)
         if self.visualize:
             sns.set()
-            figure = plt.figure('Vizualization', figsize=FIG_SIZE)
+            figure = plt.figure('Visualization', figsize=FIG_SIZE)
             move_figure(figure, 0, 0)
 
         # Build environment
-        self.action_space = Box(low=-1, high=1, shape=(OUTPUT_SIZE,))
-        self.observation_space = Box(low=-1, high=1, shape=(INPUT_SIZE,))
-        self.sim = DoublePendulumEnv(params={'delta_t_learning': ACTUAL_TIMESTEP, 'delta_t_system': MIN_TIMESTEP,
-                                             't_final': self.final_time, 'mode': self.mode, 'solve': self.solve})
+        self.action_space = Box(low=-1, high=1, shape=(output_size,))
+        self.observation_space = Box(low=-1, high=1, shape=(input_size,))
+        self.sim = self.system(params=params)
 
         # Tracking / help variables
-        self.r_epi = 0
         self.cur_step = 0
+        self.num_dof = params['num_dof']
+        self.r_epi = 0
         self.r_num = 3
         self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
 
@@ -117,14 +158,13 @@ class BaseGymEnvironment(gym.Env):
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
                  'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
                  'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
-                              np.asarray(q_gen) / ACTION_SCALE[1], np.asarray(dq_gen) / MAX_SPEED,
-                              [self.E_d / MAX_ENERGY]])
-
-        # obs_temp = obs.copy()
-        # obs_temp[np.abs(obs_temp) < 1] = 0
-        # # debug_print('observations', obs[np.abs(obs) > 1])
-        # debug_print('observations', obs_temp)
+        # debug_print('array', [q_model / self.action_scale[-1], dq_model / MAX_SPEED,
+        #                       q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
+        #                       np.asarray([self.E_d / MAX_ENERGY])])
+        # TODO: maybe add a constant MAX_POSTITION
+        obs = np.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
+                              q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
+                              np.asarray([self.E_d / MAX_ENERGY])])
 
         return state, obs
 
@@ -183,7 +223,7 @@ class BaseGymEnvironment(gym.Env):
 
     def plot(self):
         try:
-            figure = plt.figure('Vizualization')
+            figure = plt.figure('Visualization')
             active_lines = [plt.Line2D] * 5
             index = 1
 
@@ -217,17 +257,15 @@ class BaseGymEnvironment(gym.Env):
             # time_points = time_points[time_points != 0]
             cpg_traj_x = sim_CPG_traj_data['x_traj_CPG'].to_numpy()
             cpg_traj_y = sim_CPG_traj_data['y_traj_CPG'].to_numpy()
-            cpg_traj_x = np.multiply(cpg_traj_x, param_gen_traj)
-            cpg_traj_y = np.multiply(cpg_traj_y, param_gen_traj)
-            cpg_traj_x = cpg_traj_x[cpg_traj_x != 0]
-            cpg_traj_y = cpg_traj_y[cpg_traj_y != 0]
+            temp = np.multiply(cpg_traj_x, param_gen_traj)
+            cpg_traj_x = cpg_traj_x[temp != 0]
+            cpg_traj_y = cpg_traj_y[temp != 0]
 
             cpg_joint_traj_x = sim_CPG_traj_data_joints['x_traj_CPG'].to_numpy()
             cpg_joint_traj_y = sim_CPG_traj_data_joints['y_traj_CPG'].to_numpy()
-            cpg_joint_traj_x = np.multiply(cpg_joint_traj_x, param_gen_traj)
-            cpg_joint_traj_y = np.multiply(cpg_joint_traj_y, param_gen_traj)
-            cpg_joint_traj_x = cpg_joint_traj_x[cpg_joint_traj_x != 0]
-            cpg_joint_traj_y = cpg_joint_traj_y[cpg_joint_traj_y != 0]
+            temp = np.multiply(cpg_joint_traj_x, param_gen_traj)
+            cpg_joint_traj_x = cpg_joint_traj_x[temp != 0]
+            cpg_joint_traj_y = cpg_joint_traj_y[temp != 0]
 
             # Config. pos against time
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
@@ -264,16 +302,17 @@ class BaseGymEnvironment(gym.Env):
             # Pendulum simulation and CPG path in joint coords
             figure.add_subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.title('System sim. and CPG in joint. coordinates')
-            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data_joints)
             plt.plot('x_traj_model', 'y_traj_model', '*-', linewidth=1, alpha=0.4, color='lightblue',
                      data=sim_model_traj_data_joints)
+            plt.plot('x_traj_CPG', 'y_traj_CPG', 'g*-', linewidth=1, alpha=0.3, data=sim_CPG_traj_data_joints)
+
             active_lines[2], = plt.plot('x_model', 'y_model', 'bo', linewidth=10, data=sim_model_data_joints)
             active_lines[3], = plt.plot('x_CPG', 'y_CPG', 'o', linewidth=10, alpha=0.6, color='orange',
                                         data=sim_CPG_data_joints)
             plt.plot(cpg_joint_traj_x, cpg_joint_traj_y, 'o', linewidth=2, alpha=0.2, color='purple')
             plt.ylabel(r'$q_2 (rad)$')
             plt.xlabel(r'$q_1 (rad)$')
-            plt.legend(['CPG Path', 'Model Path', 'Pendulum', 'Oscillator'], loc='best')
+            plt.legend(['Model Path', 'CPG Path', 'Pendulum', 'Oscillator'], loc='best')
             window = 180
             plt.axis([-window, window, -window, window])
             index += 1
@@ -287,7 +326,8 @@ class BaseGymEnvironment(gym.Env):
             plt.plot(-x_omega, y_0, '--', alpha=0.5, color='purple')
             plt.xlabel(r'$\omega\,(hz)$')
             plt.ylabel(r'$\mu^2\,(m^2)$')
-            [h_window, v_window] = ACTION_SCALE[0:2]
+            h_window = self.action_scale[0]
+            v_window = self.action_scale[-1]
             # v_window = v_window ** 2
             plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])
             index += 1
@@ -401,22 +441,3 @@ class BaseGymEnvironment(gym.Env):
             pass
         else:
             super(BaseGymEnvironment, self).render(mode=mode)  # just raise an exception
-
-
-class EigenHunterCPG(BaseGymEnvironment):
-    def gather_data(self):
-        # Model data
-        p_model, v_model = self.sim.get_cartesian_state_model()
-        q_model, dq_model = self.sim.get_joint_state_model()
-        E_model = self.sim.get_energies()
-
-        # Controller data
-        tau = self.sim.controller.get_force()
-
-        # Build data packages
-        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
-                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        obs = np.concatenate([np.asarray(q_model) / ACTION_SCALE[1], np.asarray(dq_model) / MAX_SPEED,
-                              [self.E_d / MAX_ENERGY]])
-
-        return state, obs

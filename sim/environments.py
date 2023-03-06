@@ -1,13 +1,10 @@
 from sim.CONSTANTS import *
 
-# from sim.controllers import PID_pos_vel_damping, PID_pos_vel_tracking_num, PID_pos_vel_tracking_modeled
 from sim.controllers import PID_pos_vel_tracking_modeled
-from sim.models import CPG, GPG, Pendulum, DoublePendulum
+from sim.models import CPG, GPG, SPG, DummyOutput, Pendulum, DoublePendulum
 
-from IPython import display
 import matplotlib.pyplot as plt
 import pandas as pd
-# import seaborn as sns
 
 import numpy as np
 import warnings
@@ -24,13 +21,34 @@ class BaseEnvironment(ABC):
         self.t_elapsed = 0
         self.solve = params.get('solve', False)
         self.mode = params.get('mode', 'equilibrium')
-        self.state_size = 4
-        self.num_dof = 2
+        self.state_size = params.get('state_size', 4)
+        self.num_dof = params.get('num_dof', 2)
 
         # Build components
         self.model = None
         self.controller = None
         self.generator = None
+
+        # Define parameters
+        model_params = {'delta_t': self.delta_t_system,
+                        'state_size': self.state_size,
+                        'num_dof': self.num_dof,
+                        'k_f': 0.1
+                        }
+        controller_params = {'delta_t': self.delta_t_system,
+                             'gains_eigen': [0.1, 0.0, 0.1],
+                             'gains_outer': [0.1, 0.0, 0.1],
+                             'mode': 'maximal',
+                             'num_dof': self.num_dof
+                             }
+        generator_params = {'delta_t': self.delta_t_learning,
+                            'state_size': self.num_dof,
+                            'num_dof': self.num_dof
+                            }
+        self.config = {'model_params': model_params,
+                       'controller_params': controller_params,
+                       'generator_params': generator_params
+                       }
 
     @abstractmethod
     def step(self, params: dict = None):
@@ -70,8 +88,8 @@ class BaseEnvironment(ABC):
     def animate(self, step: int = 0, lines: [plt.Line2D] = None):
         # Update positions in cartesian coords
         p_traj_model = self.model.get_cartesian_traj()
-        px_model = p_traj_model[step, :, 0] if self.num_dof > 1 else p_traj_model[step, 0]
-        py_model = p_traj_model[step, :, 1] if self.num_dof > 1 else p_traj_model[step, 1]
+        px_model = p_traj_model[step, :, 0] if self.num_dof > 1 else np.asarray([p_traj_model[step, 0]])
+        py_model = p_traj_model[step, :, 1] if self.num_dof > 1 else np.asarray([p_traj_model[step, 1]])
         px_model = np.concatenate(([0], px_model), axis=0)
         py_model = np.concatenate(([0], py_model), axis=0)
         lines[0].set_xdata(px_model)
@@ -86,19 +104,29 @@ class BaseEnvironment(ABC):
 
         # Update positions in joint coords
         q_traj_model_rad = np.rad2deg(self.model.get_joint_traj())
-        qx_model, qy_model = q_traj_model_rad[step]
+        if self.num_dof > 1:
+            qx_model, qy_model = q_traj_model_rad[step]
+        else:
+            qx_model = q_traj_model_rad[step]
+            qy_model = 0
         lines[2].set_xdata(qx_model)
         lines[2].set_ydata(qy_model)
 
         q_traj_CPG = np.rad2deg(q_traj_CPG)
-        qx_CPG, qy_CPG = q_traj_CPG[step] if self.num_dof == 1 else q_traj_CPG[step, :]
+        if self.num_dof > 1:
+            qx_CPG, qy_CPG = q_traj_CPG[step]
+        else:
+            qx_CPG = q_traj_CPG[step]
+            qy_CPG = 0
         lines[3].set_xdata(qx_CPG)
         lines[3].set_ydata(qy_CPG)
 
         # Update param position
         param_traj = self.generator.get_parametric_traj()
         param_x_traj = param_traj[:, 0]
-        param_y_traj = param_traj[:, 1] ** 2
+        param_y_traj = np.asarray([0] * np.size(param_traj[:, 0]))
+        if self.num_dof != 1:
+            param_y_traj = param_traj[:, -2] ** 2
         param_x = param_x_traj[step]
         param_y = param_y_traj[step]
         lines[4].set_xdata(param_x)
@@ -129,8 +157,8 @@ class BaseEnvironment(ABC):
             # Pendulum simulation and CPG path in cartesian coords
             p_traj_model = self.model.get_cartesian_traj()
             if self.num_dof == 1:
-                px_model = p_traj_model[0, 0]
-                py_model = p_traj_model[0, 1]
+                px_model = np.asarray([p_traj_model[0, 0]])
+                py_model = np.asarray([p_traj_model[0, 1]])
             else:
                 px_model = p_traj_model[0, :, 0]
                 py_model = p_traj_model[0, :, 1]
@@ -154,15 +182,23 @@ class BaseEnvironment(ABC):
             # Pendulum simulation and CPG path in joint coords
             q_traj_model = self.model.get_joint_traj() * 180 / np.pi
             qx_model = q_traj_model[0, 0]
-            qy_model = q_traj_model[0, 1]
             qx_model_traj = q_traj_model[:, 0]
-            qy_model_traj = q_traj_model[:, 1]
+            if self.num_dof > 1:
+                qy_model = q_traj_model[0, 1]
+                qy_model_traj = q_traj_model[:, 1]
+            else:
+                qy_model = 0
+                qy_model_traj = np.asarray([0] * np.size(qx_model_traj))
 
-            if self.num_dof == 1:
-                q_traj_CPG = q_traj_CPG[:, 0]
-            [qx_CPG, qy_CPG] = q_traj_CPG[0] * 180 / np.pi
-            qx_CPG_traj = q_traj_CPG[:, 0] * 180 / np.pi
-            qy_CPG_traj = q_traj_CPG[:, 1] * 180 / np.pi
+            if self.num_dof > 1:
+                [qx_CPG, qy_CPG] = q_traj_CPG[0] * 180 / np.pi
+                qx_CPG_traj = q_traj_CPG[:, 0] * 180 / np.pi
+                qy_CPG_traj = q_traj_CPG[:, 1] * 180 / np.pi
+            else:
+                qx_CPG = q_traj_CPG[0] * 180 / np.pi
+                qy_CPG = 0
+                qx_CPG_traj = q_traj_CPG * 180 / np.pi
+                qy_CPG_traj = np.asarray([0] * np.size(q_traj_CPG))
 
             sim_model_data_joints = pd.DataFrame({'x_model': qx_model, 'y_model': qy_model}, index=[0])
             sim_model_traj_data_joints = pd.DataFrame({'x_traj_model': qx_model_traj, 'y_traj_model': qy_model_traj})
@@ -171,10 +207,11 @@ class BaseEnvironment(ABC):
 
             # RL-params
             param_traj = self.generator.get_parametric_traj()
-            # param_x_traj = np.abs(param_traj[:, 0])
             param_x_traj = param_traj[:, 0]
-            param_y_traj = param_traj[:, 1] ** 2
-            param_gen_traj = param_traj[:, 2]
+            param_y_traj = np.asarray([0] * np.size(param_traj[:, 0]))
+            if self.num_dof != 1:
+                param_y_traj = param_traj[:, -2] ** 2
+            param_gen_traj = param_traj[:, -1]
             param_x = param_x_traj[0]
             param_y = param_y_traj[0]
             rl_param_data = pd.DataFrame({'omega': param_x, 'mu': param_y}, index=[0])
@@ -202,41 +239,29 @@ class BaseEnvironment(ABC):
             raise KeyboardInterrupt
 
 
-class DoublePendulumEnv(BaseEnvironment):
+class CPGEnv(BaseEnvironment):
     def __init__(self, params: dict = None):
         super().__init__(params=params)
 
-        # Define parameters
-        model_params = {'delta_t': self.delta_t_system,
-                        'state_size': self.state_size,
-                        'num_dof': self.num_dof
-                        }
-        controller_params = {'delta_t': self.delta_t_system,
-                             'gains_eigen': [0.1, 0.0, 0.1],
-                             'gains_outer': [0.1, 0.0, 0.1],
-                             'mode': 'maximal',
-                             'num_dof': self.num_dof
-                             }
-        generator_params = {'delta_t': self.delta_t_learning,
-                            'state_size': 2,
-                            'num_dof': 2
-                            }
-
         # Build components
-        self.model = DoublePendulum(params=model_params)
-        self.controller = PID_pos_vel_tracking_modeled(params=controller_params)
-        self.generator = GPG(params=generator_params)
+        self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
+        self.generator = SPG(params=self.config.get('generator_params'))
 
     def step(self, params: dict = None):
         action = params.get('action')
 
         # Get RL params
-        omega = action[0:self.num_dof - 1]
-        mu = action[self.num_dof - 1:self.num_dof]
+        if self.num_dof != 1:
+            omega = np.asarray(action[0:self.num_dof - 1])
+            mu = np.asarray(action[self.num_dof - 1:self.num_dof])
+        else:
+            omega = np.asarray([action[0]])
+            mu = np.asarray([])
 
         if not self.solve:
             # Generate next point in path
             generator_input = {'omega': omega, 'mu': mu}
+            # debug_print('gen', generator_input)
             self.generator.step(generator_input)
             self.generator.update_trajectories(generator_input)
             # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
@@ -251,31 +276,75 @@ class DoublePendulumEnv(BaseEnvironment):
             [q_d, dq_d] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
 
         # New step for model
-        params['E'] = np.sum(self.model.get_energies())
+        params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()
         self.controller.set_target(q_d, dq_d, params=params)
         self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
 
         # Save latest trajectory for plotting
         self.model.update_trajectories()
-        self.controller.update_trajectories(q_d)
+        self.controller.update_trajectories(q_d)  # Todo: delete the tracking of the desired position in the cont
         self.t_elapsed += self.delta_t_learning
 
 
-class DoublePendulumDirectEnv(DoublePendulumEnv):
+class DirectEnv(BaseEnvironment):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
+        self.generator = DummyOutput(params=self.config.get('generator_params'))
 
     def step(self, params: dict = None):
         action = params.get('action')
 
-        # Get RL params
-        q_d = action[0: self.num_dof]
-        dq_d = action[self.num_dof, 2*self.num_dof]
+        # Get desired joint state
+        q_d_com = np.asarray(action[0:self.num_dof])
+        dq_d_com = np.asarray(action[self.num_dof:2 * self.num_dof])
+
+        # Run through DummyGenerator
+        generator_input = {'q_d': q_d_com, 'dq_d': dq_d_com}
+        self.generator.step(generator_input)
+        self.generator.update_trajectories(generator_input)
+        [q_d, dq_d] = self.generator.get_joint_state()
 
         # New step for model
-        params['E'] = np.sum(self.model.get_energies())
+        params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()
         self.controller.set_target(q_d, dq_d, params=params)
-        self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
+        self.model.step(
+            {'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
 
         # Save latest trajectory for plotting
         self.model.update_trajectories()
         self.controller.update_trajectories(q_d)
         self.t_elapsed += self.delta_t_learning
+
+
+class PendulumCPGEnv(CPGEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = Pendulum(params=self.config.get('model_params'))
+
+class PendulumDirectEnv(DirectEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = Pendulum(params=self.config.get('model_params'))
+
+
+class DoublePendulumCPGEnv(CPGEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = DoublePendulum(params=self.config.get('model_params'))
+
+
+class DoublePendulumDirectEnv(DirectEnv):
+    def __init__(self, params: dict = None):
+        super().__init__(params=params)
+
+        # Build components
+        self.model = DoublePendulum(params=self.config.get('model_params'))
