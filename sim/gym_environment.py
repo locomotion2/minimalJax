@@ -12,6 +12,9 @@ import seaborn as sns
 # import pandas as pd
 # import pyautogui as pg
 
+import cv2
+from PIL import ImageGrab
+
 from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
@@ -66,6 +69,7 @@ class BaseGymEnvironment(gym.Env):
             self.curriculum = curriculum
 
         energy_command = kwargs.get('energy_command', None)
+        self.energy_step = kwargs.get('energy_step', False)
         if energy_command is None:
             self.inference = False
             self.E_d = 0
@@ -110,6 +114,7 @@ class BaseGymEnvironment(gym.Env):
 
         # Rendering
         self.visualize = kwargs.get('render', False)
+        self.record = kwargs.get('record', False)
         if self.visualize:
             sns.set()
             figure = plt.figure('Visualization', figsize=FIG_SIZE)
@@ -153,6 +158,10 @@ class BaseGymEnvironment(gym.Env):
 
         # Controller data
         tau = self.sim.controller.get_force()
+
+        # Check if energy step desired
+        if self.sim.is_time_energy_step() and self.energy_step:
+            self.E_d /= 2
 
         # Build data packages
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
@@ -364,7 +373,11 @@ class BaseGymEnvironment(gym.Env):
             index += 1
 
             # Energies vs time
-            E_d_traj = np.ones(len(time_data)) * self.E_d
+            samples = len(time_data)
+            E_d_traj = np.ones(samples) * self.E_d
+            if self.energy_step:
+                E_d_traj[0:int(np.floor(samples/2))] *= 2
+
             energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj}), energy_data], axis=1)
             plt.subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.title('Energy trajectory in time')
@@ -393,6 +406,7 @@ class BaseGymEnvironment(gym.Env):
             raise KeyboardInterrupt
 
     def animate(self, figure, active_lines):
+
         # Helping variables
         time = 0
         x_0 = [0, 0]
@@ -416,6 +430,15 @@ class BaseGymEnvironment(gym.Env):
             line.set_ydata(y)
             line.set_xdata(x)
 
+        if self.record:
+            # Testing the video recording
+            screen_size = (1920, 1080)
+            fps = 10
+
+            # Create a video writer object
+            fourcc = cv2.VideoWriter_fourcc(*"XVID")
+            out = cv2.VideoWriter("Experiment_recording.avi", fourcc, fps, screen_size)
+
         # Main animation loop
         step = 0
         while time < self.final_time:
@@ -431,6 +454,23 @@ class BaseGymEnvironment(gym.Env):
             step += VIZ_RATE
             figure.canvas.draw()
             figure.canvas.flush_events()
+
+            if self.record:
+                img = ImageGrab.grab(bbox=(0, 0, screen_size[0], screen_size[1]))
+
+                # Convert the screenshot to a numpy array
+                img_np = np.array(img)
+
+                # Convert the color space from RGB to BGR
+                frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+                # Write the current frame to the video
+                out.write(frame)
+
+        if self.record:
+            # Release the video writer and close the video file
+            out.release()
+            cv2.destroyAllWindows()
 
     def render(self, mode="human"):
         if mode == 'rgb_array':
