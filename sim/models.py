@@ -11,9 +11,6 @@ from links_and_joints.planar_dynamical_system.generated.rr import RR as DoublePe
 from scipy.integrate import odeint, solve_ivp
 
 
-# import nbkode
-# from jitcode import jitcode, y
-
 def hom2xyphi(hom):
     fkin = np.empty((hom.shape[0], 3))
     fkin[:, 0] = hom[:, 0, 2]
