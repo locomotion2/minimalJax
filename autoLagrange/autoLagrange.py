@@ -11,6 +11,43 @@ from functools import partial
 
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Any
+
+
+class TrainState(ts.TrainState):
+    batch_stats: Any
+
+
+class MLP(nn.Module):
+    @nn.compact
+    def __call__(self, x, train: bool):
+        # Input layer
+        x_in = self.layer(x, train=train)
+
+        # Skip Layer 1
+        x1 = self.layer(x_in, train=train)
+        # Skip Layer 2
+        x2 = self.layer(x_in + x1, train=train)
+        # # Skip Layer 3
+        # x3 = self.layer(x_in + x1 + x2, train=train)
+
+        # Narrowing down
+        # x_nar = nn.Dense(features=128)(x_in + x1)
+        # x_nar = nn.activation.softplus(x_nar)
+        # x_nar = nn.Dense(features=64)(x_nar)
+        # x_nar = nn.activation.softplus(x_nar)
+        # x_nar = nn.Dense(features=4)(x_nar)
+        # x_nar = nn.activation.softplus(x_nar)
+
+        # Output layer
+        x = nn.Dense(features=2)(x_in + x1 + x2)
+        return x
+
+    def layer(self, x, train: bool):
+        x = nn.Dense(features=128)(x)
+        x = nn.BatchNorm(use_running_average=not train)(x)
+        x = nn.activation.softplus(x)
+        return x
 
 
 def lagrangian(q, q_dot, m1, m2, l1, l2, g, energies=False):
@@ -98,86 +135,92 @@ def poormans_solve(x, time_step):
 
 
 # replace the lagrangian with a parametric model
-def learned_lagrangian(params, energies=False):
-    def lagrangian(q, q_t, energies=energies):
+def learned_lagrangian(params, batch_stats, train_state: TrainState, output='lagrangian', train=True):
+    def lagrangian(q, q_t):
         assert q.shape == (2,)
         norm_state = normalize_dp(jnp.concatenate([q, q_t]))
-        out = MLP().apply({'params': params}, norm_state)
+        updates = None
+        if train:
+            out, updates = train_state.apply_fn({'params': params, 'batch_stats': batch_stats},
+                                                x=norm_state, train=True, mutable=['batch_stats'])
+        else:
+            out = train_state.apply({'params': params, 'batch_stats': batch_stats},
+                                    x=norm_state, train=False)
         # out = train_state.apply_fn({'params': params}, norm_state)
-        if energies:
+        if output == 'energies':
             return out[0], out[1]
-        return out[0] - out[1]
+        elif output == 'lagrangian':
+            return out[0] - out[1]
+        elif output == 'potential':
+            return out[1]
+        elif output == 'updates':
+            if not train:
+                return NotImplementedError
+            return updates
+        else:
+            raise NotImplementedError
 
     return lagrangian
 
 
 def analytic_energies(state):
-    q = state[0:2]
-    q_dot = state[2:4]
+    q, q_dot = jnp.split(state, 2)
     return lagrangian(q, q_dot, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8, energies=True)
 
 
-def learned_energies(params, state):
-    q = state[0:2]
-    q_dot = state[2:4]
-    L_fun = learned_lagrangian(params, energies=True)
-    return L_fun(q, q_dot)
+def learned_energies(state, params=None, batch_stats=None, train_state=None, train=True):
+    q, q_dot = jnp.split(state, 2)
+    T, V = learned_lagrangian(params, batch_stats, train_state,
+                              output='energies', train=train)(q, q_dot)
+    V_dot = jax.grad(learned_lagrangian(params, batch_stats, train_state,
+                                        output='potential', train=train), 1)(q, q_dot)
+    return T, V, V_dot
 
 
 def recon_kin(lagrangian, state):
-    q, q_t = jnp.split(state, 2)
-    In = jax.hessian(lagrangian, 1)(q, q_t)
-    T = jnp.abs(1 / 2 * jnp.transpose(q_t) @ In @ q_t)
+    q, q_dot = jnp.split(state, 2)
+    In = jax.hessian(lagrangian, 1)(q, q_dot)
+    T = jnp.abs(1 / 2 * jnp.transpose(q_dot) @ In @ q_dot)
     return T
 
 
 # define the loss of the model (MSE between predicted q, \dot q and targets)
 # @jax.jit
-def loss(params, batch, H_0=0):
+def loss(params, batch_stats, train_state, batch, H_0=0, train=True):
     state, targets = batch
 
     # Predict the joint accelerations
-    preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params)))(state)
+    preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, batch_stats, train_state,
+                                                                    train=train)))(state)
     L_acc = jnp.mean((preds - targets) ** 2)
 
-    # Calculate the energies
-    T, V = jax.vmap(partial(learned_energies, params))(state)
-    H = T + V
-    L_con = jnp.mean((H - H_0) ** 2)
-
     # Reconstruct the kinetic energy
-    T_recon = jax.vmap(partial(recon_kin, learned_lagrangian(params)))(state)
+    T_recon = jax.vmap(partial(recon_kin, learned_lagrangian(params, batch_stats, train_state,
+                                                             train=train)))(state)
+
+    # Calculate the energies
+    T, V, V_dot = jax.vmap(partial(learned_energies, params=params, batch_stats=batch_stats,
+                                   train_state=train_state))(state)
+    H = T_recon + V
+
+    # Impose conservation of energy and shape
+    L_con = jnp.mean((H - H_0) ** 2)
     L_kin = jnp.mean((T - T_recon) ** 2)
 
+    # Impose q_dot independence on V_dot
+    L_pot = jnp.mean(V_dot ** 2)
+
     # Calculate loss
-    return L_acc + 100 * L_con + L_kin
+    L_total = L_acc + 1000 * L_con + L_kin + L_pot
 
+    # Calculate updates
+    def dummy_lag(state):
+        q, q_dot = jnp.split(state, 2)
+        return learned_lagrangian(params, batch_stats, train_state, train=train, output='updates')(q, q_dot)
 
-class MLP(nn.Module):
-    @nn.compact
-    def __call__(self, x):
-        # Input layer
-        x_in = nn.Dense(features=128)(x)
-        x_in = nn.activation.softplus(x_in)
+    updates = jax.vmap(dummy_lag)(state)
 
-        # Skip Layer 1
-        x1 = nn.Dense(features=128)(x_in)
-        x1 = nn.activation.softplus(x1)
-        # # Skip Layer 2
-        x2 = nn.Dense(features=128)(x1 + x_in)
-        x2 = nn.activation.softplus(x2)
-
-        # Narrowing down
-        # x_nar = nn.Dense(features=128)(x_in + x1)
-        # x_nar = nn.activation.softplus(x_nar)
-        # x_nar = nn.Dense(features=64)(x_nar)
-        # x_nar = nn.activation.softplus(x_nar)
-        # x_nar = nn.Dense(features=4)(x_nar)
-        # x_nar = nn.activation.softplus(x_nar)
-
-        # Output layer
-        x = nn.Dense(features=2)(x_in + x1 + x2)
-        return x
+    return L_total, updates
 
 
 def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
@@ -206,8 +249,10 @@ def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
 
     return x_train, xt_train, x_test, xt_test, y_train, y_test
 
+
 def train_test_data_generator(batch_size, minibatch_per_batch, time_step):
     eqs_motion = jax.jit(jax.vmap(f_analytical))
+
     # eqs_motion = jax.jit(jax.vmap(partial(poormans_solve, time_step)))
     def get_derivative_dataset(rng):
         # randomly sample inputs
@@ -249,17 +294,18 @@ def vizualize_train_test_data(train_vis, test_vis):
 
 
 @partial(jax.jit, static_argnums=2)
-def train_step(state, batch, learning_rate_fn):
+def train_step(state: TrainState, batch, learning_rate_fn):
     traj, traj_truth = batch
 
     def loss_fn(params):
         # logits = CNN().apply({'params': params}, imgs)
         # one_hot_gt_labels = jax.nn.one_hot(gt_labels, num_classes=10)
-        loss_value = loss(params, (traj, traj_truth), H_0=0)
-        return loss_value
+        return loss(params, state.batch_stats, state, (traj, traj_truth), H_0=0)
 
-    loss_value, grads = jax.value_and_grad(loss_fn)(state.params)
+    # variables = {'params': state.params, 'batch_stats': state.batch_stats}
+    (loss_value, updates), grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
     state = state.apply_gradients(grads=grads)  # this is the whole update now! concise!
+    state = state.replace(batch_stats=updates['batch_stats'])
     lr = learning_rate_fn(state.step)
     metrics = {'learning_rate': lr, 'loss': loss_value}
     return state, metrics
@@ -268,7 +314,8 @@ def train_step(state, batch, learning_rate_fn):
 @jax.jit
 def eval_step(state, test_batch):
     traj_test, traj_test_truth = test_batch
-    loss_value = loss(state.params, (traj_test, traj_test_truth), H_0=0)
+    variables = {'params': state.params, 'batch_stats': state.batch_stats}
+    loss_value = loss(variables, state, (traj_test, traj_test_truth), H_0=0)
     return {'loss': loss_value}
 
 
@@ -289,8 +336,8 @@ def train_one_epoch(state, learning_rate_fn, batch, batch_size, minibatch_per_ba
     num_samples = 0
     for minibatch_num in range(minibatch_per_batch):
         # fraction = (epoch + minibatch_num/minibatch_per_batch)/total_epochs
-        minibatch = (batch[0][minibatch_num*batch_size:(minibatch_num+1)*batch_size],
-                     batch[1][minibatch_num*batch_size:(minibatch_num+1)*batch_size])
+        minibatch = (batch[0][minibatch_num * batch_size:(minibatch_num + 1) * batch_size],
+                     batch[1][minibatch_num * batch_size:(minibatch_num + 1) * batch_size])
         # opt_state, params = update_derivative(fraction, opt_state, batch_data, 1e-6)
         state, metrics = train_step(state, minibatch, learning_rate_fn)
 
@@ -299,7 +346,7 @@ def train_one_epoch(state, learning_rate_fn, batch, batch_size, minibatch_per_ba
         #       f" lr={metrics['learning_rate']:.6f}")
         epoch_loss += metrics['loss']
         num_samples += batch_size
-    metrics_epoch = {'loss': epoch_loss/num_samples, 'learning_rate': learning_rate_fn(state.step)}
+    metrics_epoch = {'loss': epoch_loss / minibatch_per_batch, 'learning_rate': learning_rate_fn(state.step)}
     return state, metrics_epoch
 
 
@@ -312,10 +359,13 @@ def evaluate_model(state, test_batch):
 
 
 # This one will keep things nice and tidy compared to our previous examples
-def create_train_state(key, learning_rate_fn, params=None):
+def create_train_state(key, learning_rate_fn, params=None, batch_stats=None):
     network = MLP()
     if params is None:
-        params = network.init(key, random.normal(key, (4,)))['params']
+        variables = network.init(key, random.normal(key, (4,)), train=False)
+        params = variables['params']
+        if batch_stats is None:
+            batch_stats = variables['batch_stats']
     adam_opt = optax.adam(learning_rate=learning_rate_fn)
     # TrainState is a simple built-in wrapper class that makes things a bit cleaner
-    return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt), network
+    return TrainState.create(apply_fn=network.apply, params=params, batch_stats=batch_stats, tx=adam_opt), network
