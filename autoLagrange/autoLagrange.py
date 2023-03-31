@@ -14,39 +14,43 @@ import matplotlib.pyplot as plt
 from typing import Any
 
 
-class TrainState(ts.TrainState):
-    batch_stats: Any
+# class TrainState(ts.TrainState):
+#     batch_stats: Any
 
 
 class MLP(nn.Module):
     @nn.compact
-    def __call__(self, x, train: bool):
-        # Input layer
-        x_in = self.layer(x, train=train)
+    def __call__(self, x):
+        # Input layers
+        x_in_1 = self.layer(x, features=32)
+        x_in_2 = self.layer(x_in_1, features=64)
+        x_in_3 = self.layer(x_in_2, features=128)
 
         # Skip Layer 1
-        x1 = self.layer(x_in, train=train)
-        # Skip Layer 2
-        x2 = self.layer(x_in + x1, train=train)
+        # x1 = self.layer(x_in)
+        # # Skip Layer 2
+        # x2 = self.layer(x_in + x1)
         # # Skip Layer 3
-        # x3 = self.layer(x_in + x1 + x2, train=train)
+        # x3 = self.layer(x_in + x1 + x2)
+        # # Skip Layer 4
+        # x4 = self.layer(x_in + x1 + x2 + x3)
 
-        # Narrowing down
-        # x_nar = nn.Dense(features=128)(x_in + x1)
-        # x_nar = nn.activation.softplus(x_nar)
-        # x_nar = nn.Dense(features=64)(x_nar)
-        # x_nar = nn.activation.softplus(x_nar)
-        # x_nar = nn.Dense(features=4)(x_nar)
-        # x_nar = nn.activation.softplus(x_nar)
+        # # Narrowing down
+        x_nar = self.layer(x_in_3, features=128)
+        x_nar = self.layer(x_nar + x_in_3, features=64)
+        x_nar = self.layer(x_nar + x_in_2, features=32)
 
         # Output layer
-        x = nn.Dense(features=2)(x_in + x1 + x2)
+        # x = nn.Dense(features=2)(x_in + x1 + x2 + x3 + x4)
+        x = nn.Dense(features=2)(x_nar + x_in_1)
         return x
 
-    def layer(self, x, train: bool):
-        x = nn.Dense(features=128)(x)
-        x = nn.BatchNorm(use_running_average=not train)(x)
+    def layer(self, x, features=256):
+        x = nn.Dense(features=features)(x)
+        # x = nn.BatchNorm(use_running_average=not train)(x)
         x = nn.activation.softplus(x)
+        # x = nn.activation.elu(x)
+        # x = nn.activation.relu(x)
         return x
 
 
@@ -135,17 +139,12 @@ def poormans_solve(x, time_step):
 
 
 # replace the lagrangian with a parametric model
-def learned_lagrangian(params, batch_stats, train_state: TrainState, output='lagrangian', train=True):
+def learned_lagrangian(params, train_state: ts.TrainState, output='lagrangian'):
     def lagrangian(q, q_t):
         assert q.shape == (2,)
         norm_state = normalize_dp(jnp.concatenate([q, q_t]))
-        updates = None
-        if train:
-            out, updates = train_state.apply_fn({'params': params, 'batch_stats': batch_stats},
-                                                x=norm_state, train=True, mutable=['batch_stats'])
-        else:
-            out = train_state.apply({'params': params, 'batch_stats': batch_stats},
-                                    x=norm_state, train=False)
+        # updates = None
+        out = train_state.apply_fn({'params': params}, x=norm_state)
         # out = train_state.apply_fn({'params': params}, norm_state)
         if output == 'energies':
             return out[0], out[1]
@@ -153,10 +152,10 @@ def learned_lagrangian(params, batch_stats, train_state: TrainState, output='lag
             return out[0] - out[1]
         elif output == 'potential':
             return out[1]
-        elif output == 'updates':
-            if not train:
-                return NotImplementedError
-            return updates
+        # elif output == 'updates':
+        #     if not train:
+        #         return NotImplementedError
+        #     return updates
         else:
             raise NotImplementedError
 
@@ -164,21 +163,24 @@ def learned_lagrangian(params, batch_stats, train_state: TrainState, output='lag
 
 
 def analytic_energies(state):
-    q, q_dot = jnp.split(state, 2)
+    q = state[0:2]
+    q_dot = state[2:]
     return lagrangian(q, q_dot, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8, energies=True)
 
 
-def learned_energies(state, params=None, batch_stats=None, train_state=None, train=True):
-    q, q_dot = jnp.split(state, 2)
-    T, V = learned_lagrangian(params, batch_stats, train_state,
-                              output='energies', train=train)(q, q_dot)
-    V_dot = jax.grad(learned_lagrangian(params, batch_stats, train_state,
-                                        output='potential', train=train), 1)(q, q_dot)
+def learned_energies(state, params=None, train_state=None):
+    q = state[0:2]
+    q_dot = state[2:]
+    T, V = learned_lagrangian(params, train_state, output='energies')(q, q_dot)
+    V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)(q, q_dot)
     return T, V, V_dot
 
 
-def recon_kin(lagrangian, state):
+def recon_kin(state, lagrangian=None):
+    # print(state)
     q, q_dot = jnp.split(state, 2)
+    # print(q)
+    # print(q_dot)
     In = jax.hessian(lagrangian, 1)(q, q_dot)
     T = jnp.abs(1 / 2 * jnp.transpose(q_dot) @ In @ q_dot)
     return T
@@ -186,22 +188,19 @@ def recon_kin(lagrangian, state):
 
 # define the loss of the model (MSE between predicted q, \dot q and targets)
 # @jax.jit
-def loss(params, batch_stats, train_state, batch, H_0=0, train=True):
+def loss(params, train_state, batch, H_0=0, train=True):
     state, targets = batch
 
     # Predict the joint accelerations
-    preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, batch_stats, train_state,
-                                                                    train=train)))(state)
+    preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, train_state)))(state)
     L_acc = jnp.mean((preds - targets) ** 2)
 
     # Reconstruct the kinetic energy
-    T_recon = jax.vmap(partial(recon_kin, learned_lagrangian(params, batch_stats, train_state,
-                                                             train=train)))(state)
+    T_recon = jax.vmap(partial(recon_kin, lagrangian=learned_lagrangian(params, train_state)))(state)
 
     # Calculate the energies
-    T, V, V_dot = jax.vmap(partial(learned_energies, params=params, batch_stats=batch_stats,
-                                   train_state=train_state))(state)
-    H = T_recon + V
+    T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
+    H = T + V
 
     # Impose conservation of energy and shape
     L_con = jnp.mean((H - H_0) ** 2)
@@ -211,60 +210,94 @@ def loss(params, batch_stats, train_state, batch, H_0=0, train=True):
     L_pot = jnp.mean(V_dot ** 2)
 
     # Calculate loss
-    L_total = L_acc + 1000 * L_con + L_kin + L_pot
+    L_total = L_acc + 1 * L_con + 1 * L_kin + L_pot
 
     # Calculate updates
-    def dummy_lag(state):
-        q, q_dot = jnp.split(state, 2)
-        return learned_lagrangian(params, batch_stats, train_state, train=train, output='updates')(q, q_dot)
+    # def dummy_lag(state):
+    #     q, q_dot = jnp.split(state, 2)
+    #     return learned_lagrangian(params, train_state, output='updates')(q, q_dot)
+    #
+    # updates = jax.vmap(dummy_lag)(state)
 
-    updates = jax.vmap(dummy_lag)(state)
-
-    return L_total, updates
+    return L_total
 
 
 def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
-    analytical_step = jax.jit(jax.vmap(partial(rk4_step, f_analytical, t=0.0, h=time_step)))
+    # analytical_step = jax.jit(jax.vmap(partial(rk4_step, f_analytical, t=0.0, h=time_step)))
 
     # x0 = np.array([-0.3*np.pi, 0.2*np.pi, 0.35*np.pi, 0.5*np.pi], dtype=np.float32)
 
     t = np.arange(N, dtype=np.float32) * time_step  # time steps 0 to N
-    x_train = jax.device_get(solve_analytical(x_0, t))  # dynamics for first N time steps
+    random_key = jax.random.PRNGKey(0)
+    x_train = solve_analytical(x_0, t)  # dynamics for first N time steps
+    x_train = jax.random.permutation(random_key, x_train)
     # %time xt_train = jax.device_get(poormans_solve(x_train, time_step))
-    xt_train = jax.device_get(jax.vmap(f_analytical)(x_train))  # time derivatives of each state
-    y_train = jax.device_get(analytical_step(x_train))  # analytical next step
+    xt_train = jax.vmap(f_analytical)(x_train)  # time derivatives of each state
+    # y_train = jax.device_get(analytical_step(x_train))  # analytical next step
     # print(jnp.mean((xt_train - xt_train_ref[:N-1]) ** 2))
 
     # t_test = np.arange(N, 2*N, dtype=np.float32) * time_step # time steps N to 2N
-    x_test = jax.device_get(solve_analytical(x_0_test, t))  # dynamics for next N time steps
+    x_test = solve_analytical(x_0_test, t)  # dynamics for next N time steps
+    x_test = jax.random.permutation(random_key, x_test)
     # %time xt_test = jax.device_get(poormans_solve(x_test, time_step))
-    xt_test = jax.device_get(jax.vmap(f_analytical)(x_test))  # time derivatives of each state
-    y_test = jax.device_get(analytical_step(x_test))  # analytical next step
+    xt_test = jax.vmap(f_analytical)(x_test)  # time derivatives of each state
+    # y_test = jax.device_get(analytical_step(x_test))  # analytical next step
 
-    # Subsample arrays
+    # # Subsample arrays
     x_train = x_train[0::100]
     xt_train = xt_train[0::100]
     x_test = x_test[0::100]
     xt_test = xt_test[0::100]
 
-    return x_train, xt_train, x_test, xt_test, y_train, y_test
+    x_train = jax.vmap(normalize_dp)(x_train)
+    x_test = jax.vmap(normalize_dp)(x_test)
+
+    return x_train, xt_train, x_test, xt_test
+
+
+def train_test_data_generator_toy(x_0, x_0_test, batch_size, minibatch_per_batch, total_epochs, time_step):
+    N = 1000 * batch_size * minibatch_per_batch
+    x_train, xt_train, x_test, xt_test = generate_train_test_data_toy(time_step, N, x_0, x_0_test)
+
+    def get_dataset(epoch):
+        # x_train_epoch = x_train[(epoch + 1) * minibatch_per_batch * batch_size:
+        #                         (epoch + 1) * (minibatch_per_batch + 1) * batch_size]
+        # xt_train_epoch = xt_train[(epoch + 1) * minibatch_per_batch * batch_size:
+        #                           (epoch + 1) * (minibatch_per_batch + 1) * batch_size]
+        # x_test_epoch = x_test[(epoch + 1) * minibatch_per_batch * batch_size:
+        #                       (epoch + 1) * (minibatch_per_batch + 1) * batch_size]
+        # xt_test_epoch = xt_test[(epoch + 1) * minibatch_per_batch * batch_size:
+        #                         (epoch + 1) * (minibatch_per_batch + 1) * batch_size]
+
+        # return x_train_epoch, xt_train_epoch, x_test_epoch, xt_test_epoch
+        return x_train, xt_train
+
+    return get_dataset
+
+
+def train_test_data_generator_dummy(x_train, xt_train):
+    def get_dataset(epoch):
+        return x_train, xt_train
+
+    return get_dataset
 
 
 def train_test_data_generator(batch_size, minibatch_per_batch, time_step):
     eqs_motion = jax.jit(jax.vmap(f_analytical))
 
     # eqs_motion = jax.jit(jax.vmap(partial(poormans_solve, time_step)))
-    def get_derivative_dataset(rng):
+    def get_dataset(rng):
         # randomly sample inputs
 
         y0 = jnp.concatenate([
             jax.random.uniform(rng, (batch_size * minibatch_per_batch, 2)) * 2.0 * np.pi,
             (jax.random.uniform(rng + 1, (batch_size * minibatch_per_batch, 2)) - 0.5) * 10 * 2
         ], axis=1)
+        y0 = jax.vmap(normalize_dp)(y0)
 
         return y0, eqs_motion(y0)
 
-    return get_derivative_dataset
+    return get_dataset
 
 
 def vizualize_train_test_data(train_vis, test_vis):
@@ -294,18 +327,18 @@ def vizualize_train_test_data(train_vis, test_vis):
 
 
 @partial(jax.jit, static_argnums=2)
-def train_step(state: TrainState, batch, learning_rate_fn):
+def train_step(state: ts.TrainState, batch, learning_rate_fn):
     traj, traj_truth = batch
 
     def loss_fn(params):
         # logits = CNN().apply({'params': params}, imgs)
         # one_hot_gt_labels = jax.nn.one_hot(gt_labels, num_classes=10)
-        return loss(params, state.batch_stats, state, (traj, traj_truth), H_0=0)
+        return loss(params, state, (traj, traj_truth), H_0=0)
 
     # variables = {'params': state.params, 'batch_stats': state.batch_stats}
-    (loss_value, updates), grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
+    loss_value, grads = jax.value_and_grad(loss_fn)(state.params)
     state = state.apply_gradients(grads=grads)  # this is the whole update now! concise!
-    state = state.replace(batch_stats=updates['batch_stats'])
+    # state = state.replace(batch_stats=updates['batch_stats'])
     lr = learning_rate_fn(state.step)
     metrics = {'learning_rate': lr, 'loss': loss_value}
     return state, metrics
@@ -314,8 +347,7 @@ def train_step(state: TrainState, batch, learning_rate_fn):
 @jax.jit
 def eval_step(state, test_batch):
     traj_test, traj_test_truth = test_batch
-    variables = {'params': state.params, 'batch_stats': state.batch_stats}
-    loss_value = loss(variables, state, (traj_test, traj_test_truth), H_0=0)
+    loss_value = loss({'params': state.params}, state, (traj_test, traj_test_truth), H_0=0)
     return {'loss': loss_value}
 
 
@@ -359,13 +391,10 @@ def evaluate_model(state, test_batch):
 
 
 # This one will keep things nice and tidy compared to our previous examples
-def create_train_state(key, learning_rate_fn, params=None, batch_stats=None):
+def create_train_state(key, learning_rate_fn, params=None):
     network = MLP()
     if params is None:
-        variables = network.init(key, random.normal(key, (4,)), train=False)
-        params = variables['params']
-        if batch_stats is None:
-            batch_stats = variables['batch_stats']
-    adam_opt = optax.adam(learning_rate=learning_rate_fn)
+        params = network.init(key, random.normal(key, (4,)))['params']
+    adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=0.0001)
     # TrainState is a simple built-in wrapper class that makes things a bit cleaner
-    return TrainState.create(apply_fn=network.apply, params=params, batch_stats=batch_stats, tx=adam_opt), network
+    return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt), network

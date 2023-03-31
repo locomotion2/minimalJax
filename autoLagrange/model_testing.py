@@ -10,14 +10,14 @@ if __name__ == "__main__":
     # Load
     seed = 0
     ckpt_dir = 'tmp/flax-checkpointing'
-    restored_state, _ = al.create_train_state(jax.random.PRNGKey(seed), 0)
     params = loader.load_from_pkl(path=ckpt_dir, verbose=1)
-    train_state = restored_state
+    train_state, _ = al.create_train_state(jax.random.PRNGKey(seed), 0, params=params)
 
     # Test system
     time_step = 0.001
     N_sim = 1000 * 5
     x_0_sim = np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32)
+    # x_0_sim = np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32)
 
     # Simulate system
     t_sim = np.arange(N_sim, dtype=np.float32) * time_step  # time steps 0 to N
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     L_ana = T_ana - V_ana
 
     # Learned energies from trajectory
-    T_lnn, V_lnn, _ = jax.device_get(jax.vmap(al.partial(al.learned_energies, params))(x_sim))
+    T_lnn, V_lnn, _ = jax.device_get(jax.vmap(al.partial(al.learned_energies,
+                                                         params=params, train_state=train_state))(x_sim))
     H_lnn = T_lnn + V_lnn
     L_lnn = T_lnn - V_lnn
 
@@ -53,7 +54,7 @@ if __name__ == "__main__":
     # L_rec = T_rec - V_rec
 
     # Calibrated energies from trajectory
-    T_rec = jax.device_get(jax.vmap(partial(al.recon_kin, al.learned_lagrangian(params)))(x_sim))
+    T_rec = jax.device_get(jax.vmap(partial(al.recon_kin, lagrangian=al.learned_lagrangian(params, train_state)))(x_sim))
     H_0 = jnp.mean(H_lnn)
     V_rec = H_0 - T_rec
     L_rec = T_rec - V_rec
@@ -78,8 +79,8 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 3.5), dpi=120)
     plt.plot(t_sim, H_ana, label='H. Analytic')
-    # plt.plot(t_sim, H_lnn, label='H. Lnn')
-    # plt.plot(t_sim, H_rec, label='H. Recon')
+    plt.plot(t_sim, H_lnn, label='H. Lnn')
+    plt.plot(t_sim, H_rec, label='H. Recon')
     plt.plot(t_sim, H_cal, label='H. Calibrated')
     plt.title('Hamiltonians')
     plt.ylim(0, 0.1)
@@ -90,8 +91,8 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 3.5), dpi=120)
     plt.plot(t_sim, L_ana, label='L. Analytic')
-    # plt.plot(t_sim, L_lnn, label='L. Lnn')
-    # plt.plot(t_sim, L_rec, label='L. Reconstructed')
+    plt.plot(t_sim, L_lnn, label='L. Lnn')
+    plt.plot(t_sim, L_rec, label='L. Reconstructed')
     plt.plot(t_sim, L_cal, label='L. Calibrated')
     plt.title('Lagrangians')
     plt.ylabel('Energy Level (J)')
@@ -102,10 +103,10 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 3.5), dpi=120)
     plt.plot(t_sim, T_ana, label='Kin. Analytic')
     plt.plot(t_sim, V_ana, label='Pot. Analytic')
-    # plt.plot(t_sim, T_lnn, label='Kin. Lnn.')
-    # plt.plot(t_sim, V_lnn, label='Pot. Lnn.')
-    # plt.plot(t_sim, T_rec, label='Kin. Reconstructed')
-    # plt.plot(t_sim, V_rec, label='Pot. Reconstructed')
+    plt.plot(t_sim, T_lnn, label='Kin. Lnn.')
+    plt.plot(t_sim, V_lnn, label='Pot. Lnn.')
+    plt.plot(t_sim, T_rec, label='Kin. Reconstructed')
+    plt.plot(t_sim, V_rec, label='Pot. Reconstructed')
     plt.plot(t_sim, T_cal, label='Kin. Calibrated')
     plt.plot(t_sim, V_cal, label='Pot. Calibrated')
     plt.title('Energies')
