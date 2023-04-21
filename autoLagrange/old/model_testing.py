@@ -22,7 +22,15 @@ if __name__ == "__main__":
     # Simulate system
     t_sim = np.arange(N_sim, dtype=np.float32) * time_step  # time steps 0 to N
     x_sim = al.solve_analytical(x_0_sim, t_sim)
+    xt_sim = jax.vmap(al.f_analytical)(x_sim)  # time derivatives of each state
     x_sim = jax.vmap(al.normalize_dp)(x_sim)
+
+    # Losses
+    L_total, L_acc, L_con, L_kin, L_pot = np.zeros(N_sim), np.zeros(N_sim), np.zeros(N_sim), np.zeros(N_sim), np.zeros(N_sim)
+    for step in range(N_sim):
+        data = (x_sim[step, :], xt_sim[step, :])
+        L_total[step], L_acc[step], L_con[step], L_kin[step], L_pot[step] =\
+            al.loss_debug(params, train_state, data, H_0=0)
 
     # Analytic energies from trajectory
     T_ana, V_ana = jax.device_get(jax.vmap(al.analytic_energies)(x_sim))
@@ -111,6 +119,19 @@ if __name__ == "__main__":
     plt.plot(t_sim, V_cal, label='Pot. Calibrated')
     plt.title('Energies')
     plt.ylabel('Energy Level (J)')
+    plt.xlabel('Time (s)')
+    plt.legend(loc="best")
+    plt.show()
+
+    plt.figure(figsize=(8, 3.5), dpi=120)
+    plt.plot(t_sim, L_total, label='Total Loss')
+    plt.plot(t_sim, L_acc, label='Accuracy')
+    plt.plot(t_sim, L_con, label='Hamiltonian')
+    plt.plot(t_sim, L_kin, label='Kinetic')
+    plt.plot(t_sim, L_pot, label='Potential')
+    plt.ylim(-0.1, 1000)
+    plt.title('Errors')
+    plt.ylabel('Loss')
     plt.xlabel('Time (s)')
     plt.legend(loc="best")
     plt.show()

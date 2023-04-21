@@ -10,7 +10,7 @@ if __name__ == "__main__":
     print('Step 2: Generating the dataset generator')
     seed = 0  # needless to say these should be in a config or defined like flags
     total_epochs = 100
-    batch_size = 100
+    batch_size = 1500
     minibatch_per_batch = 1
 
     random_key = jax.random.PRNGKey(0)

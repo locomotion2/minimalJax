@@ -24,16 +24,16 @@ if __name__ == "__main__":
     # test_every = 10
     # num_batches = 150 * 5
 
-    # eval_every = 1
+    eval_every = 1000
     # report_every = 10
     seed = 0  # needless to say these should be in a config or defined like flags
-    total_epochs = 10000
+    total_epochs = 1500 * 100
     # batch_size = 512 * 1
     # minibatch_per_batch = 200
-    batch_size = 1000
+    batch_size = 1500
     minibatch_per_batch = 1
 
-    # learning_rate_fn = optax.linear_schedule(1e-3, 3e-4, batch_size * num_batches + 1, transition_begin=0)
+    # learning_rate_fn = optax.linear_schedule(1e-3, 1e-4, total_epochs + 1, transition_begin=0)
     # learning_rate_fn = lambda count: jnp.select([count < total_epochs * (minibatch_per_batch // 6),
     #                                              count < total_epochs * (2 * minibatch_per_batch // 6),
     #                                              count < total_epochs * (3 * minibatch_per_batch // 6),
@@ -41,9 +41,13 @@ if __name__ == "__main__":
     #                                              count < total_epochs * (5 * minibatch_per_batch // 6),
     #                                              count > total_epochs * (5 * minibatch_per_batch // 6)],
     #                                             [3e-4, 1e-4, 3e-5, 1e-5, 3e-6, 1e-6])
-    learning_rate_fn = lambda count: 1e-5
+    learning_rate_fn = lambda count: jnp.select([count < (total_epochs//3),
+                                                 count < (2*total_epochs//3),
+                                                 count > (2*total_epochs//3)],
+                                                [1e-3, 3e-4, 1e-4])
+    # learning_rate_fn = lambda count: 3e-4
 
-    reload = True
+    reload = False
     if reload:
         ckpt_dir = 'tmp/flax-checkpointing'
         params = loader.load_from_pkl(path=ckpt_dir, verbose=1)
@@ -60,6 +64,7 @@ if __name__ == "__main__":
         data_dir = 'tmp/data'
         (x_train, xt_train) = loader.load_from_pkl(path=data_dir, verbose=1)
         data_generator = al.train_test_data_generator_dummy(x_train, xt_train)
+        print(x_train.shape)
 
     print('Step 3: Beginning training')
     best_loss = np.inf
@@ -71,7 +76,8 @@ if __name__ == "__main__":
             batch = data_generator(random_key)
             random_key += 10
         else:
-            batch = data_generator(epoch)
+            # batch = data_generator(epoch)
+            batch = (x_train, xt_train)
 
         train_state, train_metrics = al.train_one_epoch(train_state, learning_rate_fn, batch,
                                                         batch_size, minibatch_per_batch, epoch,
@@ -83,10 +89,11 @@ if __name__ == "__main__":
             best_loss = train_metrics['loss']
             best_params = copy(train_state.params)
 
-        print(f"Epoch={epoch},"
-              f" train_loss={train_metrics['loss']:.6f},"
-              # f" test_loss={test_metrics['loss']:.6f},"
-              f" lr={train_metrics['learning_rate']:.6f}")
+        if epoch % eval_every == 0:
+            print(f"Epoch={epoch},"
+                  f" train_loss={train_metrics['loss']:.6f},"
+                  # f" test_loss={test_metrics['loss']:.6f},"
+                  f" lr={train_metrics['learning_rate']:.6f}")
         # if epoch % eval_every == 0:
         #     test_batch = data_generator(random_key)
         #     test_metrics = al.evaluate_model(train_state, test_batch)

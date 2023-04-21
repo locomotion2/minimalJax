@@ -2,8 +2,9 @@ import jax
 import jax.numpy as jnp
 from jax import random
 from jax.experimental.ode import odeint
+from jax.example_libraries import optimizers
 
-from flax import linen as nn, struct
+from flax import linen as nn
 from flax.training import train_state as ts
 import optax
 from clu import metrics
@@ -19,30 +20,42 @@ from typing import Any
 
 
 class MLP(nn.Module):
+    # @nn.compact
+    # def __call__(self, x):
+    #     # Input layers
+    #     x_in_1 = self.layer(x, features=32)
+    #     x_in_2 = self.layer(x_in_1, features=64)
+    #     x_in_3 = self.layer(x_in_2, features=128)
+    #     x_in_4 = self.layer(x_in_3, features=256)
+    #     # x_in_5 = self.layer(x_in_4, features=512)
+    #
+    #     # Skip Layer 1
+    #     x1 = self.layer(x_in_4, features=256)
+    #     # # Skip Layer 2
+    #     # x2 = self.layer(x_in + x1)
+    #     # # Skip Layer 3
+    #     # x3 = self.layer(x_in + x1 + x2)
+    #     # # Skip Layer 4
+    #     # x4 = self.layer(x_in + x1 + x2 + x3)
+    #
+    #     # Narrowing down
+    #     x_nar = self.layer(x1, features=128)
+    #     x_nar = self.layer(x_nar + x_in_3, features=64)
+    #     x_nar = self.layer(x_nar + x_in_2, features=32)
+    #     x_nar = self.layer(x_nar + x_in_1, features=4)
+    #
+    #     # Output layer
+    #     # x = nn.Dense(features=2)(x_in + x1 + x2 + x3 + x4)
+    #     x = nn.Dense(features=2)(x_nar + x)
+    #     return x
+
     @nn.compact
     def __call__(self, x):
-        # Input layers
-        x_in_1 = self.layer(x, features=32)
-        x_in_2 = self.layer(x_in_1, features=64)
-        x_in_3 = self.layer(x_in_2, features=128)
-
-        # Skip Layer 1
-        # x1 = self.layer(x_in)
-        # # Skip Layer 2
-        # x2 = self.layer(x_in + x1)
-        # # Skip Layer 3
-        # x3 = self.layer(x_in + x1 + x2)
-        # # Skip Layer 4
-        # x4 = self.layer(x_in + x1 + x2 + x3)
-
-        # # Narrowing down
-        x_nar = self.layer(x_in_3, features=128)
-        x_nar = self.layer(x_nar + x_in_3, features=64)
-        x_nar = self.layer(x_nar + x_in_2, features=32)
-
-        # Output layer
-        # x = nn.Dense(features=2)(x_in + x1 + x2 + x3 + x4)
-        x = nn.Dense(features=2)(x_nar + x_in_1)
+        x = nn.Dense(features=128)(x)
+        x = nn.activation.softplus(x)
+        x = nn.Dense(features=128)(x)
+        x = nn.activation.softplus(x)
+        x = nn.Dense(features=2)(x)
         return x
 
     def layer(self, x, features=256):
@@ -177,18 +190,51 @@ def learned_energies(state, params=None, train_state=None):
 
 
 def recon_kin(state, lagrangian=None):
-    # print(state)
     q, q_dot = jnp.split(state, 2)
-    # print(q)
-    # print(q_dot)
     In = jax.hessian(lagrangian, 1)(q, q_dot)
     T = jnp.abs(1 / 2 * jnp.transpose(q_dot) @ In @ q_dot)
     return T
 
 
+@jax.jit
+def loss_debug(params, train_state, batch, H_0=0):
+    state, targets = batch
+
+    # Predict the joint accelerations
+    preds = equation_of_motion(learned_lagrangian(params, train_state), state)
+    L_acc = jnp.mean((preds - targets) ** 2)
+
+    # Reconstruct the kinetic energy
+    T_recon = recon_kin(state, lagrangian=learned_lagrangian(params, train_state))
+
+    # Calculate the energies
+    T, V, V_dot = learned_energies(state, params=params, train_state=train_state)
+    H = T + V
+
+    # Impose conservation of energy and shape
+    L_con = jnp.mean((H - H_0) ** 2)
+    L_kin = jnp.mean((T - T_recon) ** 2)
+
+    # Impose q_dot independence on V_dot
+    L_pot = jnp.mean(V_dot ** 2)
+
+    # Calculate loss
+    # L_total = L_acc + L_con + L_kin + L_pot
+    L_total = L_acc
+
+    # Calculate updates
+    # def dummy_lag(state):
+    #     q, q_dot = jnp.split(state, 2)
+    #     return learned_lagrangian(params, train_state, output='updates')(q, q_dot)
+    #
+    # updates = jax.vmap(dummy_lag)(state)
+
+    return L_total, L_acc, L_con, L_kin, L_pot
+
+
 # define the loss of the model (MSE between predicted q, \dot q and targets)
 # @jax.jit
-def loss(params, train_state, batch, H_0=0, train=True):
+def loss(params, train_state, batch, H_0=0):
     state, targets = batch
 
     # Predict the joint accelerations
@@ -210,7 +256,8 @@ def loss(params, train_state, batch, H_0=0, train=True):
     L_pot = jnp.mean(V_dot ** 2)
 
     # Calculate loss
-    L_total = L_acc + 1 * L_con + 1 * L_kin + L_pot
+    # L_total = L_acc + L_con + L_kin + L_pot
+    L_total = L_acc
 
     # Calculate updates
     # def dummy_lag(state):
@@ -227,10 +274,11 @@ def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
 
     # x0 = np.array([-0.3*np.pi, 0.2*np.pi, 0.35*np.pi, 0.5*np.pi], dtype=np.float32)
 
-    t = np.arange(N, dtype=np.float32) * time_step  # time steps 0 to N
-    random_key = jax.random.PRNGKey(0)
+    # t = np.arange(N, dtype=np.float32) * time_step  # time steps 0 to N
+    t = np.arange(N, dtype=np.float32)
+    # random_key = jax.random.PRNGKey(0)
     x_train = solve_analytical(x_0, t)  # dynamics for first N time steps
-    x_train = jax.random.permutation(random_key, x_train)
+    # x_train = jax.random.permutation(random_key, x_train)
     # %time xt_train = jax.device_get(poormans_solve(x_train, time_step))
     xt_train = jax.vmap(f_analytical)(x_train)  # time derivatives of each state
     # y_train = jax.device_get(analytical_step(x_train))  # analytical next step
@@ -238,16 +286,16 @@ def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
 
     # t_test = np.arange(N, 2*N, dtype=np.float32) * time_step # time steps N to 2N
     x_test = solve_analytical(x_0_test, t)  # dynamics for next N time steps
-    x_test = jax.random.permutation(random_key, x_test)
+    # x_test = jax.random.permutation(random_key, x_test)
     # %time xt_test = jax.device_get(poormans_solve(x_test, time_step))
     xt_test = jax.vmap(f_analytical)(x_test)  # time derivatives of each state
     # y_test = jax.device_get(analytical_step(x_test))  # analytical next step
 
-    # # Subsample arrays
-    x_train = x_train[0::100]
-    xt_train = xt_train[0::100]
-    x_test = x_test[0::100]
-    xt_test = xt_test[0::100]
+    # Subsample arrays
+    # x_train = x_train[0::100]
+    # xt_train = xt_train[0::100]
+    # x_test = x_test[0::100]
+    # xt_test = xt_test[0::100]
 
     x_train = jax.vmap(normalize_dp)(x_train)
     x_test = jax.vmap(normalize_dp)(x_test)
@@ -256,7 +304,8 @@ def generate_train_test_data_toy(time_step, N, x_0, x_0_test):
 
 
 def train_test_data_generator_toy(x_0, x_0_test, batch_size, minibatch_per_batch, total_epochs, time_step):
-    N = 1000 * batch_size * minibatch_per_batch
+    # N = 1000 * batch_size * minibatch_per_batch
+    N = batch_size
     x_train, xt_train, x_test, xt_test = generate_train_test_data_toy(time_step, N, x_0, x_0_test)
 
     def get_dataset(epoch):
@@ -328,12 +377,12 @@ def vizualize_train_test_data(train_vis, test_vis):
 
 @partial(jax.jit, static_argnums=2)
 def train_step(state: ts.TrainState, batch, learning_rate_fn):
-    traj, traj_truth = batch
+    # traj, traj_truth = batch
 
     def loss_fn(params):
         # logits = CNN().apply({'params': params}, imgs)
         # one_hot_gt_labels = jax.nn.one_hot(gt_labels, num_classes=10)
-        return loss(params, state, (traj, traj_truth), H_0=0)
+        return loss(params, state, batch, H_0=0)
 
     # variables = {'params': state.params, 'batch_stats': state.batch_stats}
     loss_value, grads = jax.value_and_grad(loss_fn)(state.params)
@@ -352,32 +401,16 @@ def eval_step(state, test_batch):
 
 
 def train_one_epoch(state, learning_rate_fn, batch, batch_size, minibatch_per_batch, epoch, total_epochs):
-    # """Train for 1 epoch on the training set."""
-    # batch_metrics = []
-    # for cnt, (imgs, labels) in enumerate(dataloader):
-    #     state, metrics = train_step(state, imgs, labels)
-    #     batch_metrics.append(metrics)
-    #
-    # # Aggregate the metrics
-    # batch_metrics_np = jax.device_get(batch_metrics)  # pull from the accelerator onto host (CPU)
-    # epoch_metrics_np = {
-    #     k: np.mean([metrics[k] for metrics in batch_metrics_np])
-    #     for k in batch_metrics_np[0]
-    # }
     epoch_loss = 0.0
-    num_samples = 0
+    # num_samples = 0
     for minibatch_num in range(minibatch_per_batch):
         # fraction = (epoch + minibatch_num/minibatch_per_batch)/total_epochs
-        minibatch = (batch[0][minibatch_num * batch_size:(minibatch_num + 1) * batch_size],
-                     batch[1][minibatch_num * batch_size:(minibatch_num + 1) * batch_size])
+        # minibatch = (batch[0][minibatch_num * batch_size:(minibatch_num + 1) * batch_size],
+        #              batch[1][minibatch_num * batch_size:(minibatch_num + 1) * batch_size])
         # opt_state, params = update_derivative(fraction, opt_state, batch_data, 1e-6)
-        state, metrics = train_step(state, minibatch, learning_rate_fn)
-
-        # print(f"Epoch={epoch},"
-        #       f" minibatch_loss={metrics['loss']:.6f},"
-        #       f" lr={metrics['learning_rate']:.6f}")
+        state, metrics = train_step(state, batch, learning_rate_fn)
         epoch_loss += metrics['loss']
-        num_samples += batch_size
+        # num_samples += batch_size
     metrics_epoch = {'loss': epoch_loss / minibatch_per_batch, 'learning_rate': learning_rate_fn(state.step)}
     return state, metrics_epoch
 
@@ -395,6 +428,9 @@ def create_train_state(key, learning_rate_fn, params=None):
     network = MLP()
     if params is None:
         params = network.init(key, random.normal(key, (4,)))['params']
-    adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=0.0001)
+        # params = network.init(key, (-1, 4))['params']
+    # adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=0.0001)
+    adam_opt = optax.adam(learning_rate=learning_rate_fn)
+    # adam_opt = optimizers.adam(learning_rate_fn)
     # TrainState is a simple built-in wrapper class that makes things a bit cleaner
     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt), network
