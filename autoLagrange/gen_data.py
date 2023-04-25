@@ -10,9 +10,10 @@ if __name__ == "__main__":
                 'test_every': 10,
                 'num_batches': 1500,
                 'time_step': 0.01,
-                'data_size': 150 * 5,
+                'data_size': 1000 * 100,
                 'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
-                'data_dir': 'tmp/data'
+                'data_dir': 'tmp/data',
+                'seed': 0
                 }
 
     # Generate data
