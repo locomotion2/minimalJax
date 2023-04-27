@@ -33,7 +33,8 @@ class MLP(nn.Module):
     # def __call__(self, x):
     #     x_1 = self.layer(x, features=256)
     #     x_2 = self.layer(x_1, features=256)
-    #     x_out = self.layer(x_1 + x_2, features=4)
+    #     x_3 = self.layer(x_1 + x_2, features=256)
+    #     x_out = self.layer(x_1 + x_2 + x_3, features=4)
     #     x_out = self.layer(x_out + x, features=2)
     #     return x_out
 
@@ -46,10 +47,16 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        x = self.layer(x, features=256)
-        x = self.layer(x, features=256)
-        # x = self.layer(x, features=128)
-        x_out = self.layer(x, features=2)
+        size = 64
+        skip_layers = 4
+        x_prev = self.layer(x, features=size)
+        x_cur = self.layer(x_prev, features=size)
+        for i in range(skip_layers):
+            x_temp = x_cur
+            x_cur = self.layer(x_cur + x_prev, features=64)
+            x_prev = x_temp
+
+        x_out = self.layer(x_cur, features=2)
         return x_out
 
     def layer(self, x, features=128):
@@ -120,7 +127,7 @@ def solve_autograd(initial_state, times, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8
 # Double pendulum dynamics via analytical forces taken from Diego's blog
 @partial(jax.jit, backend='cpu')
 def solve_analytical(initial_state, times):
-    return odeint(f_analytical, initial_state, t=times, rtol=1e-10, atol=1e-10)
+    return odeint(f_analytical, initial_state, t=times, rtol=1e-9, atol=1e-9)
 
 
 def normalize_dp(state):
@@ -180,9 +187,9 @@ def loss(params, train_state, batch):
     state, targets = batch
 
     # calculate energies
-    # T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
-    # T_rec = jax.vmap(partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state)))(state)
-    # H = T + V
+    T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
+    T_rec = jax.vmap(partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state)))(state)
+    H = T + V
 
     # predict joint accelerations
     preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, train_state)))(state)
@@ -192,15 +199,15 @@ def loss(params, train_state, batch):
     # L_con = jnp.mean(H ** 2)
 
     # impose clean derivative
-    # L_kin = jnp.mean((T - T_rec) ** 2)
+    L_kin = jnp.mean((T - T_rec) ** 2)
 
-    # # impose independence form q_dot on V due to mechanichal system
-    # L_pot = jnp.mean(V_dot ** 2)
-    #
+    # impose independence form q_dot on V due to mechanichal system
+    L_pot = jnp.mean(V_dot ** 2)
+
     # # impose positive kin. energy
     # L_pos = jnp.mean(jnp.clip(T, a_min=None, a_max=0) ** 2)
 
-    return L_acc
+    return L_acc + 0 * 1e-3 * (L_kin + L_pot)
 
 
 @jax.jit
@@ -267,13 +274,14 @@ def eval_step(state, test_batch):
     return {'loss': loss_value}
 
 
-def run_training(train_state, batch_train, batch_test, settings):
+def run_training(train_state, dataloader, settings):
     # batch_size = settings['batch_size']
     test_every = settings['test_every']
     num_batches = settings['num_batches']
     num_minibatches = settings['num_minibatches']
     num_epochs = settings['num_epochs']
     lr_func = settings['lr_func']
+    random_key = jax.random.PRNGKey(settings['seed'])
 
     train_losses = []
     test_losses = []
@@ -284,6 +292,9 @@ def run_training(train_state, batch_train, batch_test, settings):
         # Iterate over every iteration
         for epoch in range(num_epochs):
             epoch_loss = 0
+            batch_train, batch_test = dataloader(random_key)
+            random_key += 10
+
             x_train, xt_train = batch_train
             x_train_minibatches = jnp.split(x_train, num_minibatches)
             xt_train_minibatches = jnp.split(xt_train, num_minibatches)
@@ -298,24 +309,15 @@ def run_training(train_state, batch_train, batch_test, settings):
                 # When a batch is done
                 epoch_loss += train_loss / num_batches
                 # print(f"epoch:{epoch}, batch:{batch}, loss:{train_loss:.6f}")
-                train_losses.append(epoch_loss)
 
                 # Check for the best params
                 if train_loss < best_loss:
                     best_loss = train_loss
                     best_params = copy(train_state.params)
 
-                # print(f"batch length: {train_state.step}")
-
-            # If error explosion
-            # if train_loss > best_loss*100:
-            #     print('Error explosion!')
-            #     train_state.params = copy(best_params)
-
+            train_losses.append(epoch_loss)
             test_loss = eval_step(train_state, batch_test)['loss']
             test_losses.append(test_loss)
-
-            # print(f"Epoch length: {train_state.step}")
 
             # Output results now and then for debugging
             if epoch % test_every == 0:
@@ -335,11 +337,17 @@ def generate_trajectory_data(x0, t_window, section_num, key):
     xt_traj = None
     x_start = x0
     for section in range(section_num):
-        print(section)
         x_traj_sec = solve_analytical(x_start, t_window)
         x_start = x_traj_sec[-1, :]
+        # x_start = normalize_dp(x_start)
         x_traj_sec = jax.random.permutation(key, x_traj_sec)
         xt_traj_sec = jax.vmap(f_analytical)(x_traj_sec)
+
+        if jnp.any(jnp.isnan(x_traj_sec)) or jnp.any(jnp.isnan(xt_traj_sec)):
+            print('Problem!')
+            print(x_traj_sec)
+            return
+
         if x_traj is None:
             x_traj = x_traj_sec
             xt_traj = xt_traj_sec
@@ -379,7 +387,36 @@ def generate_data(settings):
     x_test = jax.vmap(normalize_dp)(x_test)
     print('Normalized data.')
 
+    print(jnp.amax(x_test, axis=0))
+    print(jnp.amin(x_test, axis=0))
+
     return (x_train, xt_train), (x_test, xt_test)
+
+
+def build_simple_dataloader(batch_train, batch_test, settings):
+    def dataloader(key):
+        return batch_train, batch_test
+
+    return dataloader
+
+
+def build_general_dataloader(batch_train, batch_test, settings):
+    # eqs_motion = jax.jit(jax.vmap(partial(poormans_solve, time_step)))
+    batch_size = settings['batch_size']
+    num_minibathces = settings['num_minibatches']
+    data_size = batch_size * num_minibathces
+    eqs_motion = jax.jit(jax.vmap(f_analytical))
+
+    def dataloader(key):
+        # randomly sample inputs
+        y0 = jnp.concatenate([
+            jax.random.uniform(key, (data_size, 2)) * 2.0 * np.pi,
+            (jax.random.uniform(key + 1, (data_size, 2)) - 0.5) * 10 * 2], axis=1)
+        y0 = jax.vmap(normalize_dp)(y0)
+
+        return (y0, eqs_motion(y0)), batch_test
+
+    return dataloader
 
 
 def display_results(losses):
@@ -388,55 +425,9 @@ def display_results(losses):
     plt.plot(train_losses, label='Train loss')
     plt.plot(test_losses, label='Test loss')
     plt.yscale('log')
-    plt.ylim(None, 200)
+    # plt.ylim(None, 1000)
     plt.title('Losses over training')
     plt.xlabel("Train step")
     plt.ylabel("Mean squared error")
     plt.legend()
     plt.show()
-
-
-if __name__ == "__main__":
-    # Define all settings
-    settings = {'batch_size': 100,
-                'test_every': 1,
-                'num_batches': 1,
-                'num_minibatches': 1000,
-                'num_epochs': 100,
-                'time_step': 0.01,
-                'data_size': 100 * 1000,
-                'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
-                'data_dir': 'tmp/data',
-                'reload': False,
-                'ckpt_dir': 'tmp/flax-checkpointing',
-                'seed': 0
-                }
-
-    # Load the data
-    batch_train, batch_test = loader.load_from_pkl(path=settings['data_dir'], verbose=1)
-    # print(batch_train)
-
-    # Create a training state
-    num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
-    learning_rate_fn = lambda t: jnp.select([t < num_iterations * 1 // 4,
-                                             t < num_iterations * 2 // 4,
-                                             t < num_iterations * 3 // 4,
-                                             t > num_iterations * 3 // 4],
-                                            [1e-3, 3e-4, 1e-4, 3e-5])
-    settings['lr_func'] = learning_rate_fn
-    params = None
-    if settings['reload']:
-        params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
-    train_state = create_train_state(jax.random.PRNGKey(settings['seed']),
-                                     learning_rate_fn,
-                                     params=params)
-
-    # Train the model
-    best_params, losses = run_training(train_state, batch_train, batch_test, settings)
-
-    # Save params from model
-    print(f'Saving the model params in {settings["ckpt_dir"]}.')
-    loader.save_to_pkl(path=settings['ckpt_dir'], obj=best_params, verbose=1)
-
-    # Display training curves
-    display_results(losses)

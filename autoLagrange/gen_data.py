@@ -11,7 +11,7 @@ if __name__ == "__main__":
                 'num_batches': 1500,
                 'sections_num': 10,
                 'time_step': 0.05,
-                'data_size': 1000 * 100,
+                'data_size': 100 * 1000,
                 'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
                 'data_dir': 'tmp/data',
                 'seed': 0

@@ -17,7 +17,7 @@ if __name__ == "__main__":
                 'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
                 'data_dir': 'tmp/data',
                 'reload': False,
-                'ckpt_dir': 'tmp/flax-checkpointing',
+                'ckpt_dir': 'tmp/current',
                 'seed': 0
                 }
 

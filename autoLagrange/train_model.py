@@ -1,0 +1,58 @@
+import lagranx as lx
+import jax
+import jax.numpy as jnp
+import numpy as np
+import stable_baselines3.common.save_util as loader
+
+if __name__ == "__main__":
+    # Define all settings
+    settings = {'batch_size': 1000,
+                'test_every': 1,
+                'num_batches': 10,
+                'num_minibatches': 100,
+                'num_epochs': 100,
+                'time_step': 0.05,
+                'data_size': 1000 * 100,
+                'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
+                'data_dir': 'tmp/data',
+                'reload': True,
+                'save': True,
+                'generalize': False,
+                'ckpt_dir': 'tmp/current',
+                'seed': 0
+                }
+
+    # Load the data
+    batch_train, batch_test = loader.load_from_pkl(path=settings['data_dir'], verbose=1)
+
+    # Create a training state
+    num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
+    learning_rate_fn = lambda t: jnp.select([t < num_iterations * 1 // 4,
+                                             t < num_iterations * 2 // 4,
+                                             t < num_iterations * 3 // 4,
+                                             t > num_iterations * 3 // 4],
+                                            [5e-5, 3e-5, 1e-5, 3e-6])
+    settings['lr_func'] = learning_rate_fn
+    params = None
+    if settings['reload']:
+        params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
+        print(f"Params loaded from file: {settings['ckpt_dir']}")
+    train_state = lx.create_train_state(jax.random.PRNGKey(settings['seed']),
+                                     learning_rate_fn,
+                                     params=params)
+
+    # Define dataloader
+    dataloader = lx.build_simple_dataloader(batch_train, batch_test, settings)
+    if settings['generalize']:
+        dataloader = lx.build_general_dataloader(batch_train, batch_test, settings)
+
+    # Train the model
+    best_params, losses = lx.run_training(train_state, dataloader, settings)
+
+    # Save params from model
+    if settings['save']:
+        print(f'Saving the model params in {settings["ckpt_dir"]}.')
+        loader.save_to_pkl(path=settings['ckpt_dir'], obj=best_params, verbose=1)
+
+    # Display training curves
+    lx.display_results(losses)
