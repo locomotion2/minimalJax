@@ -31,8 +31,8 @@ class MLP(nn.Module):
 
     # @nn.compact
     # def __call__(self, x):
-    #     x_1 = self.layer(x, features=128)
-    #     x_2 = self.layer(x_1, features=128)
+    #     x_1 = self.layer(x, features=256)
+    #     x_2 = self.layer(x_1, features=256)
     #     x_out = self.layer(x_1 + x_2, features=4)
     #     x_out = self.layer(x_out + x, features=2)
     #     return x_out
@@ -48,6 +48,7 @@ class MLP(nn.Module):
     def __call__(self, x):
         x = self.layer(x, features=256)
         x = self.layer(x, features=256)
+        # x = self.layer(x, features=128)
         x_out = self.layer(x, features=2)
         return x_out
 
@@ -179,9 +180,9 @@ def loss(params, train_state, batch):
     state, targets = batch
 
     # calculate energies
-    T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
-    T_rec = jax.vmap(partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state)))(state)
-    H = T + V
+    # T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
+    # T_rec = jax.vmap(partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state)))(state)
+    # H = T + V
 
     # predict joint accelerations
     preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, train_state)))(state)
@@ -191,7 +192,7 @@ def loss(params, train_state, batch):
     # L_con = jnp.mean(H ** 2)
 
     # impose clean derivative
-    L_kin = jnp.mean((T - T_rec) ** 2)
+    # L_kin = jnp.mean((T - T_rec) ** 2)
 
     # # impose independence form q_dot on V due to mechanichal system
     # L_pot = jnp.mean(V_dot ** 2)
@@ -199,7 +200,7 @@ def loss(params, train_state, batch):
     # # impose positive kin. energy
     # L_pos = jnp.mean(jnp.clip(T, a_min=None, a_max=0) ** 2)
 
-    return L_acc + 0.0 * L_kin
+    return L_acc
 
 
 @jax.jit
@@ -281,26 +282,30 @@ def run_training(train_state, batch_train, batch_test, settings):
 
     try:
         # Iterate over every iteration
-        for epoch in range(num_epochs + 1):
-            train_loss = 0
+        for epoch in range(num_epochs):
+            epoch_loss = 0
             x_train, xt_train = batch_train
             x_train_minibatches = jnp.split(x_train, num_minibatches)
             xt_train_minibatches = jnp.split(xt_train, num_minibatches)
-            for batch in range(num_batches + 1):
+            for batch in range(num_batches):
+                train_loss = 0
                 for minibatch in range(num_minibatches):
                     minibatch_current = (x_train_minibatches[minibatch], xt_train_minibatches[minibatch])
                     train_state, train_metrics = train_step(train_state, minibatch_current, lr_func)
                     train_loss += train_metrics['loss'] / num_minibatches
+                    # print(f"minibatch length: {train_state.step}")
 
                 # When a batch is done
-                train_loss = train_loss
-                print(f"epoch:{epoch}, batch:{batch}, loss:{train_loss:.6f}")
-                train_losses.append(train_loss)
+                epoch_loss += train_loss / num_batches
+                # print(f"epoch:{epoch}, batch:{batch}, loss:{train_loss:.6f}")
+                train_losses.append(epoch_loss)
 
                 # Check for the best params
                 if train_loss < best_loss:
                     best_loss = train_loss
                     best_params = copy(train_state.params)
+
+                # print(f"batch length: {train_state.step}")
 
             # If error explosion
             # if train_loss > best_loss*100:
@@ -310,10 +315,12 @@ def run_training(train_state, batch_train, batch_test, settings):
             test_loss = eval_step(train_state, batch_test)['loss']
             test_losses.append(test_loss)
 
+            # print(f"Epoch length: {train_state.step}")
+
             # Output results now and then for debugging
             if epoch % test_every == 0:
                 print(
-                    f"epoch={epoch}, train_loss={train_loss:.6f}, test_loss={test_loss:.6f}, lr={train_metrics['learning_rate']:.6f}")
+                    f"epoch={epoch}, train_loss={epoch_loss:.6f}, test_loss={test_loss:.6f}, lr={train_metrics['learning_rate']:.6f}")
 
     except KeyboardInterrupt:
         # Save params from model
@@ -323,30 +330,48 @@ def run_training(train_state, batch_train, batch_test, settings):
     return best_params, (train_losses, test_losses)
 
 
+def generate_trajectory_data(x0, t_window, section_num, key):
+    x_traj = None
+    xt_traj = None
+    x_start = x0
+    for section in range(section_num):
+        print(section)
+        x_traj_sec = solve_analytical(x_start, t_window)
+        x_start = x_traj_sec[-1, :]
+        x_traj_sec = jax.random.permutation(key, x_traj_sec)
+        xt_traj_sec = jax.vmap(f_analytical)(x_traj_sec)
+        if x_traj is None:
+            x_traj = x_traj_sec
+            xt_traj = xt_traj_sec
+        else:
+            x_traj = jnp.append(x_traj, x_traj_sec, axis=0)
+            xt_traj = jnp.append(xt_traj, xt_traj_sec, axis=0)
+    return x_traj, xt_traj, x_start
+
+
 def generate_data(settings):
     # load settings
     N = settings['data_size']
     x0 = settings['starting_point']
     time_step = settings['time_step']
+    section_num = settings['sections_num']
     key = jax.random.PRNGKey(settings['seed'])
 
     # create time
-    t_train = np.arange(N, dtype=np.float32) * time_step  # time steps 0 to N
+    t_window = np.arange(N / section_num, dtype=np.float32) * time_step
+    # t_train = np.arange(N / section_num, dtype=np.float32) * time_step  # time steps 0 to N
     t_test = np.arange(N, 2 * N, dtype=np.float32) * time_step  # time steps N to 2N
+    # t_train_sec = jnp.split(t_train, section_num)
+    # t_test_sec = jnp.split(t_test, section_num)
 
-    # create train data
-    x_train = solve_analytical(x0, t_train)  # dynamics for first N time steps
-    x_train = jax.random.permutation(key, x_train)  # randomly change the order of samples
-    xt_train = jax.vmap(f_analytical)(x_train)  # time derivatives of each state
+    # create training data
+    x_train, xt_train, x0_test = generate_trajectory_data(x0, t_window, section_num, key)
     print('Generated train data.')
 
     # create test data
-    noise = np.random.RandomState(0).randn(x0.size)
+    # noise = np.random.RandomState(0).randn(x0.size)
     # x0_test = x0 + noise * 1e-3
-    x0_test = x0
-    x_test = solve_analytical(x0_test, t_test)  # dynamics for next N time steps
-    x_test = jax.random.permutation(key, x_test)  # randomly change the order of samples
-    xt_test = jax.vmap(f_analytical)(x_test)  # time derivatives of each state
+    x_test, xt_test, _ = generate_trajectory_data(x0_test, t_window, section_num, key)
     print('Generated test data.')
 
     # normalize data
@@ -375,11 +400,11 @@ if __name__ == "__main__":
     # Define all settings
     settings = {'batch_size': 100,
                 'test_every': 1,
-                'num_batches': 100,
+                'num_batches': 1,
                 'num_minibatches': 1000,
-                'num_epochs': 200,
+                'num_epochs': 100,
                 'time_step': 0.01,
-                'data_size': 1000 * 100,
+                'data_size': 100 * 1000,
                 'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
                 'data_dir': 'tmp/data',
                 'reload': False,
@@ -392,12 +417,12 @@ if __name__ == "__main__":
     # print(batch_train)
 
     # Create a training state
-    num_iterations = settings['batch_size'] * settings['num_batches'] * settings['num_minibatches']
+    num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
     learning_rate_fn = lambda t: jnp.select([t < num_iterations * 1 // 4,
                                              t < num_iterations * 2 // 4,
                                              t < num_iterations * 3 // 4,
                                              t > num_iterations * 3 // 4],
-                                            [1e-4, 3e-5, 1e-5, 3e-6])
+                                            [1e-3, 3e-4, 1e-4, 3e-5])
     settings['lr_func'] = learning_rate_fn
     params = None
     if settings['reload']:

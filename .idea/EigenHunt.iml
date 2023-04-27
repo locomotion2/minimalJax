@@ -44,7 +44,7 @@
       <excludeFolder url="file://$MODULE_DIR$/wandb" />
       <excludeFolder url="file://$MODULE_DIR$/sim.egg-info" />
     </content>
-    <orderEntry type="jdk" jdkName="myjax (2)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="myjax" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
