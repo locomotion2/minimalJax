@@ -42,21 +42,22 @@ class MLP(nn.Module):
     # def __call__(self, x):
     #     x = self.layer(x, features=128)
     #     x = self.layer(x, features=128)
-    #     x_out = self.layer(x, features=2)
+    #     x_out = nn.Dense(features=2)(x)
     #     return x_out
 
     @nn.compact
     def __call__(self, x):
-        size = 64
-        skip_layers = 4
+        size = 256
+        skip_layers = 0
         x_prev = self.layer(x, features=size)
         x_cur = self.layer(x_prev, features=size)
+        # x_cur = self.layer(x_cur, features=size)
         for i in range(skip_layers):
             x_temp = x_cur
-            x_cur = self.layer(x_cur + x_prev, features=64)
+            x_cur = self.layer(x_cur + x_prev, features=size)
             x_prev = x_temp
 
-        x_out = self.layer(x_cur, features=2)
+        x_out = nn.Dense(features=2)(x_cur + x_prev)
         return x_out
 
     def layer(self, x, features=128):
@@ -127,7 +128,7 @@ def solve_autograd(initial_state, times, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8
 # Double pendulum dynamics via analytical forces taken from Diego's blog
 @partial(jax.jit, backend='cpu')
 def solve_analytical(initial_state, times):
-    return odeint(f_analytical, initial_state, t=times, rtol=1e-9, atol=1e-9)
+    return odeint(f_analytical, initial_state, t=times, rtol=1e-8, atol=1e-9)
 
 
 def normalize_dp(state):
@@ -290,6 +291,7 @@ def run_training(train_state, dataloader, settings):
 
     try:
         # Iterate over every iteration
+        epoch_loss_last = np.inf
         for epoch in range(num_epochs):
             epoch_loss = 0
             batch_train, batch_test = dataloader(random_key)
@@ -308,7 +310,6 @@ def run_training(train_state, dataloader, settings):
 
                 # When a batch is done
                 epoch_loss += train_loss / num_batches
-                # print(f"epoch:{epoch}, batch:{batch}, loss:{train_loss:.6f}")
 
                 # Check for the best params
                 if train_loss < best_loss:
@@ -319,6 +320,11 @@ def run_training(train_state, dataloader, settings):
             test_loss = eval_step(train_state, batch_test)['loss']
             test_losses.append(test_loss)
 
+            if epoch_loss > epoch_loss_last * 50 and False:
+                print(f'Early stopping! loss: {epoch_loss}')
+                break
+            epoch_loss_last = epoch_loss
+
             # Output results now and then for debugging
             if epoch % test_every == 0:
                 print(
@@ -326,8 +332,9 @@ def run_training(train_state, dataloader, settings):
 
     except KeyboardInterrupt:
         # Save params from model
-        print(f'Saving the model params in {settings["ckpt_dir"]}.')
-        loader.save_to_pkl(path=settings['ckpt_dir'], obj=best_params, verbose=1)
+        # print(f'Saving the model params in {settings["ckpt_dir"]}.')
+        print(f'Terminating learning!')
+        # loader.save_to_pkl(path=settings['ckpt_dir'], obj=best_params, verbose=1)
 
     return best_params, (train_losses, test_losses)
 
