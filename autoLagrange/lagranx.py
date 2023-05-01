@@ -47,17 +47,17 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        size = 256
-        skip_layers = 0
+        size = 512
+        # skip_layers = 0
         x_prev = self.layer(x, features=size)
-        x_cur = self.layer(x_prev, features=size)
-        # x_cur = self.layer(x_cur, features=size)
-        for i in range(skip_layers):
-            x_temp = x_cur
-            x_cur = self.layer(x_cur + x_prev, features=size)
-            x_prev = x_temp
+        # x_cur = self.layer(x_prev, features=size)
+        # # x_cur = self.layer(x_cur, features=size)
+        # for i in range(skip_layers):
+        #     x_temp = x_cur
+        #     x_cur = self.layer(x_cur + x_prev, features=size)
+        #     x_prev = x_temp
 
-        x_out = nn.Dense(features=2)(x_cur + x_prev)
+        x_out = nn.Dense(features=2)(x_prev)
         return x_out
 
     def layer(self, x, features=128):
@@ -259,7 +259,16 @@ def create_train_state(key, learning_rate_fn, params=None):
 def train_step(state, batch, learning_rate_fn):
     @jax.jit
     def loss_fn(params):
-        return loss(params, state, batch)
+        num_subbatches = 1
+        x, xt = batch
+        x_subbatches = jnp.split(x, num_subbatches)
+        xt_subbatches = jnp.split(xt, num_subbatches)
+
+        loss_val = 0
+        for subbatch in range(num_subbatches):
+            subbatch_current = (x_subbatches[subbatch], xt_subbatches[subbatch])
+            loss_val += loss(params, state, subbatch_current)
+        return loss_val / num_subbatches
 
     loss_value, grads = jax.value_and_grad(loss_fn)(state.params)
     state = state.apply_gradients(grads=grads)  # this is the whole update now! concise!
@@ -280,6 +289,7 @@ def run_training(train_state, dataloader, settings):
     test_every = settings['test_every']
     num_batches = settings['num_batches']
     num_minibatches = settings['num_minibatches']
+    # num_subbatches = settings['num_subbatches']
     num_epochs = settings['num_epochs']
     lr_func = settings['lr_func']
     random_key = jax.random.PRNGKey(settings['seed'])
@@ -320,7 +330,7 @@ def run_training(train_state, dataloader, settings):
             test_loss = eval_step(train_state, batch_test)['loss']
             test_losses.append(test_loss)
 
-            if epoch_loss > epoch_loss_last * 50 and False:
+            if epoch_loss > epoch_loss_last * 50:
                 print(f'Early stopping! loss: {epoch_loss}')
                 break
             epoch_loss_last = epoch_loss

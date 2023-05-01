@@ -6,11 +6,15 @@ import numpy as np
 import stable_baselines3.common.save_util as loader
 
 if __name__ == "__main__":
+
+    print('Compilation completed, training is starting.')
+
     # Define all settings
-    settings = {'batch_size': 10000,
-                'test_every': 10,
+    settings = {'batch_size': 1000,
+                'test_every': 1,
                 'num_batches': 1,
-                'num_minibatches': 1,
+                'num_minibatches': 1000,
+                'num_subbatches': 1,
                 'num_epochs': 1000,
                 'time_step': 0.05,
                 'data_size': 1000 * 100,
@@ -51,8 +55,12 @@ if __name__ == "__main__":
     if settings['generalize']:
         dataloader = lx.build_general_dataloader(batch_train, batch_test, settings)
 
+    print('Setup completed, training will now begin.')
+
     # Train the model
     best_params, losses = lx.run_training(train_state, dataloader, settings)
+
+    print('Training completed.')
 
     # Save params from model
     if settings['save']:
