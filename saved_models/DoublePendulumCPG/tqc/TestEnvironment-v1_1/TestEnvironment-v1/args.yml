@@ -2,7 +2,7 @@
 - - - algo
     - tqc
   - - conf_file
-    - hyperparams/tqc.yml
+    - hyperparams.py/tqc.yml
   - - device
     - auto
   - - env
@@ -15,7 +15,7 @@
     - -1
   - - gym_packages
     - []
-  - - hyperparams
+  - - hyperparams.py
     - gradient_steps: 10
       train_freq: 10
   - - log_folder

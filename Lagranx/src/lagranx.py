@@ -10,45 +10,19 @@ import optax
 import matplotlib.pyplot as plt
 from functools import partial
 from copy import deepcopy as copy
-import stable_baselines3.common.save_util as loader
+
+from src import dpend_model as model
 
 
 class MLP(nn.Module):
-    # @nn.compact
-    # def __call__(self, x):
-    #     x1 = self.layer(x, features=64)
-    #     x2 = self.layer(x1, features=128)
-    #     # x3 = self.layer(x2, features=256)
-    #
-    #     # x2_skip = self.layer(x3, features=128)
-    #     x1_skip = self.layer(x2, features=64)
-    #     x0_skip = self.layer(x1 + x1_skip, features=4)
-    #
-    #     # Output Layer
-    #     x_out = self.layer(x0_skip + x, features=1)
-    #
-    #     return x_out
-
-    # @nn.compact
-    # def __call__(self, x):
-    #     x_1 = self.layer(x, features=256)
-    #     x_2 = self.layer(x_1, features=256)
-    #     x_3 = self.layer(x_1 + x_2, features=256)
-    #     x_out = self.layer(x_1 + x_2 + x_3, features=4)
-    #     x_out = self.layer(x_out + x, features=2)
-    #     return x_out
-
-    # @nn.compact
-    # def __call__(self, x):
-    #     x = self.layer(x, features=128)
-    #     x = self.layer(x, features=128)
-    #     x_out = nn.Dense(features=2)(x)
-    #     return x_out
+    # def __init__(self, h_dim, *args, **kwargs):
+    #     self.h_dim = h_dim
+    #     super().__init__(*args, **kwargs)
 
     @nn.compact
     def __call__(self, x):
-        size = 512
         # skip_layers = 0
+        size = 128 * 5
         x_prev = self.layer(x, features=size)
         # x_cur = self.layer(x_prev, features=size)
         # # x_cur = self.layer(x_cur, features=size)
@@ -66,39 +40,6 @@ class MLP(nn.Module):
         return x
 
 
-def lagrangian(q, q_dot, m1, m2, l1, l2, g, energies=False):
-    t1, t2 = q  # theta 1 and theta 2
-    w1, w2 = q_dot  # omega 1 and omega 2
-
-    # kinetic energy (T)
-    T1 = 0.5 * m1 * (l1 * w1) ** 2
-    T2 = 0.5 * m2 * ((l1 * w1) ** 2 + (l2 * w2) ** 2 +
-                     2 * l1 * l2 * w1 * w2 * jnp.cos(t1 - t2))
-    T = T1 + T2
-
-    # potential energy (V)
-    y1 = -l1 * jnp.cos(t1)
-    y2 = y1 - l2 * jnp.cos(t2)
-    V = m1 * g * y1 + m2 * g * y2
-
-    if energies:
-        return T, V
-
-    return T - V
-
-
-def f_analytical(state, t=0, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8):
-    t1, t2, w1, w2 = state
-    a1 = (l2 / l1) * (m2 / (m1 + m2)) * jnp.cos(t1 - t2)
-    a2 = (l1 / l2) * jnp.cos(t1 - t2)
-    f1 = -(l2 / l1) * (m2 / (m1 + m2)) * (w2 ** 2) * jnp.sin(t1 - t2) - \
-         (g / l1) * jnp.sin(t1)
-    f2 = (l1 / l2) * (w1 ** 2) * jnp.sin(t1 - t2) - (g / l2) * jnp.sin(t2)
-    g1 = (f1 - a1 * f2) / (1 - a1 * a2)
-    g2 = (f2 - a2 * f1) / (1 - a1 * a2)
-    return jnp.stack([w1, w2, g1, g2])
-
-
 def equation_of_motion(lagrangian, state):
     q, q_t = jnp.split(state, 2)
     q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
@@ -107,49 +48,43 @@ def equation_of_motion(lagrangian, state):
     return jnp.concatenate([q_t, q_tt])
 
 
-def solve_lagrangian(lagrangian, initial_state, **kwargs):
-    # We currently run odeint on CPUs only, because its cost is dominated by
-    # control flow, which is slow on GPUs.
-    @partial(jax.jit, backend='cpu')
-    def f(initial_state):
-        return odeint(partial(equation_of_motion, lagrangian),
-                      initial_state, **kwargs)
-
-    return f(initial_state)
+# def solve_lagrangian(lagrangian, initial_state, **kwargs):
+#     # We currently run odeint on CPUs only, because its cost is dominated by
+#     # control flow, which is slow on GPUs.
+#     @partial(jax.jit, backend='cpu')
+#     def f(initial_state):
+#         return odeint(partial(equation_of_motion, lagrangian),
+#                       initial_state, **kwargs)
+#
+#     return f(initial_state)
 
 
 # Double pendulum dynamics via the rewritten Euler-Lagrange
-@partial(jax.jit, backend='cpu')
-def solve_autograd(initial_state, times, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8):
-    L = partial(lagrangian, m1=m1, m2=m2, l1=l1, l2=l2, g=g)
-    return solve_lagrangian(L, initial_state, t=times, rtol=1e-10, atol=1e-10)
+# @partial(jax.jit, backend='cpu')
+# def solve_autograd(initial_state, times, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8):
+#     L = partial(lagrangian, m1=m1, m2=m2, l1=l1, l2=l2, g=g)
+#     return solve_lagrangian(L, initial_state, t=times, rtol=1e-10, atol=1e-10)
 
 
 # Double pendulum dynamics via analytical forces taken from Diego's blog
 @partial(jax.jit, backend='cpu')
 def solve_analytical(initial_state, times):
-    return odeint(f_analytical, initial_state, t=times, rtol=1e-8, atol=1e-9)
+    return odeint(model.f_analytical, initial_state, t=times, rtol=1e-8, atol=1e-9)
 
 
-def normalize_dp(state):
-    # wrap generalized coordinates to [-pi, pi]
-    return jnp.concatenate([(state[:2] + np.pi) % (2 * np.pi) - np.pi, state[2:]])
-
-
-def rk4_step(f, x, t, h):
-    # one step of runge-kutta integration
-    k1 = h * f(x, t)
-    k2 = h * f(x + k1 / 2, t + h / 2)
-    k3 = h * f(x + k2 / 2, t + h / 2)
-    k4 = h * f(x + k3, t + h)
-    return x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+# def rk4_step(f, x, t, h):
+#     # one step of runge-kutta integration
+#     k1 = h * f(x, t)
+#     k2 = h * f(x + k1 / 2, t + h / 2)
+#     k3 = h * f(x + k2 / 2, t + h / 2)
+#     k4 = h * f(x + k3, t + h)
+#     return x + 1 / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
 
 def learned_lagrangian(params, train_state, output='lagrangian'):
     def lagrangian(q, q_t):
         assert q.shape == (2,)
         state = jnp.concatenate([q, q_t])
-        # state = normalize_dp(jnp.concatenate([q, q_t]))
         out = train_state.apply_fn({'params': params}, x=state)
         if output == 'energies':
             return out[0], out[1]
@@ -167,12 +102,6 @@ def learned_energies(state, params=None, train_state=None):
     T, V = learned_lagrangian(params, train_state, output='energies')(q, q_dot)
     V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)(q, q_dot)
     return T, V, V_dot
-
-
-def analytic_energies(state):
-    q = state[0:2]
-    q_dot = state[2:]
-    return lagrangian(q, q_dot, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8, energies=True)
 
 
 def kin_energy_lagrangian(state, lagrangian=None):
@@ -274,7 +203,6 @@ def train_step(state, batch, learning_rate_fn):
     state = state.apply_gradients(grads=grads)  # this is the whole update now! concise!
     lr = learning_rate_fn(state.step)
     metrics = {'learning_rate': lr, 'loss': loss_value}
-    # metrics = {'loss': loss_value}
     return state, metrics
 
 
@@ -289,10 +217,10 @@ def run_training(train_state, dataloader, settings):
     test_every = settings['test_every']
     num_batches = settings['num_batches']
     num_minibatches = settings['num_minibatches']
-    # num_subbatches = settings['num_subbatches']
     num_epochs = settings['num_epochs']
     lr_func = settings['lr_func']
     random_key = jax.random.PRNGKey(settings['seed'])
+    early_stopping_gain = settings['es_gain']
 
     train_losses = []
     test_losses = []
@@ -302,8 +230,10 @@ def run_training(train_state, dataloader, settings):
     try:
         # Iterate over every iteration
         epoch_loss_last = np.inf
-        for epoch in range(num_epochs):
+        epoch = 0
+        while epoch < num_epochs:
             epoch_loss = 0
+            train_metrics = None
             batch_train, batch_test = dataloader(random_key)
             random_key += 10
 
@@ -326,19 +256,23 @@ def run_training(train_state, dataloader, settings):
                     best_loss = train_loss
                     best_params = copy(train_state.params)
 
-            train_losses.append(epoch_loss)
-            test_loss = eval_step(train_state, batch_test)['loss']
-            test_losses.append(test_loss)
-
-            if epoch_loss > epoch_loss_last * 50:
-                print(f'Early stopping! loss: {epoch_loss}')
-                break
+            test_loss = 0
+            if epoch_loss > epoch_loss_last * early_stopping_gain:
+                print(f'Early stopping! loss: {epoch_loss}. Now resetting.')
+                train_state = create_train_state(settings['seed'], settings['lr_func'], params=best_params)
+                epoch = 0
+                continue
+            else:
+                train_losses.append(epoch_loss)
+                test_loss = eval_step(train_state, batch_test)['loss']
+                test_losses.append(test_loss)
             epoch_loss_last = epoch_loss
 
             # Output results now and then for debugging
             if epoch % test_every == 0:
                 print(
                     f"epoch={epoch}, train_loss={epoch_loss:.6f}, test_loss={test_loss:.6f}, lr={train_metrics['learning_rate']:.6f}")
+            epoch += 1
 
     except KeyboardInterrupt:
         # Save params from model
@@ -358,7 +292,7 @@ def generate_trajectory_data(x0, t_window, section_num, key):
         x_start = x_traj_sec[-1, :]
         # x_start = normalize_dp(x_start)
         x_traj_sec = jax.random.permutation(key, x_traj_sec)
-        xt_traj_sec = jax.vmap(f_analytical)(x_traj_sec)
+        xt_traj_sec = jax.vmap(model.f_analytical)(x_traj_sec)
 
         if jnp.any(jnp.isnan(x_traj_sec)) or jnp.any(jnp.isnan(xt_traj_sec)):
             print('Problem!')
@@ -400,8 +334,8 @@ def generate_data(settings):
     print('Generated test data.')
 
     # normalize data
-    x_train = jax.vmap(normalize_dp)(x_train)
-    x_test = jax.vmap(normalize_dp)(x_test)
+    x_train = jax.vmap(model.normalize)(x_train)
+    x_test = jax.vmap(model.normalize)(x_test)
     print('Normalized data.')
 
     print(jnp.amax(x_test, axis=0))
@@ -422,14 +356,14 @@ def build_general_dataloader(batch_train, batch_test, settings):
     batch_size = settings['batch_size']
     num_minibathces = settings['num_minibatches']
     data_size = batch_size * num_minibathces
-    eqs_motion = jax.jit(jax.vmap(f_analytical))
+    eqs_motion = jax.jit(jax.vmap(model.f_analytical))
 
     def dataloader(key):
         # randomly sample inputs
         y0 = jnp.concatenate([
             jax.random.uniform(key, (data_size, 2)) * 2.0 * np.pi,
             (jax.random.uniform(key + 1, (data_size, 2)) - 0.5) * 10 * 2], axis=1)
-        y0 = jax.vmap(normalize_dp)(y0)
+        y0 = jax.vmap(model.normalize)(y0)
 
         return (y0, eqs_motion(y0)), batch_test
 

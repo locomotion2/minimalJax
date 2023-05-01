@@ -1,31 +1,12 @@
-import lagranx as lx
+from src import lagranx as lx
 import jax
-import jax.numpy as jnp
 import optax
-import numpy as np
 import stable_baselines3.common.save_util as loader
+from hyperparams import settings
 
 if __name__ == "__main__":
 
     print('Compilation completed, training is starting.')
-
-    # Define all settings
-    settings = {'batch_size': 1000,
-                'test_every': 1,
-                'num_batches': 1,
-                'num_minibatches': 1000,
-                'num_subbatches': 1,
-                'num_epochs': 1000,
-                'time_step': 0.05,
-                'data_size': 1000 * 100,
-                'starting_point': np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32),
-                'data_dir': 'tmp/data',
-                'reload': True,
-                'save': True,
-                'generalize': True,
-                'ckpt_dir': 'tmp/current',
-                'seed': 0
-                }
 
     # Load the data
     batch_train, batch_test = loader.load_from_pkl(path=settings['data_dir'], verbose=1)
@@ -38,8 +19,8 @@ if __name__ == "__main__":
     #                                          t < num_iterations * 3 // 4,
     #                                          t > num_iterations * 3 // 4],
     #                                         [5e-4, 3e-4, 1e-4, 3e-5])
-    learning_rate_fn = optax.linear_schedule(init_value=1*10**(-3-stage),
-                                             end_value=1*10**(-4-stage),
+    learning_rate_fn = optax.linear_schedule(init_value=settings['lr_start']*10**(-stage),
+                                             end_value=settings['lr_end']*10**(-stage),
                                              transition_steps=num_iterations)
     settings['lr_func'] = learning_rate_fn
     params = None
@@ -47,8 +28,8 @@ if __name__ == "__main__":
         params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
         print(f"Params loaded from file: {settings['ckpt_dir']}")
     train_state = lx.create_train_state(jax.random.PRNGKey(settings['seed']),
-                                     learning_rate_fn,
-                                     params=params)
+                                        learning_rate_fn,
+                                        params=params)
 
     # Define dataloader
     dataloader = lx.build_simple_dataloader(batch_train, batch_test, settings)

@@ -7,7 +7,8 @@
       <sourceFolder url="file://$MODULE_DIR$/sim" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/pendulum-orbits" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/pendulum-orbits/links_and_joints" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/autoLagrange" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/Lagranx" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/Lagranx/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_26/TestEnvironment-v1" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_1" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_2" />
