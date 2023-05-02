@@ -1,5 +1,5 @@
 from src import lagranx as lx
-from src import dpend_model as model
+from src import dpend_model_cramer as model
 from hyperparams import settings
 
 import jax

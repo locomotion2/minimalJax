@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from functools import partial
 from copy import deepcopy as copy
 
-from src import dpend_model as model
+from src import dpend_model_cramer as model
 
 
 class MLP(nn.Module):
