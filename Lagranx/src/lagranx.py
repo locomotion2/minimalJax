@@ -119,14 +119,14 @@ def loss(params, train_state, batch):
     # calculate energies
     T, V, V_dot = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
     T_rec = jax.vmap(partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state)))(state)
-    H = T + V
+    H = T_rec + V
 
     # predict joint accelerations
     preds = jax.vmap(partial(equation_of_motion, learned_lagrangian(params, train_state)))(state)
     L_acc = jnp.mean((preds - targets) ** 2)
 
-    # # impose energy conservation
-    # L_con = jnp.mean(H ** 2)
+    # impose energy conservation
+    L_con = jnp.mean(H ** 2)
 
     # impose clean derivative
     L_kin = jnp.mean((T - T_rec) ** 2)
@@ -137,7 +137,7 @@ def loss(params, train_state, batch):
     # # impose positive kin. energy
     # L_pos = jnp.mean(jnp.clip(T, a_min=None, a_max=0) ** 2)
 
-    return L_acc + 0 * 1e-3 * (L_kin + L_pot)
+    return L_acc + (L_kin + L_pot) + L_con
 
 
 @jax.jit
