@@ -12,7 +12,7 @@ from functools import partial
 from copy import deepcopy as copy
 
 # from src import dpend_model_cramer as model
-from src import dpend_model_arne as model
+from Lagranx.src import dpend_model_arne as model
 
 
 class MLP(nn.Module):
@@ -138,7 +138,7 @@ def loss(params, train_state, batch):
     # # impose positive kin. energy
     # L_pos = jnp.mean(jnp.clip(T, a_min=None, a_max=0) ** 2)
 
-    return L_acc + ((L_kin + L_pot) + 10 * L_con)
+    return L_acc + ((L_kin + L_pot) + 10000 * L_con)
 
 
 @jax.jit
@@ -364,8 +364,8 @@ def build_general_dataloader(batch_train, batch_test, settings):
         # randomly sample inputs
         y0 = jnp.concatenate([
             jax.random.uniform(key, (data_size, 2)) * 2.0 * np.pi,
-            (jax.random.uniform(key + 1, (data_size, 1)) - 0.5) * 10 * 2,
-            (jax.random.uniform(key + 1, (data_size, 1)) - 0.5) * 10 * 4], axis=1)
+            (jax.random.uniform(key + 10, (data_size, 1)) - 0.5) * 10 * 2,
+            (jax.random.uniform(key + 20, (data_size, 1)) - 0.5) * 10 * 4], axis=1)
         y0 = jax.vmap(model.normalize)(y0)
 
         # return (y0, eqs_motion(y0)), batch_test

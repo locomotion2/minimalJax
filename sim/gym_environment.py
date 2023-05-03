@@ -2,8 +2,8 @@ import pandas as pd
 
 from sim.CONSTANTS import *
 
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
 from typing import Callable
 import matplotlib.pyplot as plt
@@ -18,8 +18,9 @@ from PIL import ImageGrab
 from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
-from src import lagranx as lx
-import stable_baselines3.common.save_util as loader
+from sim.energy_observer import EnergyObserver
+# from Lagranx.src import lagranx as lx
+# import stable_baselines3.common.save_util as loader
 
 
 def p_norm(x, p):
@@ -83,8 +84,7 @@ class BaseGymEnvironment(gym.Env):
         if energy_observer is None or energy_observer == 'model':
             self.energy_observer = None
         elif energy_observer is 'learned':
-            params = loader.load_from_pkl(path='tmp/current', verbose=1)
-            self.energy_observer = lx.create_train_state(0, 0, params=params)
+            self.energy_observer = EnergyObserver()
 
         generator = kwargs.get('generator', None)
         self.system = kwargs.get('system', None)
@@ -158,7 +158,10 @@ class BaseGymEnvironment(gym.Env):
         # Model data
         p_model, v_model = self.sim.get_cartesian_state_model()
         q_model, dq_model = self.sim.get_joint_state_model()
-        E_model = self.sim.get_energies()
+        if self.energy_observer is not None:
+            E_model = self.energy_observer.get_energies(q_model, dq_model)
+        else:
+            E_model = self.sim.get_energies()
 
         # CPG data
         # p_gen = self.sim.get_cartesian_state_generator()
@@ -196,7 +199,7 @@ class BaseGymEnvironment(gym.Env):
             # Extract data for learning
             state, obs = self.gather_data()
             reward, costs = self.reward_func(state)
-            done = self.sim.is_done()
+            terminated = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
             # Track variables
@@ -206,12 +209,14 @@ class BaseGymEnvironment(gym.Env):
             self.cur_step += 1
 
             # Handle episode end
-            if done:
+            if terminated:
                 if self.visualize:
                     self.plot()
-                info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
+                # info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
 
-            return obs, reward, done, info
+            truncated = terminated
+
+            return obs, reward, terminated, truncated, info
 
         except KeyboardInterrupt:
             # del self.sim
@@ -219,7 +224,7 @@ class BaseGymEnvironment(gym.Env):
             print("Closing the program due to Keyboard interrupt.")
             raise KeyboardInterrupt
 
-    def reset(self):
+    def reset(self, seed=None, otions=None):
 
         # Reset system
         self.new_target_energy()
@@ -237,7 +242,7 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = reward
         self.cur_step = 0
 
-        return obs
+        return obs, {}
 
     def plot(self):
         try:

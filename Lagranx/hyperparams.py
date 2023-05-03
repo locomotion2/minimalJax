@@ -1,13 +1,13 @@
 import numpy as np
 
-settings = {'batch_size': 800,
+settings = {'batch_size': 1000,
             'test_every': 1,
             'num_batches': 1,
             'num_minibatches': 100,
             'num_subbatches': 1,
-            'num_epochs': 10000,
+            'num_epochs': 1000,
             'time_step': 0.05,
-            'data_size': 800 * 100,
+            'data_size': 1000 * 100,
             'sections_num': 1,
             'lr_start': 1e-3,
             'lr_end': 1e-4,
@@ -20,7 +20,7 @@ settings = {'batch_size': 800,
             'seed': 0,
             'reload': True,
             'save': True,
-            'generalize': False,
+            'generalize': True,
             }
 
 # settings = {'batch_size': 1000,

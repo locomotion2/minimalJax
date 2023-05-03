@@ -12,7 +12,7 @@ if __name__ == "__main__":
     batch_train, batch_test = loader.load_from_pkl(path=settings['data_dir'], verbose=1)
 
     # Create a training state
-    stage = 0
+    stage = 2
     num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
     # learning_rate_fn = lambda t: jnp.select([t < num_iterations * 1 // 4,
     #                                          t < num_iterations * 2 // 4,

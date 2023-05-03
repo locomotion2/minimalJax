@@ -51,13 +51,20 @@ if __name__ == "__main__":
     mean_lnn = jnp.mean(T_rec)
     max_ana = jnp.max(T_ana - mean_ana)
     max_lnn = jnp.max(T_rec - mean_lnn)
-    T_cal = ((T_rec - mean_lnn) / max_lnn) * max_ana + mean_ana
+    # T_cal = ((T_rec - mean_lnn) / max_lnn) * max_ana + mean_ana
+    T_cal = T_rec / max_lnn * max_ana - mean_lnn / max_lnn * max_ana + mean_ana
+    alpha = max_ana / max_lnn
+    beta = - mean_lnn * max_ana / max_lnn + mean_ana
+    print(f'Factors: {alpha}, {beta}.')
 
     mean_ana = jnp.mean(V_ana)
     mean_lnn = jnp.mean(V_rec)
     max_ana = jnp.max(V_ana - mean_ana)
     max_lnn = jnp.max(V_rec - mean_lnn)
     V_cal = ((V_rec - mean_lnn) / max_lnn) * max_ana + mean_ana
+    alpha = max_ana / max_lnn
+    beta = - mean_lnn * max_ana / max_lnn + mean_ana
+    print(f'Factors: {alpha}, {beta}.')
 
     L_cal = T_cal - V_cal
     H_cal = T_cal + V_cal
@@ -113,7 +120,7 @@ if __name__ == "__main__":
     plt.plot(t_sim, T_lnn, label='Kin. Lnn.')
     plt.plot(t_sim, V_lnn, label='Pot. Lnn.')
     plt.plot(t_sim, T_rec, label='Kin. Reconstructed')
-    plt.plot(t_sim, V_rec, label='Pot. Reconstructed')
+    # plt.plot(t_sim, V_rec, label='Pot. Reconstructed')
     plt.plot(t_sim, T_cal, label='Kin. Calibrated')
     plt.plot(t_sim, V_cal, label='Pot. Calibrated')
     plt.title('Energies')
