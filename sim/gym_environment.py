@@ -18,6 +18,8 @@ from PIL import ImageGrab
 from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
+from src import lagranx as lx
+import stable_baselines3.common.save_util as loader
 
 
 def p_norm(x, p):
@@ -76,6 +78,13 @@ class BaseGymEnvironment(gym.Env):
         else:
             self.inference = True
             self.E_d = energy_command
+
+        energy_observer = kwargs.get('energy_observer', None)
+        if energy_observer is None or energy_observer == 'model':
+            self.energy_observer = None
+        elif energy_observer is 'learned':
+            params = loader.load_from_pkl(path='tmp/current', verbose=1)
+            self.energy_observer = lx.create_train_state(0, 0, params=params)
 
         generator = kwargs.get('generator', None)
         self.system = kwargs.get('system', None)

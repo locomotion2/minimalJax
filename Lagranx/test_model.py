@@ -1,5 +1,5 @@
 from src import lagranx as lx
-from src import dpend_model_cramer as model
+from src import dpend_model_arne as model
 from hyperparams import settings
 
 import jax
@@ -19,8 +19,8 @@ if __name__ == "__main__":
     # Test system
     time_step = 0.001
     N_sim = 1000 * 5
-    x_0_sim = np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32)
     # x_0_sim = np.array([3 * np.pi / 7, 3 * np.pi / 4, 0, 0], dtype=np.float32)
+    x_0_sim = np.array([0, 0, 0, 0], dtype=np.float32)
 
     # Simulate system
     t_sim = np.arange(N_sim, dtype=np.float32) * time_step  # time steps 0 to N
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     T_rec = jax.device_get(
         jax.vmap(partial(lx.kin_energy_lagrangian, lagrangian=lx.learned_lagrangian(params, train_state)))(x_sim))
     H_0 = jnp.mean(H_lnn)
-    V_rec = H_0 - T_rec
+    V_rec = V_lnn
     L_rec = T_rec - V_rec
     H_rec = T_rec + V_rec
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     plt.plot(t_sim, L_con, label='Hamiltonian')
     plt.plot(t_sim, L_kin, label='Kinetic')
     plt.plot(t_sim, L_pot, label='Potential')
-    # plt.ylim(-0.1, 200)
+    plt.ylim(-0.1, 200)
     plt.title('Errors')
     plt.ylabel('Loss')
     plt.xlabel('Time (s)')

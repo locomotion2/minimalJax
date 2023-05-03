@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 from functools import partial
 from copy import deepcopy as copy
 
-from src import dpend_model_cramer as model
+# from src import dpend_model_cramer as model
+from src import dpend_model_arne as model
 
 
 class MLP(nn.Module):
@@ -131,13 +132,13 @@ def loss(params, train_state, batch):
     # impose clean derivative
     L_kin = jnp.mean((T - T_rec) ** 2)
 
-    # impose independence form q_dot on V due to mechanichal system
+    # impose independence form q_dot on V due to mechanical system
     L_pot = jnp.mean(V_dot ** 2)
 
     # # impose positive kin. energy
     # L_pos = jnp.mean(jnp.clip(T, a_min=None, a_max=0) ** 2)
 
-    return L_acc + (L_kin + L_pot) + L_con
+    return L_acc + ((L_kin + L_pot) + 10 * L_con)
 
 
 @jax.jit
@@ -147,7 +148,7 @@ def loss_sample(pair, params=None, train_state=None):
     # calculate energies
     T, V, V_dot = partial(learned_energies, params=params, train_state=train_state)(state)
     T_rec = partial(kin_energy_lagrangian, lagrangian=learned_lagrangian(params, train_state))(state)
-    H = T + V
+    H = T_rec + V
 
     # predict joint accelerations
     preds = partial(equation_of_motion, learned_lagrangian(params, train_state))(state)
@@ -219,7 +220,6 @@ def run_training(train_state, dataloader, settings):
     num_minibatches = settings['num_minibatches']
     num_epochs = settings['num_epochs']
     lr_func = settings['lr_func']
-    random_key = jax.random.PRNGKey(settings['seed'])
     early_stopping_gain = settings['es_gain']
 
     train_losses = []
@@ -232,6 +232,7 @@ def run_training(train_state, dataloader, settings):
         epoch_loss_last = np.inf
         epoch = 0
         while epoch < num_epochs:
+            random_key = jax.random.PRNGKey(settings['seed'])
             epoch_loss = 0
             train_metrics = None
             batch_train, batch_test = dataloader(random_key)
@@ -259,6 +260,7 @@ def run_training(train_state, dataloader, settings):
             test_loss = 0
             if epoch_loss > epoch_loss_last * early_stopping_gain:
                 print(f'Early stopping! loss: {epoch_loss}. Now resetting.')
+                settings['seed'] += 10
                 train_state = create_train_state(settings['seed'], settings['lr_func'], params=best_params)
                 epoch = 0
                 continue
@@ -319,7 +321,7 @@ def generate_data(settings):
     # create time
     t_window = np.arange(N / section_num, dtype=np.float32) * time_step
     # t_train = np.arange(N / section_num, dtype=np.float32) * time_step  # time steps 0 to N
-    t_test = np.arange(N, 2 * N, dtype=np.float32) * time_step  # time steps N to 2N
+    # t_test = np.arange(N, 2 * N, dtype=np.float32) * time_step  # time steps N to 2N
     # t_train_sec = jnp.split(t_train, section_num)
     # t_test_sec = jnp.split(t_test, section_num)
 
@@ -362,9 +364,11 @@ def build_general_dataloader(batch_train, batch_test, settings):
         # randomly sample inputs
         y0 = jnp.concatenate([
             jax.random.uniform(key, (data_size, 2)) * 2.0 * np.pi,
-            (jax.random.uniform(key + 1, (data_size, 2)) - 0.5) * 10 * 2], axis=1)
+            (jax.random.uniform(key + 1, (data_size, 1)) - 0.5) * 10 * 2,
+            (jax.random.uniform(key + 1, (data_size, 1)) - 0.5) * 10 * 4], axis=1)
         y0 = jax.vmap(model.normalize)(y0)
 
+        # return (y0, eqs_motion(y0)), batch_test
         return (y0, eqs_motion(y0)), batch_test
 
     return dataloader
