@@ -1,12 +1,17 @@
-from src import lagranx as lx
 import jax
 import optax
 import stable_baselines3.common.save_util as loader
+from aim import Run
+from src import lagranx as lx
+
 from hyperparams import settings
 
 if __name__ == "__main__":
 
-    print('Compilation completed, training is starting.')
+    print('Training is starting.')
+    # Set up run
+    run = Run()
+    run['hparams'] = settings
 
     # Load the data
     batch_train, batch_test = loader.load_from_pkl(path=settings['data_dir'], verbose=1)
@@ -34,7 +39,7 @@ if __name__ == "__main__":
     print('Setup completed, training will now begin.')
 
     # Train the model
-    best_params, losses = lx.run_training(train_state, dataloader, settings)
+    best_params, losses = lx.run_training(train_state, dataloader, settings, run)
 
     print('Training completed.')
 

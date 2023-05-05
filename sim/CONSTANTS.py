@@ -1,5 +1,7 @@
 import numpy as np
 
+# TODO: Change the contents here into dictionaries and not import stars but settings
+
 # Physical
 g = -9.81
 

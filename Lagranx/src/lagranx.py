@@ -4,14 +4,13 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from jax.experimental.ode import odeint
-
 import matplotlib.pyplot as plt
-
+import numpy as np
+import optax
+from aim import Run
 from flax import linen as nn
 from flax.training import train_state as ts
-import optax
+from jax.experimental.ode import odeint
 
 from Lagranx.src import dpend_model_arne as model
 
@@ -24,33 +23,6 @@ class MLP(nn.Module):
         x = self.layer(x, features=size)
         x_out = nn.Dense(features=2)(x)
         return x_out
-
-    # @nn.compact
-    # def __call__(self, x):
-    #     size = 200
-    #     num_layers = 3
-    #     x_main = self.layer(x, features=size)
-    #     for n in range(num_layers - 1):
-    #         x_layer = self.layer(x, features=size)
-    #         x_main += x_layer / num_layers
-    #
-    #     x_out = nn.Dense(features=2)(x_main)
-    #     return x_out
-
-    # @nn.compact
-    # def __call__(self, x):
-    #     size = 640
-    #     size_ref = 2
-    #     # x_1 = self.layer(x, features=size)
-    #     x_2 = self.layer(x, features=size)
-    #     x_final = self.layer(x_2, features=size_ref)
-    #
-    #     x_ref_1 = self.layer(x_final, features=size_ref)
-    #     # x_ref_2 = self.layer(x_final + x_ref_1, features=size_ref)
-    #     # x_ref_3 = self.layer(x_final + x_ref_1 + x_ref_2, features=size_ref)
-    #
-    #     x_out = nn.Dense(features=2)(x_final + x_ref_1)
-    #     return x_out
 
     def layer(self, x: jnp.array, features: int = 128):
         x = nn.Dense(features=features)(x)
@@ -118,10 +90,11 @@ def loss(params: dict, train_state: ts.TrainState, batch: (jnp.array, jnp.array)
     state, q_ddot_target = batch
 
     # Calculate energies and their derivatives
-    T, V, T_rec, V_dot, M = jax.vmap(partial(learned_energies, params=params, train_state=train_state))(state)
+    T, V, T_rec, V_dot, M = jax.vmap(partial(learned_energies, params=params,
+                                             train_state=train_state))(state)
 
     # Calculate total energy (Hamiltonian)
-    H = T + V
+    # H = T + V
 
     # Predict joint accelerations and calculate error
     eqs_motion = jax.vmap(partial(equation_of_motion,
@@ -131,7 +104,7 @@ def loss(params: dict, train_state: ts.TrainState, batch: (jnp.array, jnp.array)
     L_acc = jnp.mean((q_ddot_prediction - q_ddot_target) ** 2)
 
     # Impose energy conservation
-    L_con = jnp.mean(H ** 2)
+    # L_con = jnp.mean(H ** 2)
 
     # Impose clean derivative
     L_kin = jnp.mean((T - T_rec) ** 2)
@@ -189,7 +162,8 @@ def loss_sample(pair, params=None, train_state=None):
     return L_total, L_acc, L_con, 10 * L_kin, 10 * L_pot
 
 
-def create_train_state(key: int, learning_rate_fn: Callable, params: dict = None) -> ts.TrainState:
+def create_train_state(key: int, learning_rate_fn: Callable, params: dict = None) -> \
+        ts.TrainState:
     # Create network
     network = MLP()
 
@@ -226,7 +200,7 @@ def eval_step(train_state: ts.TrainState, test_batch: (jnp.array, jnp.array)) ->
     return {'loss': loss_value}
 
 
-def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict) -> (dict, tuple):
+def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict, run: Run) -> (dict, tuple):
     # Unpack Settings
     test_every = settings['test_every']
     num_batches = settings['num_batches']
@@ -285,11 +259,14 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
             # Record train and test losses
             train_losses.append(epoch_loss)
             test_losses.append(test_loss)
+            run.track(epoch, name='epoch')
+            run.track(epoch_loss, name='epoch_loss')
+            run.track(test_loss, name='test_loss')
+            run.track(train_metrics['learning_rate'], name='learning_rate')
 
             # Output progress every 'test_every' epochs
             if epoch % test_every == 0:
-                print(
-                    f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
+                print(f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
 
             # Update epoch and record the last loss
             epoch += 1
@@ -297,7 +274,7 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
 
     except KeyboardInterrupt:
         # Save params from model
-        print(f'Terminating learning!')
+        print('Terminating learning!')
 
     return best_params, (train_losses, test_losses)
 
@@ -335,7 +312,7 @@ def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: in
 def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.array)):
     # Unpack settings
     N = settings['data_size']
-    x0 = settings['starting_point']
+    x0 = np.asarray(settings['starting_point'], dtype=np.float32)
     time_step = settings['time_step']
     section_num = settings['sections_num']
     key = jax.random.PRNGKey(settings['seed'])

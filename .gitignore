@@ -11,3 +11,5 @@
 __pycache__
 /tensorboard_logs/
 /pendulum-orbits/
+/EigenHunt.egg-info/
+/.ruff_cache/
