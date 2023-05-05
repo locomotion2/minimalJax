@@ -1,6 +1,7 @@
-from src import lagranx as lx
-from hyperparams import settings
 import stable_baselines3.common.save_util as loader
+from src import lagranx as lx
+
+from hyperparams import settings
 
 if __name__ == "__main__":
     print('Generating the dataset.')

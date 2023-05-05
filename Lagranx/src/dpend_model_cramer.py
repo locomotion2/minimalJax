@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import numpy as np
 
+
 def lagrangian(q, q_dot, m1, m2, l1, l2, g, energies=False):
     t1, t2 = q  # theta 1 and theta 2
     w1, w2 = q_dot  # omega 1 and omega 2

@@ -1,9 +1,10 @@
-from src import lagranx as lx
 import jax
 import optax
 import stable_baselines3.common.save_util as loader
-from hyperparams import settings
 from aim import Run
+from src import lagranx as lx
+
+from hyperparams import settings
 
 if __name__ == "__main__":
 

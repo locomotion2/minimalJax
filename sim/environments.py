@@ -2,6 +2,7 @@ from sim.CONSTANTS import *
 
 from sim.controllers import PID_pos_vel_tracking_modeled
 from sim.models import CPG, GPG, SPG, DummyOutput, Pendulum, DoublePendulum
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd

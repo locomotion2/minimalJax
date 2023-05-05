@@ -1,13 +1,12 @@
-from src import lagranx as lx
-from src import dpend_model_arne as model
-from hyperparams import settings
-
 import jax
 import jax.numpy as jnp
-
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import stable_baselines3.common.save_util as loader
+from src import dpend_model_arne as model
+from src import lagranx as lx
+
+from hyperparams import settings
 
 if __name__ == "__main__":
     # Load
@@ -71,8 +70,8 @@ if __name__ == "__main__":
     H_cal = T_cal + V_cal
 
     # Energies saved
-    kin_factors = np.array([1.865427851676941, 0.038243770599365234])
-    pot_factors = np.array([1.865427851676941, -18.905736923217773])
+    kin_factors = np.array([1.785508155822754, 0.009507834911346436])
+    pot_factors = np.array([1.785508155822754, -23.28985595703125])
 
     T_f = T_rec * kin_factors[0] + kin_factors[1]
     V_f = V_rec * pot_factors[0] + pot_factors[1]
