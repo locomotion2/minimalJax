@@ -140,10 +140,12 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = 0
         self.r_num = 3
         self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
+        self.E_l_traj = np.asarray([np.asarray([0])])
 
-    def tracking(self, reward: float, costs: list):
+    def tracking(self, reward: float, costs: list, energies: tuple):
         # Tracking data
         self.r_traj = np.append(self.r_traj, [np.concatenate([[reward], costs], axis=0)], axis=0)
+        self.E_l_traj = np.append(self.E_l_traj, [energies[0] + energies[1]])
 
         # Tracking the episode
         self.r_epi += reward
@@ -203,7 +205,7 @@ class BaseGymEnvironment(gym.Env):
             info = {}  # TODO: Add some debugging info
 
             # Track variables
-            self.tracking(reward, costs)
+            self.tracking(reward, costs, state['Energies'])
 
             # March on
             self.cur_step += 1
@@ -392,15 +394,17 @@ class BaseGymEnvironment(gym.Env):
             if self.energy_step:
                 E_d_traj[0:int(np.floor(samples/2))] *= 2
 
-            energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj}), energy_data], axis=1)
+            energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj, 'energy_model': self.E_l_traj}),
+                                     energy_data], axis=1)
             plt.subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.title('Energy trajectory in time')
             plt.axis([0, self.sim.t_final, 0, 1.5])  # TODO: Set to constants
             plt.plot('time', 'energy', 'b--', linewidth=1, data=energy_data)
             plt.plot('time', 'energy_des', 'g--', linewidth=1, data=energy_data)
+            plt.plot('time', 'energy_model', 'r--', linewidth=1, data=energy_data)
             plt.ylabel(r'$Energy (J)$')
             plt.xlabel(r'$Time (s)$')
-            plt.legend([r'$E_t$', r'$E_d$'], loc='best')
+            plt.legend([r'$E_t$', r'$E_d$', r'$E_m$'], loc='best')
             index += 1
 
             # Show the plots
