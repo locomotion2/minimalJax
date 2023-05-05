@@ -9,6 +9,8 @@ from jax.experimental.ode import odeint
 
 import matplotlib.pyplot as plt
 
+from aim import Run
+
 from flax import linen as nn
 from flax.training import train_state as ts
 import optax
@@ -226,7 +228,7 @@ def eval_step(train_state: ts.TrainState, test_batch: (jnp.array, jnp.array)) ->
     return {'loss': loss_value}
 
 
-def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict) -> (dict, tuple):
+def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict, run: Run) -> (dict, tuple):
     # Unpack Settings
     test_every = settings['test_every']
     num_batches = settings['num_batches']
@@ -285,11 +287,14 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
             # Record train and test losses
             train_losses.append(epoch_loss)
             test_losses.append(test_loss)
+            run.track(epoch, name='epoch')
+            run.track(epoch_loss, name='epoch_loss')
+            run.track(test_loss, name='test_loss')
+            run.track(train_metrics['learning_rate'], name='learning_rate')
 
             # Output progress every 'test_every' epochs
             if epoch % test_every == 0:
-                print(
-                    f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
+                print(f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
 
             # Update epoch and record the last loss
             epoch += 1
@@ -335,7 +340,7 @@ def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: in
 def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.array)):
     # Unpack settings
     N = settings['data_size']
-    x0 = settings['starting_point']
+    x0 = np.asarray(settings['starting_point'], dtype=np.float32)
     time_step = settings['time_step']
     section_num = settings['sections_num']
     key = jax.random.PRNGKey(settings['seed'])
