@@ -23,6 +23,7 @@ class BaseEnvironment(ABC):
         self.mode = params.get('mode', 'equilibrium')
         self.state_size = params.get('state_size', 4)
         self.num_dof = params.get('num_dof', 2)
+        self.step_done = False
 
         # Build components
         self.model = None
@@ -33,7 +34,7 @@ class BaseEnvironment(ABC):
         model_params = {'delta_t': self.delta_t_system,
                         'state_size': self.state_size,
                         'num_dof': self.num_dof,
-                        'k_f': 0.1
+                        'k_f': 0.0
                         }
         controller_params = {'delta_t': self.delta_t_system,
                              'gains_eigen': [0.1, 0.0, 0.1],
@@ -79,11 +80,18 @@ class BaseEnvironment(ABC):
         done = self.t_elapsed + self.delta_t_learning / 100 >= self.t_final  # TODO: This is a hack to get it to work
         return done
 
+    def is_time_energy_step(self):
+        step_bool = self.t_elapsed >= self.t_final / 2 and not self.step_done
+        if step_bool:
+            self.step_done = True
+        return step_bool
+
     def restart(self, params: dict = None):
         p_0 = self.model.restart({'mode': self.mode, 'E_d': params.get('E_d', 0)})
         self.controller.restart()
         self.generator.restart({'x_0': p_0})
         self.t_elapsed = 0
+        self.step_done = False
 
     def animate(self, step: int = 0, lines: [plt.Line2D] = None):
         # Update positions in cartesian coords

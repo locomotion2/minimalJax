@@ -7,6 +7,8 @@
       <sourceFolder url="file://$MODULE_DIR$/sim" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/pendulum-orbits" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/pendulum-orbits/links_and_joints" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/Lagranx" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/Lagranx/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_26/TestEnvironment-v1" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_1" />
       <excludeFolder url="file://$MODULE_DIR$/logs/tqc/TestEnvironment-v1_2" />
@@ -43,7 +45,7 @@
       <excludeFolder url="file://$MODULE_DIR$/wandb" />
       <excludeFolder url="file://$MODULE_DIR$/sim.egg-info" />
     </content>
-    <orderEntry type="jdk" jdkName="bert" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="myjax" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

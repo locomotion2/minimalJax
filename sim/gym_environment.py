@@ -2,8 +2,8 @@ import pandas as pd
 
 from sim.CONSTANTS import *
 
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
 from typing import Callable
 import matplotlib.pyplot as plt
@@ -12,9 +12,15 @@ import seaborn as sns
 # import pandas as pd
 # import pyautogui as pg
 
+import cv2
+from PIL import ImageGrab
+
 from sim.environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, PendulumCPGEnv, PendulumDirectEnv
 from sim.curricula import UniformGrowthCurriculum, BaseCurriculum
 from sim.reward_functions import default_func
+from sim.energy_observer import EnergyObserver
+# from Lagranx.src import lagranx as lx
+# import stable_baselines3.common.save_util as loader
 
 
 def p_norm(x, p):
@@ -66,12 +72,19 @@ class BaseGymEnvironment(gym.Env):
             self.curriculum = curriculum
 
         energy_command = kwargs.get('energy_command', None)
+        self.energy_step = kwargs.get('energy_step', False)
         if energy_command is None:
             self.inference = False
             self.E_d = 0
         else:
             self.inference = True
             self.E_d = energy_command
+
+        energy_observer = kwargs.get('energy_observer', None)
+        if energy_observer is None or energy_observer == 'model':
+            self.energy_observer = None
+        elif energy_observer is 'learned':
+            self.energy_observer = EnergyObserver()
 
         generator = kwargs.get('generator', None)
         self.system = kwargs.get('system', None)
@@ -110,6 +123,7 @@ class BaseGymEnvironment(gym.Env):
 
         # Rendering
         self.visualize = kwargs.get('render', False)
+        self.record = kwargs.get('record', False)
         if self.visualize:
             sns.set()
             figure = plt.figure('Visualization', figsize=FIG_SIZE)
@@ -126,10 +140,12 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = 0
         self.r_num = 3
         self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
+        self.E_l_traj = np.asarray([np.asarray([0])])
 
-    def tracking(self, reward: float, costs: list):
+    def tracking(self, reward: float, costs: list, energies: tuple):
         # Tracking data
         self.r_traj = np.append(self.r_traj, [np.concatenate([[reward], costs], axis=0)], axis=0)
+        self.E_l_traj = np.append(self.E_l_traj, [energies[0] + energies[1]])
 
         # Tracking the episode
         self.r_epi += reward
@@ -144,7 +160,10 @@ class BaseGymEnvironment(gym.Env):
         # Model data
         p_model, v_model = self.sim.get_cartesian_state_model()
         q_model, dq_model = self.sim.get_joint_state_model()
-        E_model = self.sim.get_energies()
+        if self.energy_observer is not None:
+            E_model = self.energy_observer.get_energies(q_model, dq_model)
+        else:
+            E_model = self.sim.get_energies()
 
         # CPG data
         # p_gen = self.sim.get_cartesian_state_generator()
@@ -153,6 +172,10 @@ class BaseGymEnvironment(gym.Env):
 
         # Controller data
         tau = self.sim.controller.get_force()
+
+        # Check if energy step desired
+        if self.sim.is_time_energy_step() and self.energy_step:
+            self.E_d /= 2
 
         # Build data packages
         state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model, 'Joint_vel': dq_model,
@@ -178,22 +201,24 @@ class BaseGymEnvironment(gym.Env):
             # Extract data for learning
             state, obs = self.gather_data()
             reward, costs = self.reward_func(state)
-            done = self.sim.is_done()
+            terminated = self.sim.is_done()
             info = {}  # TODO: Add some debugging info
 
             # Track variables
-            self.tracking(reward, costs)
+            self.tracking(reward, costs, state['Energies'])
 
             # March on
             self.cur_step += 1
 
             # Handle episode end
-            if done:
+            if terminated:
                 if self.visualize:
                     self.plot()
-                info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
+                # info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
 
-            return obs, reward, done, info
+            truncated = terminated
+
+            return obs, reward, terminated, truncated, info
 
         except KeyboardInterrupt:
             # del self.sim
@@ -201,7 +226,7 @@ class BaseGymEnvironment(gym.Env):
             print("Closing the program due to Keyboard interrupt.")
             raise KeyboardInterrupt
 
-    def reset(self):
+    def reset(self, seed=None, otions=None):
 
         # Reset system
         self.new_target_energy()
@@ -219,7 +244,7 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = reward
         self.cur_step = 0
 
-        return obs
+        return obs, {}
 
     def plot(self):
         try:
@@ -364,16 +389,22 @@ class BaseGymEnvironment(gym.Env):
             index += 1
 
             # Energies vs time
-            E_d_traj = np.ones(len(time_data)) * self.E_d
-            energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj}), energy_data], axis=1)
+            samples = len(time_data)
+            E_d_traj = np.ones(samples) * self.E_d
+            if self.energy_step:
+                E_d_traj[0:int(np.floor(samples/2))] *= 2
+
+            energy_data = pd.concat([time_data, pd.DataFrame({'energy_des': E_d_traj, 'energy_model': self.E_l_traj}),
+                                     energy_data], axis=1)
             plt.subplot(FIG_COORDS[0], FIG_COORDS[1], index)
             plt.title('Energy trajectory in time')
             plt.axis([0, self.sim.t_final, 0, 1.5])  # TODO: Set to constants
             plt.plot('time', 'energy', 'b--', linewidth=1, data=energy_data)
             plt.plot('time', 'energy_des', 'g--', linewidth=1, data=energy_data)
+            plt.plot('time', 'energy_model', 'r--', linewidth=1, data=energy_data)
             plt.ylabel(r'$Energy (J)$')
             plt.xlabel(r'$Time (s)$')
-            plt.legend([r'$E_t$', r'$E_d$'], loc='best')
+            plt.legend([r'$E_t$', r'$E_d$', r'$E_m$'], loc='best')
             index += 1
 
             # Show the plots
@@ -393,6 +424,7 @@ class BaseGymEnvironment(gym.Env):
             raise KeyboardInterrupt
 
     def animate(self, figure, active_lines):
+
         # Helping variables
         time = 0
         x_0 = [0, 0]
@@ -416,6 +448,15 @@ class BaseGymEnvironment(gym.Env):
             line.set_ydata(y)
             line.set_xdata(x)
 
+        if self.record:
+            # Testing the video recording
+            screen_size = (1920, 1080)
+            fps = 10
+
+            # Create a video writer object
+            fourcc = cv2.VideoWriter_fourcc(*"XVID")
+            out = cv2.VideoWriter("Experiment_recording.avi", fourcc, fps, screen_size)
+
         # Main animation loop
         step = 0
         while time < self.final_time:
@@ -431,6 +472,23 @@ class BaseGymEnvironment(gym.Env):
             step += VIZ_RATE
             figure.canvas.draw()
             figure.canvas.flush_events()
+
+            if self.record:
+                img = ImageGrab.grab(bbox=(0, 0, screen_size[0], screen_size[1]))
+
+                # Convert the screenshot to a numpy array
+                img_np = np.array(img)
+
+                # Convert the color space from RGB to BGR
+                frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+                # Write the current frame to the video
+                out.write(frame)
+
+        if self.record:
+            # Release the video writer and close the video file
+            out.release()
+            cv2.destroyAllWindows()
 
     def render(self, mode="human"):
         if mode == 'rgb_array':
