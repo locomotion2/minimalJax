@@ -451,7 +451,7 @@ class BaseGymEnvironment(gym.Env):
 
             # Create a video writer object
             fourcc = cv2.VideoWriter_fourcc(*"XVID")
-            out = cv2.VideoWriter("Experiment_recording.avi", fourcc, fps, screen_size)
+            out = cv2.VideoWriter("0.6J_0.1f_trained.avi", fourcc, fps, screen_size)
 
         # Main animation loop
         step = 0

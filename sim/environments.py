@@ -38,8 +38,8 @@ class BaseEnvironment(ABC):
                         'k_f': 0.0
                         }
         controller_params = {'delta_t': self.delta_t_system,
-                             'gains_eigen': [0.1, 0.0, 0.1],
-                             'gains_outer': [0.1, 0.0, 0.1],
+                             'gains_eigen': [0.15, 0.0, 0.15],
+                             'gains_outer': [0.15, 0.0, 0.15],
                              'mode': 'maximal',
                              'num_dof': self.num_dof
                              }
