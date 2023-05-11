@@ -30,7 +30,10 @@ class MLP(nn.Module):
         return x
 
 
-def equation_of_motion(state: jnp.array, kinetic: Callable = None, potential: Callable = None) -> jnp.array:
+def equation_of_motion(state: jnp.array,
+                       kinetic: Callable = None,
+                       potential: Callable = None,
+                       t=None) -> jnp.array:
     q, q_t = jnp.split(state, 2)
 
     @jax.jit
@@ -38,17 +41,36 @@ def equation_of_motion(state: jnp.array, kinetic: Callable = None, potential: Ca
         return kinetic(q, q_t) - potential(q, q_t)
 
     M = jax.hessian(kinetic, 1)(q, q_t)
-    q_tt = jnp.linalg.pinv(M) @ (jax.grad(lagrangian, 0)(q, q_t) - jax.jacobian(jax.jacobian(kinetic, 1), 0)(q, q_t) @ q_t)
+    q_tt = jnp.linalg.pinv(M) @ (
+                jax.grad(lagrangian, 0)(q, q_t) - jax.jacobian(jax.jacobian(kinetic, 1),
+                                                               0)(q, q_t) @ q_t)
 
     return jnp.concatenate([q_t, q_tt])
+
+def equation_of_motion_lag(lagrangian: Callable, state: jnp.array, t=None):
+  q, q_t = jnp.split(state, 2)
+  q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
+          @ (jax.grad(lagrangian, 0)(q, q_t)
+             - jax.jacobian(jax.jacobian(lagrangian, 1), 0)(q, q_t) @ q_t))
+  return jnp.concatenate([q_t, q_tt])
 
 
 @partial(jax.jit, backend='cpu')
 def solve_analytical(initial_state: jnp.array, times: jnp.array):
-    return odeint(model.f_analytical, initial_state, t=times, rtol=1e-8, atol=1e-9)
+    return odeint(model.f_analytical, initial_state, t=times, rtol=1e-13, atol=1e-13)
 
+def solve_lagrangian(initial_state, lagrangian, **kwargs):
+    @partial(jax.jit, backend='cpu')
+    def f(initial_state):
+        eqs_motion = partial(equation_of_motion_lag, lagrangian)
+        return odeint(eqs_motion,
+                      initial_state,
+                      **kwargs)
 
-def learned_lagrangian(params: dict, train_state: ts.TrainState, output: str = 'lagrangian') -> Callable:
+    return f(initial_state)
+
+def learned_lagrangian(params: dict, train_state: ts.TrainState,
+                       output: str = 'lagrangian') -> Callable:
     @jax.jit
     def lagrangian(q: jnp.array, q_dot: jnp.array):
         state = jnp.concatenate([q, q_dot])
@@ -66,8 +88,10 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState, output: str = '
 
     return lagrangian
 
+
 @jax.jit
-def learned_energies(state: jnp.array, params: dict = None, train_state: ts.TrainState = None):
+def learned_energies(state: jnp.array, params: dict = None,
+                     train_state: ts.TrainState = None):
     # Split the state variables
     q, q_dot = jnp.split(state, 2)
 
@@ -75,17 +99,20 @@ def learned_energies(state: jnp.array, params: dict = None, train_state: ts.Trai
     T, V = learned_lagrangian(params, train_state, output='energies')(q, q_dot)
 
     # Reconstruct the kin.energy from its deriv.
-    M = jax.hessian(learned_lagrangian(params, train_state, output='kinetic'), 1)(q, q_dot)
+    M = jax.hessian(learned_lagrangian(params, train_state, output='kinetic'), 1)(q,
+                                                                                  q_dot)
     T_rec = 1 / 2 * jnp.transpose(q_dot) @ M @ q_dot
 
     # Get the derivative on q_dot from the potential energy
-    V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)(q, q_dot)
+    V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)(q,
+                                                                                     q_dot)
 
     return T, V, T_rec, V_dot, M
 
 
 @jax.jit
-def loss(params: dict, train_state: ts.TrainState, batch: (jnp.array, jnp.array)) -> jnp.array:
+def loss(params: dict, train_state: ts.TrainState,
+         batch: (jnp.array, jnp.array)) -> jnp.array:
     # Unpack training data
     state, q_ddot_target = batch
 
@@ -98,8 +125,10 @@ def loss(params: dict, train_state: ts.TrainState, batch: (jnp.array, jnp.array)
 
     # Predict joint accelerations and calculate error
     eqs_motion = jax.vmap(partial(equation_of_motion,
-                                  kinetic=learned_lagrangian(params, train_state, output='kinetic'),
-                                  potential=learned_lagrangian(params, train_state, output='potential')))
+                                  kinetic=learned_lagrangian(params, train_state,
+                                                             output='kinetic'),
+                                  potential=learned_lagrangian(params, train_state,
+                                                               output='potential')))
     q_ddot_prediction = eqs_motion(state)
     L_acc = jnp.mean((q_ddot_prediction - q_ddot_target) ** 2)
 
@@ -116,6 +145,7 @@ def loss(params: dict, train_state: ts.TrainState, batch: (jnp.array, jnp.array)
         diag_M = jnp.diagonal(M)
         diag_M = jnp.clip(diag_M, a_min=None, a_max=0)
         return jnp.mean((top_M - jnp.transpose(bot_M)) ** 2) + jnp.sum(diag_M ** 2)
+
     L_mass = jnp.mean(jax.vmap(L_mass_func)(M))
 
     # Impose independence form q_dot on V due to mechanical system
@@ -130,13 +160,16 @@ def loss_sample(pair, params=None, train_state=None):
     state, targets = pair
 
     # calculate energies
-    T, V, T_rec, V_dot, M = partial(learned_energies, params=params, train_state=train_state)(state)
+    T, V, T_rec, V_dot, M = partial(learned_energies, params=params,
+                                    train_state=train_state)(state)
     H = T_rec + V
 
     # predict joint accelerations
     eqs_motion = partial(equation_of_motion,
-                                  kinetic=learned_lagrangian(params, train_state, output='kinetic'),
-                                  potential=learned_lagrangian(params, train_state, output='potential'))
+                         kinetic=learned_lagrangian(params, train_state,
+                                                    output='kinetic'),
+                         potential=learned_lagrangian(params, train_state,
+                                                      output='potential'))
     preds = eqs_motion(state)
     L_acc = jnp.mean((preds - targets) ** 2)
     # print(L_acc.shape)
@@ -156,10 +189,11 @@ def loss_sample(pair, params=None, train_state=None):
         diag_M = jnp.diag(M)
         diag_M = jnp.clip(diag_M, a_min=None, a_max=0)
         return jnp.mean((top_M - jnp.transpose(bot_M)) ** 2) + jnp.mean(diag_M ** 2)
+
     L_mass = L_mass_func(M)
 
     L_total = L_acc + 1000 * (L_kin + L_pot + L_mass)
-    return L_total, L_acc, L_con, 10 * L_kin, 10 * L_pot
+    return L_total, L_acc, 1000 * (L_kin + L_pot + L_mass)
 
 
 def create_train_state(key: int, learning_rate_fn: Callable, params: dict = None) -> \
@@ -177,8 +211,8 @@ def create_train_state(key: int, learning_rate_fn: Callable, params: dict = None
 
 
 @partial(jax.jit, static_argnums=2)
-def train_step(train_state: ts.TrainState, batch: (jnp.array, jnp.array), learning_rate_fn: Callable) -> (ts.TrainState, dict):
-
+def train_step(train_state: ts.TrainState, batch: (jnp.array, jnp.array),
+               learning_rate_fn: Callable) -> (ts.TrainState, dict):
     # Creates compiled function that contains the batch data
     @jax.jit
     def loss_fn(params: dict):
@@ -200,7 +234,8 @@ def eval_step(train_state: ts.TrainState, test_batch: (jnp.array, jnp.array)) ->
     return {'loss': loss_value}
 
 
-def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict, run: Run) -> (dict, tuple):
+def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dict,
+                 run: Run) -> (dict, tuple):
     # Unpack Settings
     test_every = settings['test_every']
     num_batches = settings['num_batches']
@@ -234,8 +269,10 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
             for batch in range(num_batches):
                 train_loss = 0
                 for minibatch in range(num_minibatches):
-                    minibatch_current = (x_train_minibatches[minibatch], xt_train_minibatches[minibatch])
-                    train_state, train_metrics = train_step(train_state, minibatch_current, lr_func)
+                    minibatch_current = (
+                    x_train_minibatches[minibatch], xt_train_minibatches[minibatch])
+                    train_state, train_metrics = train_step(train_state,
+                                                            minibatch_current, lr_func)
                     train_loss += train_metrics['loss'] / num_minibatches
 
                 # When a batch is done
@@ -252,7 +289,8 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
             if epoch_loss > epoch_loss_last * early_stopping_gain:
                 print(f'Early stopping! Epoch loss: {epoch_loss}. Now resetting.')
                 settings['seed'] += 10
-                train_state = create_train_state(settings['seed'], lr_func, params=best_params)
+                train_state = create_train_state(settings['seed'], lr_func,
+                                                 params=best_params)
                 epoch = 0
                 continue
 
@@ -266,7 +304,8 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
 
             # Output progress every 'test_every' epochs
             if epoch % test_every == 0:
-                print(f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
+                print(
+                    f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
 
             # Update epoch and record the last loss
             epoch += 1
@@ -279,7 +318,8 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
     return best_params, (train_losses, test_losses)
 
 
-def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: int, key: int) -> (jnp.array, jnp.array, jnp.array):
+def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: int,
+                             key: int) -> (jnp.array, jnp.array, jnp.array):
     x_traj = None
     xt_traj = None
     x_start = x0
@@ -305,7 +345,8 @@ def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: in
             x_traj = jnp.append(x_traj, x_traj_sec, axis=0)
             xt_traj = jnp.append(xt_traj, xt_traj_sec, axis=0)
 
-    print(f"Generation successful! Ranges: {jnp.amax(x_traj, axis=0)}, {jnp.amin(x_traj, axis=0)}")
+    print(
+        f"Generation successful! Ranges: {jnp.amax(x_traj, axis=0)}, {jnp.amin(x_traj, axis=0)}")
     return (x_traj, xt_traj), x_start
 
 
@@ -333,14 +374,16 @@ def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.ar
     return train_data, test_data
 
 
-def build_simple_dataloader(batch_train: tuple, batch_test: tuple, settings: dict) -> Callable:
+def build_simple_dataloader(batch_train: tuple, batch_test: tuple,
+                            settings: dict) -> Callable:
     def dataloader(key):
         return batch_train, batch_test
 
     return dataloader
 
 
-def build_general_dataloader(batch_train: tuple, batch_test: tuple, settings: dict) -> Callable:
+def build_general_dataloader(batch_train: tuple, batch_test: tuple,
+                             settings: dict) -> Callable:
     # Unpack the settings
     batch_size = settings['batch_size']
     num_minibathces = settings['num_minibatches']
@@ -348,18 +391,41 @@ def build_general_dataloader(batch_train: tuple, batch_test: tuple, settings: di
     # Set up help valriables
     data_size = batch_size * num_minibathces
     eqs_motion = jax.jit(jax.vmap(model.f_analytical))
+
     # eqs_motion = jax.jit(jax.vmap(partial(poormans_solve, time_step)))
 
     def dataloader(key):
         # Randomly sample inputs
         y0 = jnp.concatenate([jax.random.uniform(key, (data_size, 2)) * 2.0 * np.pi,
-                              (jax.random.uniform(key + 10, (data_size, 1)) - 0.5) * 10 * 2,
-                              (jax.random.uniform(key + 20, (data_size, 1)) - 0.5) * 10 * 4], axis=1)
+                              (jax.random.uniform(key + 10,
+                                                  (data_size, 1)) - 0.5) * 10 * 2,
+                              (jax.random.uniform(key + 20,
+                                                  (data_size, 1)) - 0.5) * 10 * 4],
+                             axis=1)
         y0 = jax.vmap(model.normalize)(y0)
 
         return (y0, eqs_motion(y0)), batch_test
 
     return dataloader
+
+
+def calibrate(E_ana, E_learned):
+    # Calculate means
+    mean_ana = jnp.mean(E_ana)
+    mean_learned = jnp.mean(E_learned)
+
+    # Calculate signal height
+    height_ana = (jnp.max(E_ana - mean_ana) - jnp.min(E_ana - mean_ana)) / 2
+    height_learned = (jnp.max(E_learned - mean_learned) - jnp.min(E_learned -
+                                                                  mean_learned)) / 2
+
+    # Calculate coefficients for linear correction
+    alpha = height_ana / height_learned
+    beta = - mean_learned * alpha + mean_ana
+    E_cal = E_learned * alpha + beta
+    coeffs = [alpha, beta]
+
+    return coeffs, E_cal
 
 
 def display_results(losses: tuple):

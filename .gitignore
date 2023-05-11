@@ -13,3 +13,4 @@ __pycache__
 /pendulum-orbits/
 /EigenHunt.egg-info/
 /.ruff_cache/
+/.aim/

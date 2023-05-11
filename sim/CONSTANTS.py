@@ -27,7 +27,7 @@ GROWTH_RATE = 0.05
 MAX_GROWTH = 1
 
 # Miscellaneous
-FIG_SIZE = (19, 10)
+FIG_SIZE = (19, 13)
 FIG_COORDS = [2, 4]
 VIZ_RATE = 2
 LINE_DIST = 1000
