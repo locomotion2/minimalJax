@@ -12,6 +12,8 @@ from flax import linen as nn
 from flax.training import train_state as ts
 from jax.experimental.ode import odeint
 
+import sqlite3
+
 from Lagranx.src import dpend_model_arne as model
 
 
@@ -34,23 +36,22 @@ def equation_of_motion(state: jnp.array,
                        kinetic: Callable = None,
                        potential: Callable = None,
                        t=None) -> jnp.array:
-    q, q_t = jnp.split(state, 2)
+    q, q_t, tau = jnp.split(state, 3)
 
     @jax.jit
     def lagrangian(q, q_t):
         return kinetic(q, q_t) - potential(q, q_t)
 
     M = jax.hessian(kinetic, 1)(q, q_t)
-    q_tt = jnp.linalg.pinv(M) @ (
-                jax.grad(lagrangian, 0)(q, q_t) - jax.jacobian(jax.jacobian(kinetic, 1),
-                                                               0)(q, q_t) @ q_t)
+    q_tt = jnp.linalg.pinv(M) @ (jax.grad(lagrangian, 0)(q, q_t) + tau -
+                                 jax.jacobian(jax.jacobian(kinetic, 1), 0)(q, q_t) @ q_t)
 
     return jnp.concatenate([q_t, q_tt])
 
 def equation_of_motion_lag(lagrangian: Callable, state: jnp.array, t=None):
-  q, q_t = jnp.split(state, 2)
+  q, q_t, tau = jnp.split(state, 3)
   q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
-          @ (jax.grad(lagrangian, 0)(q, q_t)
+          @ (jax.grad(lagrangian, 0)(q, q_t) + tau
              - jax.jacobian(jax.jacobian(lagrangian, 1), 0)(q, q_t) @ q_t))
   return jnp.concatenate([q_t, q_tt])
 
@@ -93,7 +94,7 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState,
 def learned_energies(state: jnp.array, params: dict = None,
                      train_state: ts.TrainState = None):
     # Split the state variables
-    q, q_dot = jnp.split(state, 2)
+    q, q_dot, _ = jnp.split(state, 3)
 
     # Get the energies as the output of the NN
     T, V = learned_lagrangian(params, train_state, output='energies')(q, q_dot)
@@ -405,6 +406,56 @@ def build_general_dataloader(batch_train: tuple, batch_test: tuple,
         y0 = jax.vmap(model.normalize)(y0)
 
         return (y0, eqs_motion(y0)), batch_test
+
+    return dataloader
+
+def build_database_dataloader(settings: dict) -> Callable:
+    # Unpack the settings
+    batch_size = settings['batch_size']
+    num_minibathces = settings['num_minibatches']
+
+    # Set up help valriables
+    data_size = batch_size * num_minibathces
+
+    # set up database
+    database = sqlite3.connect(settings['database_name'])
+    cursor = database.cursor()
+
+    # count the samples
+    table_name = settings['table_name']
+    samples_total = cursor.execute(
+        f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+    samples_train = int(samples_total * 0.8)
+    samples_validation = int(samples_total * 0.1)
+    samples_test = int(samples_total * 0.1)
+
+    # query commands
+    query_sample_training = f'SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT ' \
+                            f'{samples_train} LIMIT {data_size} '
+    query_sample_validation = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
+                              f'{samples_train},{samples_validation} LIMIT {data_size}'
+    query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
+                        f'{samples_train + samples_validation},{samples_test} ' \
+                        f'LIMIT {data_size}'
+
+    @jax.jit
+    def format_sample(sample):
+        q = jnp.array([sample[0], sample[1]])
+        dq = jnp.array([sample[2], sample[3]])
+        ddq = jnp.array([sample[4], sample[5]])
+        tau = jnp.array([sample[6], sample[7]])
+
+        return jnp.concatenate([q, dq, tau]), ddq
+    format_samples = jax.vmap(format_sample)
+
+    def dataloader(key):
+        batch_training_raw = cursor.execute(query_sample_training).fetchall()
+        batch_training = format_samples(batch_training_raw)
+
+        batch_validation_raw = cursor.execute(query_sample_validation).fetchall()
+        batch_validation = format_samples(batch_validation_raw)
+
+        return batch_training, batch_validation
 
     return dataloader
 

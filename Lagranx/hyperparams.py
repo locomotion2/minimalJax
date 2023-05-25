@@ -13,9 +13,11 @@ settings = {'batch_size': 100,
             'data_dir': 'tmp/data',
             'ckpt_dir': 'tmp/current',
             'seed': 0,
+            'data_source': 'database',
+            'database_name': 'databases/database_10_pts',
+            'table_name': 'data_scrambled',
             'reload': True,
-            'save': True,
-            'generalize': True,
+            'save': True
             }
 
 # settings = {'batch_size': 100,
