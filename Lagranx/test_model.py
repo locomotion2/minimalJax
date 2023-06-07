@@ -71,7 +71,7 @@ if __name__ == "__main__":
     # alpha = height_ana / height_lnn
     # beta = - mean_lnn * height_ana / height_lnn + mean_ana
     # V_cal = V_rec * alpha + beta
-    [alpha, beta], V_cal = lx.calibrate(T_ana, V_rec)
+    [alpha, beta], V_cal = lx.calibrate(V_ana, V_rec)
     print(f'Factors: {alpha}, {beta}.')
 
     L_cal = T_cal - V_cal

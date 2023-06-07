@@ -1,6 +1,4 @@
-mult = 2
-
-settings = {'batch_size': 200,
+settings = {'batch_size': 100,
             'test_every': 1,
             'num_batches': 100,
             'num_minibatches': 100,
@@ -15,10 +13,13 @@ settings = {'batch_size': 200,
             'data_dir': 'tmp/data',
             'ckpt_dir': 'tmp/current',
             'seed': 20,
-            'eff_datasampling': 1,
-            'buffer_length': 25,
+            'eff_datasampling': 10,
+            'buffer_length': 10,
+            'buffer_length_max': 10,
+            'num_dof': 4,
             'data_source': 'database',
-            'database_name': 'Lagranx/databases/database_75_pts_25_buff',
+            'database_name': '/home/gonz_jm/Documents/thesis_workspace/databases'
+                             '/database_75_pts_10_buff_nextgen',
             'table_name': 'data_scrambled',
             'reload': True,
             'save': True

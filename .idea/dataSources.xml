@@ -13,11 +13,11 @@
         </library>
       </libraries>
     </data-source>
-    <data-source source="LOCAL" name="database_points" uuid="3b2336d2-f5db-4f5a-9854-463eab9aa8f7">
+    <data-source source="LOCAL" name="database_75_pts_25_buff" uuid="190a6975-4ed9-45ce-a7be-800280609d3e">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/Lagranx/databases/database_points</jdbc-url>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/Lagranx/databases/database_75_pts_25_buff</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
       <libraries>
         <library>
@@ -25,11 +25,23 @@
         </library>
       </libraries>
     </data-source>
-    <data-source source="LOCAL" name="database_75_pts_25_buff" uuid="190a6975-4ed9-45ce-a7be-800280609d3e">
+    <data-source source="LOCAL" name="database_points [2]" uuid="0457de14-797d-4815-8f49-9289f96f0d70">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/Lagranx/databases/database_75_pts_25_buff</jdbc-url>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../databases/database_points</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+      <libraries>
+        <library>
+          <url>file://$APPLICATION_CONFIG_DIR$/jdbc-drivers/Xerial SQLiteJDBC/3.40.1/org/xerial/sqlite-jdbc/3.40.1.0/sqlite-jdbc-3.40.1.0.jar</url>
+        </library>
+      </libraries>
+    </data-source>
+    <data-source source="LOCAL" name="database_75_pts_25_buf_nextgen" uuid="cad0ab56-a72a-46d2-9c2e-0ea541cd8abd">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../databases/database_75_pts_25_buf_nextgen</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
       <libraries>
         <library>

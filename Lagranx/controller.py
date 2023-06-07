@@ -73,14 +73,14 @@ if __name__ == '__main__':
                 dq1_out = np.insert(dq1_buff, 0, dq[0])
                 dq2_out = np.insert(dq2_buff, 0, dq[0])
                 dq_out = np.concatenate([dq1_out, dq2_out])
-                state = np.concatenate([q_out, dq_out, np.array([0, 0])])
+                state = np.concatenate([q_out, dq_out, np.array([0, 0, 0, 0])])
 
                 # Calculate tau
                 tau, _ = fd(ddq=ddq, state=state)
 
                 # Send tau
-                publisher.packet.tau = tau
-                # print(f"sending: {tau}")
+                publisher.packet.tau = tau[0:2]
+                print(f"sending: {tau}")
                 publisher.write()
 
                 # Do updates

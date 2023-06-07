@@ -33,24 +33,50 @@ class MLP(nn.Module):
 
 
 def split_state(state, buffer_length):
-    # @jax.jit
+    @jax.jit
     def _split_state(state):
-        q = jnp.array([state[0],
-                       state[buffer_length + 1]])
-        q1_buff = state[1: buffer_length]
-        q2_buff = state[buffer_length + 1: 2 * buffer_length]
-        q_buff = jnp.concatenate([q1_buff, q2_buff])
+        # q = jnp.array([state[0],
+        #                state[buffer_length + 1]])
+        #
+        # q1_buff = state[1: buffer_length]
+        # q2_buff = state[buffer_length + 1: 2 * buffer_length]
+        # q_buff = jnp.concatenate([q1_buff, q2_buff])
+        #
+        # dq = jnp.array([state[2 * buffer_length],
+        #                 state[3 * buffer_length + 1]])
+        # dq1_buff = state[2 * buffer_length + 1:
+        #                  3 * buffer_length]
+        # dq2_buff = state[3 * buffer_length + 1:
+        #                  4 * buffer_length]
+        # dq_buff = jnp.concatenate([dq1_buff, dq2_buff])
+        #
+        # tau = state[-2:]
 
+        q = jnp.array([state[0 * buffer_length],
+                       state[1 * buffer_length],
+                       state[2 * buffer_length],
+                       state[3 * buffer_length]])
 
-        dq = jnp.array([state[2 * buffer_length],
-                        state[3 * buffer_length + 1]])
-        dq1_buff = state[2 * buffer_length + 1:
-                         3 * buffer_length]
-        dq2_buff = state[3 * buffer_length + 1:
-                         4 * buffer_length]
-        dq_buff = jnp.concatenate([dq1_buff, dq2_buff])
+        dq = jnp.array([state[4 * buffer_length],
+                        state[5 * buffer_length],
+                        state[6 * buffer_length],
+                        state[7 * buffer_length]])
 
-        tau = state[-2:]
+        q_buff = jnp.array([])
+        dq_buff = jnp.array([])
+        for index in range(4):
+            q_temp = extract_from_sample_split(state,
+                                               buffer_length,
+                                               indices=(index, index + 1))
+
+            dq_temp = extract_from_sample_split(state,
+                                                buffer_length,
+                                                indices=(4 + index, 4 + index + 1))
+
+            q_buff = jnp.concatenate([q_buff, q_temp[1:]])
+            dq_buff = jnp.concatenate([dq_buff, dq_temp[1:]])
+
+        tau = state[-4:]
 
         return q, q_buff, dq, dq_buff, tau
 
@@ -62,7 +88,7 @@ def calc_dynamics(state: jnp.array,
                   kinetic: Callable = None,
                   potential: Callable = None
                   ) -> jnp.array:
-    q, q_buff, dq, dq_buff, tau = split_state(state, 25)
+    q, q_buff, dq, dq_buff, tau = split_state(state, 10)
 
     M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
     C = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) @ dq - \
@@ -143,7 +169,7 @@ def learned_energies(state: jnp.array, params: dict = None,
                      train_state: ts.TrainState = None):
     # Split the state variables
     # q, q_dot, _ = jnp.split(state, 3)
-    q, q_buff, dq, dq_buff, tau = split_state(state, 25)
+    q, q_buff, dq, dq_buff, tau = split_state(state, 10)
 
     # Get the energies as the output of the NN
     T, V = learned_lagrangian(params, train_state, output='energies')(q, q_buff,
@@ -191,7 +217,7 @@ def loss(params: dict, train_state: ts.TrainState,
     # wrap for_dyn_single to handle data format
     def for_dyn_wrapped(data_point):
         state, ddq = data_point
-        ddq = ddq[2:4]
+        ddq = ddq[4:8]
         return for_dyn_single(ddq=ddq, state=state)
 
     for_dyn = jax.vmap(for_dyn_wrapped)
@@ -204,7 +230,7 @@ def loss(params: dict, train_state: ts.TrainState,
     # Predict the torques and calculate error
     tau_prediction, tau_target = for_dyn(batch)
     L_acc_tau = jnp.mean((tau_prediction - tau_target) ** 2)
-    L_acc = (L_acc_qdd + L_acc_tau * 10) / 2
+    L_acc = (L_acc_qdd + L_acc_tau * 10000) / 2
     # L_acc = L_acc_tau
 
     # Impose energy conservation
@@ -229,7 +255,7 @@ def loss(params: dict, train_state: ts.TrainState,
     # Impose small frictions
     # L_f = jnp.mean(tau_f ** 2)
 
-    return L_acc + 1000 * (L_kin + L_pot + L_mass) * 0
+    return L_acc + 1000 * (L_kin + L_pot + L_mass)
 
 
 # TODO: This function needs to be unified with the previous one somehow
@@ -279,16 +305,17 @@ None) -> ts.TrainState:
     # Unpack settings
     key = jax.random.PRNGKey(settings['seed'])
     buffer_length = settings['buffer_length']
+    num_dof = settings['num_dof']
 
     # Create network
     network = MLP()
 
     # If available load the parameters
     if params is None:
-        params = network.init(key, jax.random.normal(key, (4 * buffer_length,)))[
-            'params']
+        input_size = (2 * num_dof * buffer_length,)
+        params = network.init(key, jax.random.normal(key, input_size))['params']
 
-    # Set up the optipizer and bundle everything into a train state
+    # Set up the optimizer and bundle everything into a train state
     adam_opt = optax.adamw(learning_rate=learning_rate_fn)
     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
 
@@ -529,70 +556,113 @@ def normalize(q):
 
 
 # @jax.jit
-def format_sample(sample, buffer_length):
+def extract_from_sample(sample,
+                        buffer_length,
+                        buffer_length_max,
+                        indices=(0, 0, 1)):
+    output = jnp.array([])
+    for iteration in range(indices[2] - indices[1]):
+        index = iteration + indices[0]
+        start = index * buffer_length_max
+        end = index * buffer_length_max + buffer_length
+        buffer_chunk = jnp.array(sample[start:end])
+        output = jnp.concatenate([output, buffer_chunk])
+
+    return output
+
+
+def extract_from_sample_split(sample,
+                              buffer_length,
+                              indices=(0, 1)):
+    start = indices[0] * buffer_length
+    end = indices[1] * buffer_length
+
+    return jnp.array(sample[start:end])
+
+
+# @jax.jit
+def format_sample(sample, buffer_length, buffer_length_max):
     # build q
-    q1_start = jnp.array([sample[0]])
-    q1_buffer = sample[8: 8 + buffer_length - 1]
-    q1 = jnp.concatenate([q1_start, q1_buffer])
-    q1 = normalize(q1)
-    q2_start = jnp.array([sample[1]])
-    q2_buffer = sample[8 + buffer_length - 1:
-                       8 + 2 * (buffer_length - 1)]
-    q2 = jnp.concatenate([q2_start, q2_buffer])
-    q2 = normalize(q2)
-    q = jnp.concatenate([q1, q2])
+    # q1_start = jnp.array([sample[0]])
+    # q1_buffer = sample[8: 8 + buffer_length - 1]
+    # q1 = jnp.concatenate([q1_start, q1_buffer])
+    # q1 = normalize(q1)
+
+    # q2_start = jnp.array([sample[1]])
+    # q2_buffer = sample[8 + buffer_length - 1:
+    #                    8 + 2 * (buffer_length - 1)]
+    # q2 = jnp.concatenate([q2_start, q2_buffer])
+    # q2 = normalize(q2)
+    # q = jnp.concatenate([q1, q2])
+    q_n = extract_from_sample(sample,
+                              buffer_length,
+                              buffer_length_max,
+                              indices=(0, 0, 4))
+    q_n = normalize(q_n)
 
     # build dq
-    dq1_start = jnp.array([sample[2]])
-    dq1_buffer = sample[8 + 2 * (buffer_length - 1):
-                        8 + 3 * (buffer_length - 1)]
-    dq1 = jnp.concatenate([dq1_start, dq1_buffer])
-    dq2_start = jnp.array([sample[3]])
-    dq2_buffer = sample[8 + 3 * (buffer_length - 1):
-                        8 + 4 * (buffer_length - 1)]
-    dq2 = jnp.concatenate([dq2_start, dq2_buffer])
-    dq = jnp.concatenate([dq1, dq2])
+    # dq1_start = jnp.array([sample[2]])
+    # dq1_buffer = sample[8 + 2 * (buffer_length - 1):
+    #                     8 + 3 * (buffer_length - 1)]
+    # dq1 = jnp.concatenate([dq1_start, dq1_buffer])
+    # dq2_start = jnp.array([sample[3]])
+    # dq2_buffer = sample[8 + 3 * (buffer_length - 1):
+    #                     8 + 4 * (buffer_length - 1)]
+    # dq2 = jnp.concatenate([dq2_start, dq2_buffer])
+    # dq = jnp.concatenate([dq1, dq2])
+    dq_n = extract_from_sample(sample,
+                               buffer_length,
+                               buffer_length_max,
+                               indices=(4, 0, 4))
 
-    # build ddq, tau, target & state
-    ddq = jnp.array([sample[4], sample[5]])
-    tau = jnp.array([sample[6], sample[7]])
-    target = jnp.concatenate([sample[2:4], ddq])
-    state = jnp.concatenate([q, dq])
+    # build dq_0, ddq, tau
+    index_end = 8 * buffer_length_max
+    dq_0 = jnp.array([sample[4 * buffer_length_max],
+                      sample[5 * buffer_length_max],
+                      sample[6 * buffer_length_max],
+                      sample[7 * buffer_length_max]])
+    ddq_0 = jnp.array(sample[index_end: index_end + 4])
+    tau = jnp.array(sample[index_end + 4: index_end + 8])
 
-    return jnp.concatenate([state, tau]), target
+    # build state variables
+    state = jnp.concatenate([q_n, dq_n])
+    dstate_0 = jnp.concatenate([dq_0, ddq_0])
+    state_ext = jnp.concatenate([state, tau])
+
+    return state_ext, dstate_0
 
 
-def format_sample_test(sample, buffer_length):
-    # build q
-    q1_start = jnp.array([sample[1]])
-    q1_buffer = sample[7 + 14: 7 + 14 + buffer_length - 1]
-    q1 = jnp.concatenate([q1_start, q1_buffer])
-    q1 = normalize(q1)
-    q2_start = jnp.array([sample[2]])
-    q2_buffer = sample[7 + 14 + buffer_length - 1:
-                       7 + 14 + 2 * (buffer_length - 1)]
-    q2 = jnp.concatenate([q2_start, q2_buffer])
-    q2 = normalize(q2)
-    q = jnp.concatenate([q1, q2])
-
-    # build dq
-    dq1_start = jnp.array([sample[17]])
-    dq1_buffer = sample[7 + 14 + 2 * (buffer_length - 1):
-                        7 + 14 + 3 * (buffer_length - 1)]
-    dq1 = jnp.concatenate([dq1_start, dq1_buffer])
-    dq2_start = jnp.array([sample[18]])
-    dq2_buffer = sample[7 + 14 + 3 * (buffer_length - 1):
-                        7 + 14 + 4 * (buffer_length - 1)]
-    dq2 = jnp.concatenate([dq2_start, dq2_buffer])
-    dq = jnp.concatenate([dq1, dq2])
-
-    # build ddq, tau, target & state
-    ddq = jnp.array([sample[19], sample[20]])
-    tau = jnp.array([sample[7], sample[8]])
-    target = jnp.concatenate([sample[17:19], ddq])
-    state = jnp.concatenate([q, dq])
-
-    return jnp.concatenate([state, tau]), target
+# def format_sample_test(sample, buffer_length):
+#     # build q
+#     q1_start = jnp.array([sample[1]])
+#     q1_buffer = sample[7 + 14: 7 + 14 + buffer_length - 1]
+#     q1 = jnp.concatenate([q1_start, q1_buffer])
+#     q1 = normalize(q1)
+#     q2_start = jnp.array([sample[2]])
+#     q2_buffer = sample[7 + 14 + buffer_length - 1:
+#                        7 + 14 + 2 * (buffer_length - 1)]
+#     q2 = jnp.concatenate([q2_start, q2_buffer])
+#     q2 = normalize(q2)
+#     q = jnp.concatenate([q1, q2])
+#
+#     # build dq
+#     dq1_start = jnp.array([sample[17]])
+#     dq1_buffer = sample[7 + 14 + 2 * (buffer_length - 1):
+#                         7 + 14 + 3 * (buffer_length - 1)]
+#     dq1 = jnp.concatenate([dq1_start, dq1_buffer])
+#     dq2_start = jnp.array([sample[18]])
+#     dq2_buffer = sample[7 + 14 + 3 * (buffer_length - 1):
+#                         7 + 14 + 4 * (buffer_length - 1)]
+#     dq2 = jnp.concatenate([dq2_start, dq2_buffer])
+#     dq = jnp.concatenate([dq1, dq2])
+#
+#     # build ddq, tau, target & state
+#     ddq = jnp.array([sample[19], sample[20]])
+#     tau = jnp.array([sample[7], sample[8]])
+#     target = jnp.concatenate([sample[17:19], ddq])
+#     state = jnp.concatenate([q, dq])
+#
+#     return jnp.concatenate([state, tau]), target
 
 
 def build_database_dataloader(settings: dict) -> Callable:
@@ -601,6 +671,7 @@ def build_database_dataloader(settings: dict) -> Callable:
     num_minibathces = settings['num_minibatches']
     num_skips = settings['eff_datasampling']
     buffer_length = settings['buffer_length']
+    buffer_length_max = settings['buffer_length_max']
 
     # Set up help valriables
     data_size_train = batch_size * num_minibathces * num_skips
@@ -623,7 +694,9 @@ def build_database_dataloader(settings: dict) -> Callable:
     #                     f'{samples_train + samples_validation},{samples_test} ' \
     #                     f'LIMIT {data_size}'
 
-    format_samples = jax.vmap(partial(format_sample, buffer_length=buffer_length))
+    format_samples = jax.vmap(partial(format_sample,
+                                      buffer_length=buffer_length,
+                                      buffer_length_max=buffer_length_max))
 
     # @jax.jit
     def dataloader(key):
