@@ -32,52 +32,98 @@ class MLP(nn.Module):
         return x
 
 
+def split_state(state, buffer_length):
+    # @jax.jit
+    def _split_state(state):
+        q = jnp.array([state[0],
+                       state[buffer_length + 1]])
+        q1_buff = state[1: buffer_length]
+        q2_buff = state[buffer_length + 1: 2 * buffer_length]
+        q_buff = jnp.concatenate([q1_buff, q2_buff])
+
+
+        dq = jnp.array([state[2 * buffer_length],
+                        state[3 * buffer_length + 1]])
+        dq1_buff = state[2 * buffer_length + 1:
+                         3 * buffer_length]
+        dq2_buff = state[3 * buffer_length + 1:
+                         4 * buffer_length]
+        dq_buff = jnp.concatenate([dq1_buff, dq2_buff])
+
+        tau = state[-2:]
+
+        return q, q_buff, dq, dq_buff, tau
+
+    return _split_state(state)
+
+
+# @jax.jit
+def calc_dynamics(state: jnp.array,
+                  kinetic: Callable = None,
+                  potential: Callable = None
+                  ) -> jnp.array:
+    q, q_buff, dq, dq_buff, tau = split_state(state, 25)
+
+    M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+    C = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) @ dq - \
+        jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
+    g = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
+
+    return q, dq, tau, M, C, g
+
+
 def equation_of_motion(state: jnp.array,
-                       kinetic: Callable = None,
-                       potential: Callable = None,
-                       t=None) -> jnp.array:
-    q, q_t, tau = jnp.split(state, 3)
+                       dynamics: Callable
+                       ) -> jnp.array:
+    q, dq, tau, M, C, g = dynamics(state)
 
-    @jax.jit
-    def lagrangian(q, q_t):
-        return kinetic(q, q_t) - potential(q, q_t)
+    ddq = jnp.linalg.pinv(M) @ (tau - C - g)
+    return jnp.concatenate([dq, ddq])
 
-    M = jax.hessian(kinetic, 1)(q, q_t)
-    q_tt = jnp.linalg.pinv(M) @ (jax.grad(lagrangian, 0)(q, q_t) + tau -
-                                 jax.jacobian(jax.jacobian(kinetic, 1), 0)(q, q_t) @ q_t)
 
-    return jnp.concatenate([q_t, q_tt])
+# def equation_of_motion_lag(lagrangian: Callable, state: jnp.array, t=None):
+#     q, q_t, tau = jnp.split(state, 3)
+#     q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
+#             @ (jax.grad(lagrangian, 0)(q, q_t) + tau
+#                - jax.jacobian(jax.jacobian(lagrangian, 1), 0)(q, q_t) @ q_t))
+#     return jnp.concatenate([q_t, q_tt])
 
-def equation_of_motion_lag(lagrangian: Callable, state: jnp.array, t=None):
-  q, q_t, tau = jnp.split(state, 3)
-  q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
-          @ (jax.grad(lagrangian, 0)(q, q_t) + tau
-             - jax.jacobian(jax.jacobian(lagrangian, 1), 0)(q, q_t) @ q_t))
-  return jnp.concatenate([q_t, q_tt])
+def forward_dynamics(ddq: jnp.array,
+                     state: jnp.array,
+                     dynamics: Callable
+                     ) -> jnp.array:
+    q, dq, tau_target, M, C, g = dynamics(state)
+
+    tau = M @ ddq + C + g
+    return tau, tau_target
 
 
 @partial(jax.jit, backend='cpu')
 def solve_analytical(initial_state: jnp.array, times: jnp.array):
     return odeint(model.f_analytical, initial_state, t=times, rtol=1e-13, atol=1e-13)
 
-def solve_lagrangian(initial_state, lagrangian, **kwargs):
-    @partial(jax.jit, backend='cpu')
-    def f(initial_state):
-        eqs_motion = partial(equation_of_motion_lag, lagrangian)
-        return odeint(eqs_motion,
-                      initial_state,
-                      **kwargs)
 
-    return f(initial_state)
+# def solve_lagrangian(initial_state, lagrangian, **kwargs):
+#     @partial(jax.jit, backend='cpu')
+#     def f(initial_state):
+#         eqs_motion = partial(equation_of_motion_lag, lagrangian)
+#         return odeint(eqs_motion,
+#                       initial_state,
+#                       **kwargs)
+#
+#     return f(initial_state)
+
 
 def learned_lagrangian(params: dict, train_state: ts.TrainState,
                        output: str = 'lagrangian') -> Callable:
     @jax.jit
-    def lagrangian(q: jnp.array, q_dot: jnp.array):
-        state = jnp.concatenate([q, q_dot])
+    def lagrangian(q: jnp.array, q_buff: jnp.array, q_dot: jnp.array, dq_buff:
+    jnp.array):
+        state = jnp.concatenate([q, q_buff, q_dot, dq_buff])
         out = train_state.apply_fn({'params': params}, x=state)
         T = out[0]
         V = out[1]
+        # tau_f = out[2:]
         if output == 'energies':
             return T, V
         elif output == 'lagrangian':
@@ -86,6 +132,8 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState,
             return V
         elif output == 'kinetic':
             return T
+        # elif output == 'friction':
+        #     return tau_f
 
     return lagrangian
 
@@ -94,19 +142,24 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState,
 def learned_energies(state: jnp.array, params: dict = None,
                      train_state: ts.TrainState = None):
     # Split the state variables
-    q, q_dot, _ = jnp.split(state, 3)
+    # q, q_dot, _ = jnp.split(state, 3)
+    q, q_buff, dq, dq_buff, tau = split_state(state, 25)
 
     # Get the energies as the output of the NN
-    T, V = learned_lagrangian(params, train_state, output='energies')(q, q_dot)
+    T, V = learned_lagrangian(params, train_state, output='energies')(q, q_buff,
+                                                                      dq, dq_buff)
 
     # Reconstruct the kin.energy from its deriv.
-    M = jax.hessian(learned_lagrangian(params, train_state, output='kinetic'), 1)(q,
-                                                                                  q_dot)
-    T_rec = 1 / 2 * jnp.transpose(q_dot) @ M @ q_dot
+    M = jax.hessian(learned_lagrangian(params, train_state, output='kinetic'), 2)
+    M = M(q, q_buff, dq, dq_buff)
+    T_rec = 1 / 2 * jnp.transpose(dq) @ M @ dq
 
     # Get the derivative on q_dot from the potential energy
-    V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)(q,
-                                                                                     q_dot)
+    V_dot = jax.grad(learned_lagrangian(params, train_state, output='potential'), 1)
+    V_dot = V_dot(q, q_buff, dq, dq_buff)
+
+    # Get the friction torques
+    # tau_f = learned_lagrangian(params, train_state, output='friction')(q, q_dot)
 
     return T, V, T_rec, V_dot, M
 
@@ -115,7 +168,7 @@ def learned_energies(state: jnp.array, params: dict = None,
 def loss(params: dict, train_state: ts.TrainState,
          batch: (jnp.array, jnp.array)) -> jnp.array:
     # Unpack training data
-    state, q_ddot_target = batch
+    state, qdd_target = batch
 
     # Calculate energies and their derivatives
     T, V, T_rec, V_dot, M = jax.vmap(partial(learned_energies, params=params,
@@ -124,14 +177,35 @@ def loss(params: dict, train_state: ts.TrainState,
     # Calculate total energy (Hamiltonian)
     # H = T + V
 
+    # Build dynamics
+    kinetic_func = learned_lagrangian(params, train_state, output='kinetic')
+    potential_func = learned_lagrangian(params, train_state, output='potential')
+    compiled_dynamics = jax.jit(partial(calc_dynamics,
+                                        kinetic=kinetic_func,
+                                        potential=potential_func))
+    inv_dyn = jax.vmap(jax.jit(partial(equation_of_motion,
+                                       dynamics=compiled_dynamics)))
+    for_dyn_single = jax.jit(partial(forward_dynamics,
+                                     dynamics=compiled_dynamics))
+
+    # wrap for_dyn_single to handle data format
+    def for_dyn_wrapped(data_point):
+        state, ddq = data_point
+        ddq = ddq[2:4]
+        return for_dyn_single(ddq=ddq, state=state)
+
+    for_dyn = jax.vmap(for_dyn_wrapped)
+
     # Predict joint accelerations and calculate error
-    eqs_motion = jax.vmap(partial(equation_of_motion,
-                                  kinetic=learned_lagrangian(params, train_state,
-                                                             output='kinetic'),
-                                  potential=learned_lagrangian(params, train_state,
-                                                               output='potential')))
-    q_ddot_prediction = eqs_motion(state)
-    L_acc = jnp.mean((q_ddot_prediction - q_ddot_target) ** 2)
+    qdd_pred = inv_dyn(state)
+    L_acc_qdd = jnp.mean((qdd_pred - qdd_target) ** 2)
+    # L_acc = L_acc_qdd
+
+    # Predict the torques and calculate error
+    tau_prediction, tau_target = for_dyn(batch)
+    L_acc_tau = jnp.mean((tau_prediction - tau_target) ** 2)
+    L_acc = (L_acc_qdd + L_acc_tau * 10) / 2
+    # L_acc = L_acc_tau
 
     # Impose energy conservation
     # L_con = jnp.mean(H ** 2)
@@ -152,7 +226,10 @@ def loss(params: dict, train_state: ts.TrainState,
     # Impose independence form q_dot on V due to mechanical system
     L_pot = jnp.mean(V_dot ** 2)
 
-    return L_acc + 1000 * (L_kin + L_pot + L_mass)
+    # Impose small frictions
+    # L_f = jnp.mean(tau_f ** 2)
+
+    return L_acc + 1000 * (L_kin + L_pot + L_mass) * 0
 
 
 # TODO: This function needs to be unified with the previous one somehow
@@ -197,14 +274,19 @@ def loss_sample(pair, params=None, train_state=None):
     return L_total, L_acc, 1000 * (L_kin + L_pot + L_mass)
 
 
-def create_train_state(key: int, learning_rate_fn: Callable, params: dict = None) -> \
-        ts.TrainState:
+def create_train_state(settings: dict, learning_rate_fn: Callable, params: dict =
+None) -> ts.TrainState:
+    # Unpack settings
+    key = jax.random.PRNGKey(settings['seed'])
+    buffer_length = settings['buffer_length']
+
     # Create network
     network = MLP()
 
     # If available load the parameters
     if params is None:
-        params = network.init(key, jax.random.normal(key, (4,)))['params']
+        params = network.init(key, jax.random.normal(key, (4 * buffer_length,)))[
+            'params']
 
     # Set up the optipizer and bundle everything into a train state
     adam_opt = optax.adamw(learning_rate=learning_rate_fn)
@@ -242,6 +324,7 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
     num_batches = settings['num_batches']
     num_minibatches = settings['num_minibatches']
     num_epochs = settings['num_epochs']
+    num_skips = settings['eff_datasampling']
     lr_func = settings['lr_func']
     early_stopping_gain = settings['es_gain']
 
@@ -254,24 +337,44 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
     try:
         epoch_loss_last = np.inf
         epoch = 0
+        x_train_large = None
+        xt_train_large = None
+        x_test_large = None
+        xt_test_large = None
         while epoch < num_epochs:
             # Sample key for each epoch
             random_key = jax.random.PRNGKey(settings['seed'] + epoch)
 
+            # Get new samples for the next num_skips epochs
+            if epoch % num_skips == 0:
+                batch_train_large, batch_test_large = dataloader(settings['seed'] +
+                                                                 epoch)
+                x_train_large, xt_train_large = batch_train_large
+                x_test_large, xt_test_large = batch_test_large
+
+                x_train_large = jnp.split(x_train_large, num_skips)
+                xt_train_large = jnp.split(xt_train_large, num_skips)
+
+                x_test_large = jnp.split(x_test_large, num_skips)
+                xt_test_large = jnp.split(xt_test_large, num_skips)
+
             # Split training data into minibatches
-            batch_train, batch_test = dataloader(random_key)
-            x_train, xt_train = batch_train
-            x_train_minibatches = jnp.split(x_train, num_minibatches)
-            xt_train_minibatches = jnp.split(xt_train, num_minibatches)
+            x_train_minibatches = jnp.split(x_train_large[epoch % num_skips],
+                                            num_minibatches)
+            xt_train_minibatches = jnp.split(xt_train_large[epoch % num_skips],
+                                             num_minibatches)
+            batch_test = (
+                x_test_large[epoch % num_skips], xt_test_large[epoch % num_skips])
 
             # Train model on each batch
             epoch_loss = 0
+            epoch_test_loss = 0
             train_metrics = None
             for batch in range(num_batches):
                 train_loss = 0
                 for minibatch in range(num_minibatches):
                     minibatch_current = (
-                    x_train_minibatches[minibatch], xt_train_minibatches[minibatch])
+                        x_train_minibatches[minibatch], xt_train_minibatches[minibatch])
                     train_state, train_metrics = train_step(train_state,
                                                             minibatch_current, lr_func)
                     train_loss += train_metrics['loss'] / num_minibatches
@@ -279,34 +382,44 @@ def run_training(train_state: ts.TrainState, dataloader: Callable, settings: dic
                 # When a batch is done
                 epoch_loss += train_loss / num_batches
 
-                # Check for the best params per batch
-                if train_loss < best_loss:
-                    best_loss = train_loss
-                    best_params = copy(train_state.params)
+                # Evaluate model with the test data
+                test_loss = eval_step(train_state, batch_test)['loss']
+                epoch_test_loss += test_loss / num_batches
 
-            # Evaluate model with the test data
-            test_loss = eval_step(train_state, batch_test)['loss']
+                # Check for the best params per batch (test_loss)
+                if epoch_loss < best_loss:
+                    best_loss = epoch_loss
+                    best_params = copy(train_state.params)
 
             if epoch_loss > epoch_loss_last * early_stopping_gain:
                 print(f'Early stopping! Epoch loss: {epoch_loss}. Now resetting.')
                 settings['seed'] += 10
-                train_state = create_train_state(settings['seed'], lr_func,
+                train_state = create_train_state(settings, lr_func,
                                                  params=best_params)
                 epoch = 0
+
+                # batch_train, batch_test = dataloader(settings['seed'] + epoch)
+                # x_train, xt_train = batch_train
+                # x_train_minibatches = jnp.split(x_train, num_minibatches)
+                # xt_train_minibatches = jnp.split(xt_train, num_minibatches)
+
                 continue
 
             # Record train and test losses
             train_losses.append(epoch_loss)
-            test_losses.append(test_loss)
+            test_losses.append(epoch_test_loss)
             run.track(epoch, name='epoch')
             run.track(epoch_loss, name='epoch_loss')
-            run.track(test_loss, name='test_loss')
+            run.track(epoch_test_loss, name='test_loss')
             run.track(train_metrics['learning_rate'], name='learning_rate')
 
             # Output progress every 'test_every' epochs
             if epoch % test_every == 0:
                 print(
-                    f"Epoch={epoch}, train={epoch_loss:.4f}, test={test_loss:.4f}, lr={train_metrics['learning_rate']:.10f}")
+                    f"Epoch={epoch}, "
+                    f"train={epoch_loss:.4f}, "
+                    f"test={epoch_test_loss:.4f}, "
+                    f"lr={train_metrics['learning_rate']:.10f}")
 
             # Update epoch and record the last loss
             epoch += 1
@@ -409,13 +522,89 @@ def build_general_dataloader(batch_train: tuple, batch_test: tuple,
 
     return dataloader
 
+
+@jax.jit
+def normalize(q):
+    return (q + np.pi) % (2 * np.pi) - np.pi
+
+
+# @jax.jit
+def format_sample(sample, buffer_length):
+    # build q
+    q1_start = jnp.array([sample[0]])
+    q1_buffer = sample[8: 8 + buffer_length - 1]
+    q1 = jnp.concatenate([q1_start, q1_buffer])
+    q1 = normalize(q1)
+    q2_start = jnp.array([sample[1]])
+    q2_buffer = sample[8 + buffer_length - 1:
+                       8 + 2 * (buffer_length - 1)]
+    q2 = jnp.concatenate([q2_start, q2_buffer])
+    q2 = normalize(q2)
+    q = jnp.concatenate([q1, q2])
+
+    # build dq
+    dq1_start = jnp.array([sample[2]])
+    dq1_buffer = sample[8 + 2 * (buffer_length - 1):
+                        8 + 3 * (buffer_length - 1)]
+    dq1 = jnp.concatenate([dq1_start, dq1_buffer])
+    dq2_start = jnp.array([sample[3]])
+    dq2_buffer = sample[8 + 3 * (buffer_length - 1):
+                        8 + 4 * (buffer_length - 1)]
+    dq2 = jnp.concatenate([dq2_start, dq2_buffer])
+    dq = jnp.concatenate([dq1, dq2])
+
+    # build ddq, tau, target & state
+    ddq = jnp.array([sample[4], sample[5]])
+    tau = jnp.array([sample[6], sample[7]])
+    target = jnp.concatenate([sample[2:4], ddq])
+    state = jnp.concatenate([q, dq])
+
+    return jnp.concatenate([state, tau]), target
+
+
+def format_sample_test(sample, buffer_length):
+    # build q
+    q1_start = jnp.array([sample[1]])
+    q1_buffer = sample[7 + 14: 7 + 14 + buffer_length - 1]
+    q1 = jnp.concatenate([q1_start, q1_buffer])
+    q1 = normalize(q1)
+    q2_start = jnp.array([sample[2]])
+    q2_buffer = sample[7 + 14 + buffer_length - 1:
+                       7 + 14 + 2 * (buffer_length - 1)]
+    q2 = jnp.concatenate([q2_start, q2_buffer])
+    q2 = normalize(q2)
+    q = jnp.concatenate([q1, q2])
+
+    # build dq
+    dq1_start = jnp.array([sample[17]])
+    dq1_buffer = sample[7 + 14 + 2 * (buffer_length - 1):
+                        7 + 14 + 3 * (buffer_length - 1)]
+    dq1 = jnp.concatenate([dq1_start, dq1_buffer])
+    dq2_start = jnp.array([sample[18]])
+    dq2_buffer = sample[7 + 14 + 3 * (buffer_length - 1):
+                        7 + 14 + 4 * (buffer_length - 1)]
+    dq2 = jnp.concatenate([dq2_start, dq2_buffer])
+    dq = jnp.concatenate([dq1, dq2])
+
+    # build ddq, tau, target & state
+    ddq = jnp.array([sample[19], sample[20]])
+    tau = jnp.array([sample[7], sample[8]])
+    target = jnp.concatenate([sample[17:19], ddq])
+    state = jnp.concatenate([q, dq])
+
+    return jnp.concatenate([state, tau]), target
+
+
 def build_database_dataloader(settings: dict) -> Callable:
     # Unpack the settings
     batch_size = settings['batch_size']
     num_minibathces = settings['num_minibatches']
+    num_skips = settings['eff_datasampling']
+    buffer_length = settings['buffer_length']
 
     # Set up help valriables
-    data_size = batch_size * num_minibathces
+    data_size_train = batch_size * num_minibathces * num_skips
+    data_size_test = batch_size * num_skips
 
     # set up database
     database = sqlite3.connect(settings['database_name'])
@@ -430,30 +619,33 @@ def build_database_dataloader(settings: dict) -> Callable:
     samples_test = int(samples_total * 0.1)
 
     # query commands
-    query_sample_training = f'SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT ' \
-                            f'{samples_train} LIMIT {data_size} '
-    query_sample_validation = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
-                              f'{samples_train},{samples_validation} LIMIT {data_size}'
-    query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
-                        f'{samples_train + samples_validation},{samples_test} ' \
-                        f'LIMIT {data_size}'
+    # query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
+    #                     f'{samples_train + samples_validation},{samples_test} ' \
+    #                     f'LIMIT {data_size}'
 
-    @jax.jit
-    def format_sample(sample):
-        q = jnp.array([sample[0], sample[1]])
-        dq = jnp.array([sample[2], sample[3]])
-        ddq = jnp.array([sample[4], sample[5]])
-        tau = jnp.array([sample[6], sample[7]])
+    format_samples = jax.vmap(partial(format_sample, buffer_length=buffer_length))
 
-        return jnp.concatenate([q, dq, tau]), ddq
-    format_samples = jax.vmap(format_sample)
-
+    # @jax.jit
     def dataloader(key):
-        batch_training_raw = cursor.execute(query_sample_training).fetchall()
-        batch_training = format_samples(batch_training_raw)
+        def query_sample_training(key):
+            query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
+                    f'LIMIT {samples_train}) ORDER BY RANDOM() ' \
+                    f'LIMIT {data_size_train}'
+            return query
 
-        batch_validation_raw = cursor.execute(query_sample_validation).fetchall()
-        batch_validation = format_samples(batch_validation_raw)
+        def query_sample_validation(key):
+            query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
+                    f'LIMIT {samples_validation} ' \
+                    f'OFFSET {samples_train}) ' \
+                    f'ORDER BY RANDOM() ' \
+                    f'LIMIT {data_size_test}'
+            return query
+
+        batch_training_raw = cursor.execute(query_sample_training(key)).fetchall()
+        batch_training = format_samples(jnp.array(batch_training_raw))
+
+        batch_validation_raw = cursor.execute(query_sample_validation(key)).fetchall()
+        batch_validation = format_samples(jnp.array(batch_validation_raw))
 
         return batch_training, batch_validation
 

@@ -24,7 +24,7 @@ if __name__ == "__main__":
     if settings['reload']:
         params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
         print(f"Params loaded from file: {settings['ckpt_dir']}")
-    train_state = lx.create_train_state(jax.random.PRNGKey(settings['seed']),
+    train_state = lx.create_train_state(settings,
                                         learning_rate_fn,
                                         params=params)
 
