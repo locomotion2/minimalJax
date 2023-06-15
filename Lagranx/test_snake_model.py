@@ -25,19 +25,24 @@ if __name__ == "__main__":
     # build dynamics
     kinetic = lx.learned_lagrangian(params, train_state, output='kinetic')
     potential = lx.learned_lagrangian(params, train_state, output='potential')
-    compiled_dynamics = jax.jit(partial(lx.calc_dynamics,
-                                        kinetic=kinetic,
-                                        potential=potential))
+    friction = lx.learned_lagrangian(params, train_state, output='friction')
+    compiled_dynamics = partial(lx.calc_dynamics,
+                                kinetic=kinetic,
+                                potential=potential,
+                                friction=friction)
+    compiled_dyn_wrapper = jax.jit(partial(lx.dynamics_wrapper,
+                                           dynamics=compiled_dynamics))
     format_samples = jax.vmap(partial(lx.format_sample,
                                       buffer_length=10,
                                       buffer_length_max=10))
     inv_dyn = jax.vmap(jax.jit(partial(lx.equation_of_motion,
-                                       dynamics=compiled_dynamics)))
+                                       dynamics=compiled_dyn_wrapper)))
     for_dyn_single = jax.jit(partial(lx.forward_dynamics,
-                                     dynamics=compiled_dynamics))
+                                     dynamics=compiled_dyn_wrapper))
     energies = jax.vmap(partial(lx.learned_energies,
-                        params=params,
-                        train_state=train_state))
+                                params=params,
+                                train_state=train_state))
+    vectorized_dynamics = jax.vmap(compiled_dyn_wrapper)
 
 
     # wrap fd to handle data format
@@ -51,9 +56,9 @@ if __name__ == "__main__":
 
     # set up database
     database = sqlite3.connect('/home/gonz_jm/Documents/thesis_workspace/databases/'
-                               'database_points')
-    table_name = 'point_15'
-    samples_num = 2000
+                               'database_points_full')
+    table_name = 'point_123'
+    samples_num = 1000
     offset_num = 0
     cursor = database.cursor()
 
@@ -65,27 +70,35 @@ if __name__ == "__main__":
                 f'OFFSET {offset_num}'
         return query
 
+
     @jax.jit
     def calc_power(vars):
         dq, tau = vars
         # dq = dq[0:2]
         # tau = tau[0:2]
         return jnp.transpose(dq) @ tau
+
+
     calc_power_vec = jax.vmap(calc_power)
+
 
     @jax.jit
     def calc_V_ana(tau):
-        return 1/2 * 1/1.75 * jnp.sum(tau ** 2)
+        return 1 / 2 * 1 / 1.75 * jnp.sum(tau ** 2)
+
+
     calc_V_ana_vec = jax.vmap(calc_V_ana)
 
     # format data
     data_raw = jnp.array(cursor.execute(query()).fetchall())
     data_formatted = format_samples(data_raw)
     state, ddq_target = data_formatted
-    q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
+    # q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
+    q, dq, _, _, _, _, _, k_f = vectorized_dynamics(state)
 
     # calculate magnitudes of interest
     tau, tau_target = for_dyn(data_formatted)
+    tau_loss = k_f * dq
     ddq = inv_dyn(state)
     V_ana = calc_V_ana_vec(tau_target)
     T_lnn, V_lnn, T_rec, _, _ = jax.device_get(energies(state))
@@ -100,8 +113,7 @@ if __name__ == "__main__":
     H_rec = T_rec + V_rec
     vars = jnp.array(list(zip(dq, tau_target)))
     power = calc_power_vec(vars)
-    H_mec = cumtrapz(jax.device_get(power), dx=1/100)
-
+    H_mec = cumtrapz(jax.device_get(power), dx=1 / 100)
 
     # Calibration
     # state_rest = jnp.array([[0] * (settings['buffer_length'] * 8)], dtype=float)
@@ -158,6 +170,19 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
+    # Frictions
+    plt.figure(figsize=(8, 4.5), dpi=120)
+    plt.plot(k_f, linewidth=2, label='k_f')
+    plt.legend()
+    # plt.ylim(-0.1, 0.5)
+    # plt.xlim(0, 5)
+    plt.title('Friction coeffs.')
+    plt.ylabel('Something')
+    plt.xlabel('sample (n)')
+    # plt.legend([r'$L_{tot}$', r'$L_{acc}$', r'$L_{mec}$'], loc="best")
+    # plt.savefig('media/Model identification/Loss.png')
+    plt.show()
+
     # Accelerations
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(ddq_target[:, 6:8], linewidth=2, label='target')
@@ -176,6 +201,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(tau_target[:, 2:4], linewidth=2, label='target')
     plt.plot(tau[:, 2:4], linewidth=2, label='pred')
+    plt.plot(tau_loss[:, 2:4], linewidth=2, label='Loss')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
@@ -190,9 +216,9 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(H_ana, linewidth=3, label='H. Analytic')
     # plt.plot(H_lnn, linewidth=2, label='H. Lnn')
-    # plt.plot(H_rec, linewidth=2, label='H. Recon')
+    plt.plot(H_rec, linewidth=2, label='H. Recon')
     plt.plot(H_mec, linewidth=2, label='H. Mec')
-    plt.plot(H_cal, linewidth=2, label='H. Cal')
+    # plt.plot(H_cal, linewidth=2, label='H. Cal')
     # plt.plot(t_sim, H_f, '--', linewidth=3, label='H. Final')
     plt.title('Hamiltonians from the Snake')
     # plt.ylim(0, 2.0)
@@ -207,8 +233,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, L_ana, linewidth=3, label='L. Analytic')
     # plt.plot(L_lnn, linewidth=2, label='L. Lnn')
-    # plt.plot(L_rec, linewidth=2, label='L. Recon')
-    plt.plot(L_cal, linewidth=2, label='L. Cal')
+    plt.plot(L_rec, linewidth=2, label='L. Recon')
+    # plt.plot(L_cal, linewidth=2, label='L. Cal')
     # plt.plot(t_sim, L_f, '--', linewidth=2, label='L. Final')
     plt.title('Lagrangians from the Snake')
     # plt.ylim(-1.5, 2.0)
@@ -224,12 +250,12 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, T_ana, linewidth=3, label='Kin. Analytic')
     plt.plot(V_ana, linewidth=2, label='Pot. Ana')
-    plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
+    # plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     plt.plot(T_rec, linewidth=2, label='Kin. Recon')
-    # plt.plot(V_rec, linewidth=2, label='Pot. Recon')
-    plt.plot(T_cal, linewidth=2, label='Kin. Cal')
-    plt.plot(V_cal, linewidth=2, label='Pot. Cal')
+    plt.plot(V_rec, linewidth=2, label='Pot. Recon')
+    # plt.plot(T_cal, linewidth=2, label='Kin. Cal')
+    # plt.plot(V_cal, linewidth=2, label='Pot. Cal')
     # plt.plot(t_sim, T_f, '--', linewidth=2, label='Kin. Final')
     # plt.plot(t_sim, V_f, '--', linewidth=2, label='Pot. Final')
     plt.title('Energies from the Snake')

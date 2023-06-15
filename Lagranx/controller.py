@@ -14,89 +14,93 @@ from src import lagranx as lx
 import stable_baselines3.common.save_util as loader
 
 
-def update_buffer(sample, buffer):
-    return np.insert(buffer[0:-1], 0, sample)
+@jax.jit
+def update_format_buffers(variable_buffer, variable):
+    var_list_save = []
+    var_list_send = []
+    for index, element in enumerate(variable):
+        # update buffer
+        vector = variable_buffer[index, 0:-1]
+        vector = jnp.insert(vector, 0, element)
+        var_list_save.append(vector)
+
+        # format buffer to be send
+        # var_list_send.append(vector[::10])
+        var_list_send.append(vector)
+
+    return jnp.array(var_list_save), jnp.concatenate(var_list_send)
+
+
+# @jax.jit
+def format_state(q, q_buff, dq, dq_buff, tau):
+    # format into the right sizes
+    q = lx.normalize(q)
+
+    # update buffers, subsample and flatten
+    q_buff, q_out = update_format_buffers(q_buff, q)
+    dq_buff, dq_out = update_format_buffers(dq_buff, dq)
+
+    # prepare package
+    state = jnp.concatenate([q_out, dq_out, tau])
+
+    return state, q_buff, dq_buff
 
 
 if __name__ == '__main__':
+    # config ln coms
     print('Snake learned controller initiated.')
     clnt = ln.client(sys.argv[0], sys.argv)
     subscriber = clnt.subscribe("ff.controller.in", "ff_controller_in")
     publisher = clnt.publish("ff.controller.out", "ff_controller_out")
     print('LN connection established')
 
-    # Load the trained model
+    # load the trained model
     params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
     train_state = lx.create_train_state(settings, 0, params=params)
+
+    # build dynamics
     kinetic = lx.learned_lagrangian(params, train_state, output='kinetic')
     potential = lx.learned_lagrangian(params, train_state, output='potential')
-    compiled_dynamics = jax.jit(partial(lx.calc_dynamics,
-                                        kinetic=kinetic,
-                                        potential=potential))
-    fd = jax.jit(partial(lx.forward_dynamics,
-                         dynamics=compiled_dynamics))
+    friction = lx.learned_lagrangian(params, train_state, output='friction')
+    compiled_dynamics = partial(lx.calc_dynamics,
+                                kinetic=kinetic,
+                                potential=potential,
+                                friction=friction)
+    compiled_dyn_wrapper = jax.jit(partial(lx.dynamics_wrapper,
+                                           dynamics=compiled_dynamics))
+    inv_dyn = jax.jit(partial(lx.equation_of_motion,
+                              dynamics=compiled_dyn_wrapper))
+    for_dyn = jax.jit(partial(lx.forward_dynamics,
+                              dynamics=compiled_dyn_wrapper))
 
-    # Setup the state buffering
+    # setup the state buffering
     buffer_length = settings['buffer_length']
-    q1_buff = np.zeros(buffer_length - 1)
-    q2_buff = np.zeros(buffer_length - 1)
-    dq1_buff = np.zeros(buffer_length - 1)
-    dq2_buff = np.zeros(buffer_length - 1)
-
+    # q_buff = jnp.zeros((4, buffer_length * 10))
+    # dq_buff = jnp.zeros((4, buffer_length * 10))
+    q_buff = jnp.zeros((4, buffer_length))
+    dq_buff = jnp.zeros((4, buffer_length))
     try:
-        counter = 0
-        prev_time = 0
-        prev_update_time = 0
-        rate = 100
         while True:
             # Get q, dq, ddq, time
             print('Listening to topic...')
             subscriber.read()
             time = subscriber.packet.time
-            q = np.array(subscriber.packet.q)
-            dq = np.array(subscriber.packet.dq)
-            ddq = np.array(subscriber.packet.ddq)
-            print(f"received: {q}, {dq}, {ddq}")
+            q = jnp.array(subscriber.packet.q)
+            dq = jnp.array(subscriber.packet.dq)
+            ddq = jnp.array(subscriber.packet.ddq)
+            tau_target = jnp.array(subscriber.packet.tau)
+            print(f"received: {q}, {dq}, {ddq}, {tau_target}")
 
-            # Format into the right sizes
-            q = lx.normalize(q)
+            # Calculate dynamics
+            state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff, tau_target)
+            tau, _ = for_dyn(q_d=q, dq_d=dq, ddq_d=ddq, ddq=ddq, state=state)
+            ddq_pred = inv_dyn(state)
 
-            # Count to 10 and update the buffer!
-            if time != prev_time:
-                counter += 1
-            if counter % 9 == 0:
-                # prepare package
-                q1_out = np.insert(q1_buff, 0, q[0])
-                q2_out = np.insert(q2_buff, 0, q[0])
-                q_out = np.concatenate([q1_out, q2_out])
-
-                dq1_out = np.insert(dq1_buff, 0, dq[0])
-                dq2_out = np.insert(dq2_buff, 0, dq[0])
-                dq_out = np.concatenate([dq1_out, dq2_out])
-                state = np.concatenate([q_out, dq_out, np.array([0, 0, 0, 0])])
-
-                # Calculate tau
-                tau, _ = fd(ddq=ddq, state=state)
-
-                # Send tau
-                publisher.packet.tau = tau[0:2]
-                print(f"sending: {tau}")
-                publisher.write()
-
-                # Do updates
-                rate = rate * 0.99 + 0.01 / (time - prev_update_time)
-                # print(f"Update rate: {rate}")
-                # print(f"Previous q buffer: {q_buff}")
-                q1_buff = update_buffer(q[0], q1_buff)
-                q2_buff = update_buffer(q[1], q2_buff)
-                dq1_buff = update_buffer(dq[0], dq1_buff)
-                dq2_buff = update_buffer(dq[1], dq2_buff)
-                counter = 0
-                # print(f"Current q buffer: {q_buff}")
-                prev_update_time = time
-
-            # update vars
-            prev_time = time
+            # Send tau
+            publisher.packet.tau = np.array(tau[0:2])
+            publisher.packet.ddq = np.array(ddq_pred[4:8])
+            print(f"sending: {tau[0:2]}, {ddq_pred[4:8]}")
+            publisher.write()
 
     except KeyboardInterrupt:
         print('User commanded termination.')

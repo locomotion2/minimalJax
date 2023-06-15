@@ -23,7 +23,7 @@ class MLP(nn.Module):
     def __call__(self, x):
         size = 64 * 10
         x = self.layer(x, features=size)
-        x_out = nn.Dense(features=2)(x)
+        x_out = nn.Dense(features=2 + 4)(x)
         return x_out
 
     def layer(self, x: jnp.array, features: int = 128):
@@ -86,24 +86,65 @@ def split_state(state, buffer_length):
 # @jax.jit
 def calc_dynamics(state: jnp.array,
                   kinetic: Callable = None,
-                  potential: Callable = None
+                  potential: Callable = None,
+                  friction: Callable = None
                   ) -> jnp.array:
     q, q_buff, dq, dq_buff, tau = split_state(state, 10)
 
-    M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
-    C = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) @ dq - \
-        jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
-    g = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
+    # M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+    # C = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) @ dq - \
+    #     jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
+    # g = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
+    # k_f = friction(q, q_buff, dq, dq_buff)
+    def friction_simple(q, dq):
+        return friction(q, q_buff, dq, dq_buff)
 
-    return q, dq, tau, M, C, g
+    # build dynamic functions
+    def inertia_simple(q, dq):
+        return jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+
+    def coriolis(q, dq):
+        return jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) - \
+            1 / 2 * jnp.transpose(dq) @ jax.jacobian(jax.hessian(kinetic, 2), 0) \
+                (q, q_buff, dq, dq_buff)
+
+    gamma = 1.75
+    K_x = np.diag([gamma, gamma])
+    K = np.bmat([[K_x, -K_x], [-K_x, K_x]])
+    K = jnp.array(K)
+
+    def gravity(q, dq):
+        return jax.grad(potential, 0)(q, q_buff, dq, dq_buff) - K @ q
+
+    # return q, dq, tau, M, C_mat @ dq, g, k_f
+    return q, dq, tau, inertia_simple, coriolis, K, gravity, friction_simple
+
+
+def dynamics_wrapper(state: jnp.array,
+                     dynamics: Callable
+                     ) -> jnp.array:
+    q, dq, tau, inertia, coriolis, K, gravity, friction = dynamics(state)
+    M = inertia(q, dq)
+    C = coriolis(q, dq)
+    g = gravity(q, dq)
+    k_f = friction(q, dq)
+
+    return q, dq, tau, M, C, K, g, k_f
 
 
 def equation_of_motion(state: jnp.array,
                        dynamics: Callable
                        ) -> jnp.array:
-    q, dq, tau, M, C, g = dynamics(state)
+    # q, dq, tau, M, C, g, k_f = dynamics(state)
+    q, dq, tau, M, C, K, g, k_f = dynamics(state)
 
-    ddq = jnp.linalg.pinv(M) @ (tau - C - g)
+    # account for friction
+    tau_eff = tau - k_f * dq
+
+    # backward dyns.
+    # ddq = jnp.linalg.pinv(M) @ (tau_eff - C - g)
+    ddq = jnp.linalg.pinv(M) @ (tau_eff - C @ dq - K @ q - g)
+
     return jnp.concatenate([dq, ddq])
 
 
@@ -116,11 +157,26 @@ def equation_of_motion(state: jnp.array,
 
 def forward_dynamics(ddq: jnp.array,
                      state: jnp.array,
-                     dynamics: Callable
+                     dynamics: Callable,
+                     q_d: jnp.array = None,
+                     dq_d: jnp.array = None,
+                     ddq_d: jnp.array = None,
                      ) -> jnp.array:
-    q, dq, tau_target, M, C, g = dynamics(state)
+    # q, dq, tau_target, M, C, g, k_f = dynamics(state)
+    q, dq, tau_target, M, C, K, g, k_f = dynamics(state)
 
-    tau = M @ ddq + C + g
+    # handle commands
+    if q_d is not None and dq_d is not None and ddq_d is not None:
+        q = q_d
+        dq = dq_d
+        ddq = ddq_d
+
+    # foward dyns.
+    tau_eff = M @ ddq + C @ dq + K @ q + g
+
+    # account for friction
+    tau = tau_eff + k_f * dq
+
     return tau, tau_target
 
 
@@ -149,7 +205,7 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState,
         out = train_state.apply_fn({'params': params}, x=state)
         T = out[0]
         V = out[1]
-        # tau_f = out[2:]
+        k_f = out[-4:] ** 2
         if output == 'energies':
             return T, V
         elif output == 'lagrangian':
@@ -158,8 +214,8 @@ def learned_lagrangian(params: dict, train_state: ts.TrainState,
             return V
         elif output == 'kinetic':
             return T
-        # elif output == 'friction':
-        #     return tau_f
+        elif output == 'friction':
+            return k_f
 
     return lagrangian
 
@@ -206,9 +262,11 @@ def loss(params: dict, train_state: ts.TrainState,
     # Build dynamics
     kinetic_func = learned_lagrangian(params, train_state, output='kinetic')
     potential_func = learned_lagrangian(params, train_state, output='potential')
+    friction_func = learned_lagrangian(params, train_state, output='friction')
     compiled_dynamics = jax.jit(partial(calc_dynamics,
                                         kinetic=kinetic_func,
-                                        potential=potential_func))
+                                        potential=potential_func,
+                                        friction=friction_func))
     inv_dyn = jax.vmap(jax.jit(partial(equation_of_motion,
                                        dynamics=compiled_dynamics)))
     for_dyn_single = jax.jit(partial(forward_dynamics,
