@@ -105,8 +105,8 @@ def calc_dynamics(state: jnp.array,
 
     def coriolis(q, dq):
         return jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) - \
-            1 / 2 * jnp.transpose(dq) @ jax.jacobian(jax.hessian(kinetic, 2), 0) \
-                (q, q_buff, dq, dq_buff)
+            1 / 2 * jnp.transpose(dq) @ \
+            jax.jacobian(jax.hessian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
 
     gamma = 1.75
     K_x = np.diag([gamma, gamma])
@@ -120,7 +120,7 @@ def calc_dynamics(state: jnp.array,
     return q, dq, tau, inertia_simple, coriolis, K, gravity, friction_simple
 
 
-def dynamics_wrapper(state: jnp.array,
+def dynamic_matrices(state: jnp.array,
                      dynamics: Callable
                      ) -> jnp.array:
     q, dq, tau, inertia, coriolis, K, gravity, friction = dynamics(state)
@@ -130,6 +130,28 @@ def dynamics_wrapper(state: jnp.array,
     k_f = friction(q, dq)
 
     return q, dq, tau, M, C, K, g, k_f
+
+
+def simplified_dynamic_matrices(state: jnp.array,
+                                dynamics: Callable
+                                ) -> jnp.array:
+    _, _, _, M, C, K, g, k_f = dynamics(state)
+    # inertias
+    M_rob = M[:2, :2]
+    B = M[2:, 2:]
+
+    # coriolis
+    C_rob = C[:2, :2]
+
+    # potentials
+    K_red = K[:2, :2]
+    g_rob = g[:2]
+
+    # frictions
+    k_f_rob = k_f[:2]
+    k_f_mot = k_f[2:]
+
+    return (M_rob, C_rob, g_rob, k_f_rob), (B, k_f_mot), K_red
 
 
 def equation_of_motion(state: jnp.array,
@@ -158,18 +180,9 @@ def equation_of_motion(state: jnp.array,
 def forward_dynamics(ddq: jnp.array,
                      state: jnp.array,
                      dynamics: Callable,
-                     q_d: jnp.array = None,
-                     dq_d: jnp.array = None,
-                     ddq_d: jnp.array = None,
                      ) -> jnp.array:
     # q, dq, tau_target, M, C, g, k_f = dynamics(state)
     q, dq, tau_target, M, C, K, g, k_f = dynamics(state)
-
-    # handle commands
-    if q_d is not None and dq_d is not None and ddq_d is not None:
-        q = q_d
-        dq = dq_d
-        ddq = ddq_d
 
     # foward dyns.
     tau_eff = M @ ddq + C @ dq + K @ q + g
@@ -263,14 +276,16 @@ def loss(params: dict, train_state: ts.TrainState,
     kinetic_func = learned_lagrangian(params, train_state, output='kinetic')
     potential_func = learned_lagrangian(params, train_state, output='potential')
     friction_func = learned_lagrangian(params, train_state, output='friction')
-    compiled_dynamics = jax.jit(partial(calc_dynamics,
-                                        kinetic=kinetic_func,
-                                        potential=potential_func,
-                                        friction=friction_func))
+    compiled_dynamics = partial(calc_dynamics,
+                                kinetic=kinetic_func,
+                                potential=potential_func,
+                                friction=friction_func)
+    compiled_dyn_wrapper = jax.jit(partial(dynamic_matrices,
+                                           dynamics=compiled_dynamics))
     inv_dyn = jax.vmap(jax.jit(partial(equation_of_motion,
-                                       dynamics=compiled_dynamics)))
+                                       dynamics=compiled_dyn_wrapper)))
     for_dyn_single = jax.jit(partial(forward_dynamics,
-                                     dynamics=compiled_dynamics))
+                                     dynamics=compiled_dyn_wrapper))
 
     # wrap for_dyn_single to handle data format
     def for_dyn_wrapped(data_point):
@@ -288,7 +303,7 @@ def loss(params: dict, train_state: ts.TrainState,
     # Predict the torques and calculate error
     tau_prediction, tau_target = for_dyn(batch)
     L_acc_tau = jnp.mean((tau_prediction - tau_target) ** 2)
-    L_acc = (L_acc_qdd + L_acc_tau * 10000) / 2
+    L_acc = (L_acc_qdd + L_acc_tau * 100000) / 2
     # L_acc = L_acc_tau
 
     # Impose energy conservation

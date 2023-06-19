@@ -32,7 +32,7 @@ def update_format_buffers(variable_buffer, variable):
 
 
 # @jax.jit
-def format_state(q, q_buff, dq, dq_buff, tau):
+def format_state(q, q_buff, dq, dq_buff):
     # format into the right sizes
     q = lx.normalize(q)
 
@@ -41,7 +41,7 @@ def format_state(q, q_buff, dq, dq_buff, tau):
     dq_buff, dq_out = update_format_buffers(dq_buff, dq)
 
     # prepare package
-    state = jnp.concatenate([q_out, dq_out, tau])
+    state = jnp.concatenate([q_out, dq_out, jnp.array([0, 0, 0, 0])])
 
     return state, q_buff, dq_buff
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     print('Snake learned controller initiated.')
     clnt = ln.client(sys.argv[0], sys.argv)
     subscriber = clnt.subscribe("ff.controller.in", "ff_controller_in")
-    publisher = clnt.publish("ff.controller.out", "ff_controller_out")
+    publisher = clnt.publish("observer.red.out", "observer_red_out")
     print('LN connection established')
 
     # load the trained model
@@ -66,12 +66,15 @@ if __name__ == '__main__':
                                 kinetic=kinetic,
                                 potential=potential,
                                 friction=friction)
-    compiled_dyn_wrapper = jax.jit(partial(lx.dynamic_matrices,
-                                           dynamics=compiled_dynamics))
-    inv_dyn = jax.jit(partial(lx.equation_of_motion,
-                              dynamics=compiled_dyn_wrapper))
-    for_dyn = jax.jit(partial(lx.forward_dynamics,
-                              dynamics=compiled_dyn_wrapper))
+    compiled_dyn_matrices = partial(lx.dynamic_matrices,
+                                    dynamics=compiled_dynamics)
+    compiled_dyn_matrices_red = jax.jit(partial(lx.simplified_dynamic_matrices,
+                                                dynamics=compiled_dyn_matrices))
+    cdmr = compiled_dyn_matrices_red
+    # inv_dyn = jax.jit(partial(lx.equation_of_motion,
+    #                           dynamics=compiled_dyn_matrices))
+    # for_dyn = jax.jit(partial(lx.forward_dynamics,
+    #                           dynamics=compiled_dyn_matrices))
 
     # setup the state buffering
     buffer_length = settings['buffer_length']
@@ -87,19 +90,23 @@ if __name__ == '__main__':
             time = subscriber.packet.time
             q = jnp.array(subscriber.packet.q)
             dq = jnp.array(subscriber.packet.dq)
-            ddq = jnp.array(subscriber.packet.ddq)
-            tau_target = jnp.array(subscriber.packet.tau)
-            print(f"received: {q}, {dq}, {ddq}, {tau_target}")
+            # ddq = jnp.array(subscriber.packet.ddq)
+            # tau_target = jnp.array(subscriber.packet.tau)
+            print(f"received: {q}, {dq}")
 
             # Calculate dynamics
-            state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff, tau_target)
-            tau, _ = for_dyn(ddq=ddq, state=state)
-            ddq_pred = inv_dyn(state)
+            state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff)
+            (M_rob, C_rob, g_rob, k_f_rob), (B, k_f_mot), K_red = cdmr(state)
 
             # Send tau
-            publisher.packet.tau = np.array(tau[2:4])
-            publisher.packet.ddq = np.array(ddq_pred[4:8])
-            print(f"sending: {tau[2:4]}, {ddq_pred[4:8]}")
+            publisher.packet.M_rob = np.array(M_rob.flatten())
+            publisher.packet.C_rob = np.array(C_rob.flatten())
+            publisher.packet.g_rob = np.array(g_rob.flatten())
+            publisher.packet.k_f_rob = np.array(k_f_rob.flatten())
+            publisher.packet.B = np.array(B.flatten())
+            publisher.packet.k_f_mot = np.array(k_f_mot.flatten())
+            publisher.packet.K_red = np.array(K_red.flatten())
+            # print(f"sending: {tau[0:2]}, {ddq_pred[4:8]}")
             publisher.write()
 
     except KeyboardInterrupt:

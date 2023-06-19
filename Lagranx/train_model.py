@@ -14,7 +14,7 @@ if __name__ == "__main__":
     run['hparams'] = settings
 
     # Create a training state
-    stage = 1
+    stage = 4
     num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
     learning_rate_fn = optax.linear_schedule(init_value=settings['lr_start']*10**(-stage),
                                              end_value=settings['lr_end']*10**(-stage),

@@ -19,7 +19,7 @@ settings = {'batch_size': 100,
             'num_dof': 4,
             'data_source': 'database',
             'database_name': '/home/gonz_jm/Documents/thesis_workspace/databases'
-                             '/database_150_pts_10_buff_nextgen',
+                             '/database_150pts_10buff_fixed',
             'table_name': 'data_scrambled',
             'reload': True,
             'save': True

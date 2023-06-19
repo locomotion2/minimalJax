@@ -30,7 +30,7 @@ if __name__ == "__main__":
                                 kinetic=kinetic,
                                 potential=potential,
                                 friction=friction)
-    compiled_dyn_wrapper = jax.jit(partial(lx.dynamics_wrapper,
+    compiled_dyn_wrapper = jax.jit(partial(lx.dynamic_matrices,
                                            dynamics=compiled_dynamics))
     format_samples = jax.vmap(partial(lx.format_sample,
                                       buffer_length=10,
@@ -56,8 +56,8 @@ if __name__ == "__main__":
 
     # set up database
     database = sqlite3.connect('/home/gonz_jm/Documents/thesis_workspace/databases/'
-                               'database_points_full')
-    table_name = 'point_123'
+                               'database_points_fixed')
+    table_name = 'point_124'
     samples_num = 1000
     offset_num = 0
     cursor = database.cursor()
@@ -185,8 +185,8 @@ if __name__ == "__main__":
 
     # Accelerations
     plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(ddq_target[:, 6:8], linewidth=2, label='target')
-    plt.plot(ddq[:, 6:8], linewidth=2, label='pred')
+    plt.plot(ddq_target[:, 4:8], linewidth=2, label='target')
+    plt.plot(ddq[:, 4:8], linewidth=2, label='pred')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
@@ -199,9 +199,9 @@ if __name__ == "__main__":
 
     # Torques
     plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(tau_target[:, 2:4], linewidth=2, label='target')
-    plt.plot(tau[:, 2:4], linewidth=2, label='pred')
-    plt.plot(tau_loss[:, 2:4], linewidth=2, label='Loss')
+    plt.plot(tau_target[:, 0:4], linewidth=2, label='target')
+    plt.plot(tau[:, 0:4], linewidth=2, label='pred')
+    # plt.plot(tau_loss[:, 0:4], linewidth=2, label='Loss')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
