@@ -59,9 +59,9 @@ if __name__ == '__main__':
     train_state = lx.create_train_state(settings, 0, params=params)
 
     # build dynamics
-    kinetic = lx.learned_lagrangian(params, train_state, output='kinetic')
-    potential = lx.learned_lagrangian(params, train_state, output='potential')
-    friction = lx.learned_lagrangian(params, train_state, output='friction')
+    kinetic = lx.energy_func(params, train_state, output='kinetic')
+    potential = lx.energy_func(params, train_state, output='potential')
+    friction = lx.energy_func(params, train_state, output='friction')
     compiled_dynamics = partial(lx.calc_dynamics,
                                 kinetic=kinetic,
                                 potential=potential,
@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
             # Calculate dynamics
             state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff, tau_target)
-            tau, _ = for_dyn(ddq=ddq, state=state)
+            tau, _, _ = for_dyn(ddq=ddq, state=state)
             ddq_pred = inv_dyn(state)
 
             # Send tau

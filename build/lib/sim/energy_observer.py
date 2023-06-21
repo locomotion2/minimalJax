@@ -9,8 +9,8 @@ class EnergyObserver:
     def __init__(self):
         params = loader.load_from_pkl(path='tmp/current', verbose=1)
         train_state = lx.create_train_state(0, 0, params=params)
-        self.lagrangian = lx.learned_lagrangian(params, train_state, output='lagrangian')
-        self.energies = lx.learned_lagrangian(params, train_state, output='energies')
+        self.lagrangian = lx.energy_func(params, train_state, output='lagrangian')
+        self.energies = lx.energy_func(params, train_state, output='energies')
         self.kin_factors = np.array([3.5177876949310303, -0.012919038534164429])
         self.pot_factors = np.array([0.9047878384590149, 0.540073573589325])
 
