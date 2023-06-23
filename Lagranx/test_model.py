@@ -36,7 +36,7 @@ if __name__ == "__main__":
     L_ana = T_ana - V_ana
 
     # Learned energies from trajectory
-    T_lnn, V_lnn, T_rec, _, _ = jax.device_get(jax.vmap(lx.partial(lx.learned_energies,
+    T_lnn, V_lnn, T_rec, _, _ = jax.device_get(jax.vmap(lx.partial(lx.energy_calcuations,
                                                                    params=params,
                                                                    train_state=train_state))(x_sim))
     H_lnn = T_lnn + V_lnn

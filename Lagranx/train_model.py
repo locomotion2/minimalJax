@@ -40,6 +40,7 @@ if __name__ == "__main__":
         dataloader = lx.build_general_dataloader(batch_train, batch_test, settings)
     elif settings['data_source'] == 'database':
         dataloader = lx.build_database_dataloader(settings)
+        # dataloader = lx.build_database_dataloader_eff(settings)
     print('Setup completed, training will now begin.')
 
     # Train the model

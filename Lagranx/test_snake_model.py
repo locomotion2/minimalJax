@@ -16,99 +16,133 @@ from scipy.integrate import cumtrapz
 
 import seaborn as sns
 
+
+def query():
+
+    return query
+
+
+# @jax.jit
+# def calc_power(vars):
+#     dq, tau = vars
+#     # tau = jnp.array([tau[3], tau[4], 0, 0])
+#     return jnp.transpose(dq) @ tau
+#
+#
+# @jax.jit
+# def calc_power_loss(vars):
+#     dq, k_f = vars
+#     tau = k_f * dq
+#     return jnp.transpose(dq) @ tau
+
+
+@jax.jit
+def calc_V_ana(tau):
+    return 1 / 2 * 1 / 1.75 * jnp.sum(tau ** 2)
+
+
+def build_dynamics(params, train_state):
+    # Create basic building blocks
+    kinetic = lx.energy_func(params, train_state, output='kinetic')
+    potential = lx.energy_func(params, train_state, output='potential')
+    lagrangian = lx.energy_func(params, train_state, output='lagrangian')
+    friction = lx.energy_func(params, train_state, output='friction')
+
+    # # Build modelled dynamics
+    # compiled_dynamics = partial(lx.calc_dynamics,
+    #                             kinetic=kinetic,
+    #                             potential=potential,
+    #                             friction=friction)
+    # compiled_dyn_wrapper = jax.jit(partial(lx.dynamic_matrices,
+    #                                        dynamics=compiled_dynamics))
+    # vectorized_dynamics = jax.vmap(compiled_dyn_wrapper)
+    # inv_dyn = jax.vmap(jax.jit(partial(lx.equation_of_motion,
+    #                                    dynamics=compiled_dyn_wrapper)))
+    # for_dyn_single = jax.jit(partial(lx.forward_dynamics,
+    #                                  dynamics=compiled_dyn_wrapper))
+    #
+    # def for_dyn_wrapped(data_point):
+    #     state, ddq = data_point
+    #     ddq = ddq[4:8]
+    #     return for_dyn_single(ddq=ddq, state=state)
+    #
+    # for_dyn = jax.vmap(for_dyn_wrapped)
+
+    # New dynamics
+    dyn_builder = partial(lx.lagrangian_dyn_builder,
+                          lagrangian=lagrangian,
+                          friction=friction)
+    # dyn_builder = partial(lx.energy_dyn_builder,
+    #                       kinetic=kinetic,
+    #                       potential=potential,
+    #                       lagrangian=lagrangian,
+    #                       friction=friction)
+    dyn_builder_compiled = jax.vmap(jax.jit(dyn_builder))
+
+    energy_calcs = jax.vmap(jax.jit(partial(lx.energy_calcuations,
+                                            kinetic=kinetic,
+                                            potential=potential)))
+
+    return dyn_builder_compiled, energy_calcs
+
+
+def handle_data(cursor):
+    query = f'SELECT * FROM {table_name} ' \
+            f'LIMIT {samples_num} ' \
+            f'OFFSET {offset_num}'
+
+    data_raw = jnp.array(cursor.execute(query).fetchall())
+    data_formatted = format_samples(data_raw)
+    state, ddq_target = data_formatted
+    q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
+    # q, dq, _, _, _, _, _, _ = vectorized_dynamics(state)
+
+    return (q, dq, ddq_target), state
+
+
 if __name__ == "__main__":
     # load model
     params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
     train_state = lx.create_train_state(settings, 0,
                                         params=params)
 
-    # build dynamics
-    kinetic = lx.energy_func(params, train_state, output='kinetic')
-    potential = lx.energy_func(params, train_state, output='potential')
-    friction = lx.energy_func(params, train_state, output='friction')
-    compiled_dynamics = partial(lx.calc_dynamics,
-                                kinetic=kinetic,
-                                potential=potential,
-                                friction=friction)
-    compiled_dyn_wrapper = jax.jit(partial(lx.dynamic_matrices,
-                                           dynamics=compiled_dynamics))
-    format_samples = jax.vmap(partial(lx.format_sample,
-                                      buffer_length=10,
-                                      buffer_length_max=10))
-    inv_dyn = jax.vmap(jax.jit(partial(lx.equation_of_motion,
-                                       dynamics=compiled_dyn_wrapper)))
-    for_dyn_single = jax.jit(partial(lx.forward_dynamics,
-                                     dynamics=compiled_dyn_wrapper))
-    energies = jax.vmap(partial(lx.learned_energies,
-                                params=params,
-                                train_state=train_state))
-    vectorized_dynamics = jax.vmap(compiled_dyn_wrapper)
-
-
-    # wrap fd to handle data format
-    def for_dyn_wrapped(data_point):
-        state, ddq = data_point
-        ddq = ddq[4:8]
-        return for_dyn_single(ddq=ddq, state=state)
-
-
-    for_dyn = jax.vmap(for_dyn_wrapped)
-
-    # set up database
+    # load data
     database = sqlite3.connect('/home/gonz_jm/Documents/thesis_workspace/databases/'
                                'database_points_fixed')
     table_name = 'point_50'
-    samples_num = 1000
+    samples_num = 300
     offset_num = 150
     cursor = database.cursor()
 
+    # build dynamics
+    dyn_builder_compiled, energy_calcs = build_dynamics(params, train_state)
 
-    # define query
-    def query():
-        query = f'SELECT * FROM {table_name} ' \
-                f'LIMIT {samples_num} ' \
-                f'OFFSET {offset_num}'
-        return query
-
-
-    @jax.jit
-    def calc_power(vars):
-        dq, tau = vars
-        # tau = jnp.array([tau[3], tau[4], 0, 0])
-        return jnp.transpose(dq) @ tau
-
-    @jax.jit
-    def calc_power_loss(vars):
-        dq, k_f = vars
-        tau = k_f * dq
-        return jnp.transpose(dq) @ tau
-
-
-    calc_power_vec = jax.vmap(calc_power)
-    calc_power_loss_vec = jax.vmap(calc_power_loss)
-
-
-    @jax.jit
-    def calc_V_ana(tau):
-        return 1 / 2 * 1 / 1.75 * jnp.sum(tau ** 2)
-
+    # utilities
+    format_samples = jax.vmap(partial(lx.format_sample,
+                                      buffer_length=10,
+                                      buffer_length_max=10))
 
     calc_V_ana_vec = jax.vmap(calc_V_ana)
 
     # format data
-    data_raw = jnp.array(cursor.execute(query()).fetchall())
-    data_formatted = format_samples(data_raw)
-    state, ddq_target = data_formatted
-    # q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
-    q, dq, _, _, _, _, _, k_f = vectorized_dynamics(state)
-    # q, dq, _, _, _, _, _, _ = vectorized_dynamics(state)
+    (q, dq, ddq_target), state = handle_data(cursor)
+
+    # calculate forward and inverse dynamics
+    dyn_terms = dyn_builder_compiled(state)
+    ddq_pred = jax.vmap(lx.inv_dyn_lagrangian)(dyn_terms)
+    tau_pred, tau_target = jax.vmap(lx.for_dyn_lagrangian)(ddq=ddq_target,
+                                                           terms=dyn_terms)
+
+    # calculate energies
+    T_lnn, V_lnn, T_rec, _, _, (pow_V, pow_T, pow_input, pow_f) = \
+        energy_calcs(state=state,
+                     dyn_terms=dyn_terms)
+
+    # (tau, tau_target, tau_loss), _, _, T_rec, gravity = for_dyn(data_formatted)
+    # ddq = inv_dyn(state)
 
     # calculate magnitudes of interest
-    (tau, tau_target, tau_loss), _, _, T_rec, gravity = for_dyn(data_formatted)
-    tau_loss = tau_loss
-    ddq = inv_dyn(state)
     V_ana = calc_V_ana_vec(tau_target)
-    T_lnn, V_lnn, _, _, _, _ = jax.device_get(energies(state))
     H_ana = T_rec + V_ana
     L_ana = T_rec - V_ana
 
@@ -119,40 +153,20 @@ if __name__ == "__main__":
     L_rec = T_rec - V_rec
     H_rec = T_rec + V_rec
 
-    power_vars = jnp.array(list(zip(dq, tau_target)))
-    loss_vars = jnp.array(list(zip(dq, tau_loss)))
-    power = calc_power_vec(power_vars)
-    power_loss = calc_power_vec(loss_vars)
-    # power_loss = pow_f
+    # power_vars = jnp.array(list(zip(dq, tau_target)))
+    # loss_vars = jnp.array(list(zip(dq, tau_loss)))
+    # power = calc_power_vec(power_vars)
+    # power_loss = calc_power_vec(loss_vars)
 
-    H_mec = cumtrapz(jax.device_get(power), dx=1 / 100, initial=0)
-    H_loss = cumtrapz(jax.device_get(power_loss), dx=1 / 100, initial=0)
-    H_cor = H_mec - H_loss
+    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
+    H_loss = cumtrapz(jax.device_get(pow_f), dx=1 / 100, initial=0)
+    H_cor = H_mec + H_loss
 
     # Calibration
-    # state_rest = jnp.array([[0] * (settings['buffer_length'] * 8)], dtype=float)
-    # T_rest, V_rest, T_rec_rest, _, _ = jax.device_get(energies(state_rest))
-    # T_rest = -T_rest
-    # V_rest = -V_rest
-    # T_rec_rest = -T_rec_rest
-    # print(f"Rest-> kin: {T_rec_rest}, pot: {V_rest}")
-    #
-    # state_flex = jnp.array([([np.radians(45)] * (settings['buffer_length'])) +
-    #                        [0] * (settings['buffer_length'] * 7)], dtype=float)
-    # T_flex, V_flex, T_rec_flex, _, _ = jax.device_get(energies(state_flex))
-    # V_known = 1/2 * 1.75 * np.radians(45) ** 2
-    # T_flex = -T_flex
-    # V_flex = -V_flex
-    # T_rec_flex = -T_rec_flex
-    # print(f"Flex-> kin: {T_rec_flex}, pot: {V_flex}, known: {V_known}")
-    # beta = V_rest
-    # alpha = V_known / (V_flex - beta)
-    # print(f"Coefs-> alpha: {alpha}, beta: {beta}")
     [alpha, beta], V_cal = lx.calibrate(V_ana, V_rec)
     print(f'Factors: {alpha}, {beta}.')
 
     T_cal = T_rec
-    V_cal = V_cal
     H_cal = T_cal + V_cal
     L_cal = T_cal - V_cal
 
@@ -185,45 +199,48 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
-    # Frictions
-    plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(k_f, linewidth=2, label='k_f')
-    plt.legend()
-    # plt.ylim(-0.1, 0.5)
-    # plt.xlim(0, 5)
-    plt.title('Friction coeffs.')
-    plt.ylabel('Something')
-    plt.xlabel('sample (n)')
-    plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$'], loc="best")
-    # plt.savefig('media/Model identification/Loss.png')
-    plt.show()
+    # # Frictions
+    # plt.figure(figsize=(8, 4.5), dpi=120)
+    # plt.plot(k_f, linewidth=2, label='k_f')
+    # plt.legend()
+    # # plt.ylim(-0.1, 0.5)
+    # # plt.xlim(0, 5)
+    # plt.title('Friction coeffs.')
+    # plt.ylabel('Something')
+    # plt.xlabel('sample (n)')
+    # plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$'], loc="best")
+    # # plt.savefig('media/Model identification/Loss.png')
+    # plt.show()
 
     # Accelerations
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(ddq_target[:, 4:8], linewidth=2, label='target')
-    plt.plot(ddq[:, 4:8], linewidth=2, label='pred')
+    plt.plot(ddq_pred[:, 4:8], linewidth=2, linestyle='-.', label='pred')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
-    plt.title('Comparison between predicted and actual joint acc.')
+    plt.title('Accelerations')
     plt.ylabel('rad/s^2')
     plt.xlabel('sample (n)')
-    plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$'], loc="best")
+    plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$',
+                r'$q^p_1$', r'$q^p_2$', r'$\theta^p_1$', r'$\theta^p_2$'], loc="best")
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
     # Torques
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(tau_target[:, 2:4], linewidth=2, label='target')
-    plt.plot(tau[:, 2:4], linewidth=2, label='pred')
-    plt.plot(tau_loss[:, 2:4], linewidth=2, label='Loss')
+    plt.plot(tau_pred[:, 2:4], linewidth=2, linestyle='-.', label='pred')
+    # plt.plot(tau_loss[:, 2:4], linewidth=2, linestyle='--', label='loss')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
     plt.title('Motor torques')
     plt.ylabel('Nm')
     plt.xlabel('sample (n)')
-    plt.legend([r'$\theta_1$', r'$\theta_2$'], loc="best")
+    plt.legend([r'$\theta_1$', r'$\theta_2$',
+                r'$\theta^p_1$', r'$\theta^p_2$',
+                r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
@@ -267,7 +284,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, T_ana, linewidth=3, label='Kin. Analytic')
     plt.plot(V_ana, linewidth=2, label='Pot. Ana')
-    plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
+    # plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     # plt.plot(T_rec, linewidth=2, label='Kin. Recon')
     # plt.plot(V_rec, linewidth=2, label='Pot. Recon')

@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
             # Calculate dynamics
             state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff, tau_target)
-            tau, _, _ = for_dyn(ddq=ddq, state=state)
+            (tau, _, _), _, _, _, _ = for_dyn(ddq=ddq, state=state)
             ddq_pred = inv_dyn(state)
 
             # Send tau
