@@ -13,7 +13,6 @@ from flax.training import train_state as ts
 from jax.experimental.ode import odeint
 
 import sqlite3
-import random
 
 from Lagranx.src import dpend_model_arne as model
 
@@ -23,24 +22,28 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, x):
         # unpacking data
-        q_state = x[:4 * 20]
-        full_state = x
+        # q_state = x[:4 * 10]
+        # q_state, _ = jnp.split(x, 2)
+        # full_state = x
+        q_state = x
 
         net_size = 64 * 10
         # build kinetic net
-        x_kin = self.layer(full_state, features=net_size)
-        x_kin = nn.Dense(features=1)(x_kin)
+        x_kin = self.layer(q_state, features=net_size)
+        x_kin = nn.Dense(features=10)(x_kin)
+        x_kin = nn.softplus(x_kin + 2) + 1
 
         # build potential net
         x_pot = self.layer(q_state, features=net_size)
         x_pot = nn.Dense(features=1)(x_pot)
 
-        # build friction net
-        x_f = self.layer(full_state, features=net_size)
-        x_f = nn.Dense(features=4)(x_f)
+        # # build friction net
+        # x_f = self.layer(q_state, features=net_size)
+        # x_f = nn.Dense(features=4)(x_f)
         # x_f = nn.tanh(x_f) + 1
 
-        return jnp.concatenate([x_kin, x_pot, x_f])
+        # return jnp.concatenate([jnp.array([x_full[0]]), x_pot, x_f])
+        return jnp.concatenate([x_kin, x_pot])
 
     # @nn.compact
     # def __call__(self, x):
@@ -147,7 +150,30 @@ def energy_dyn_builder(state: jnp.array,
     # obtain equation terms
     M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
     cross_hessian = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
-    N = cross_hessian @ dq - (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
+    N = cross_hessian @ dq + (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
+                              jax.grad(potential, 0)(q, q_buff, dq, dq_buff))
+
+    # bundle terms
+    state_current = (q, dq, tau)
+    dynamics = (M, N)
+    frictions = friction(q, q_buff, dq, dq_buff)
+
+    return state_current, dynamics, frictions
+
+def inertia_dyn_builder(state: jnp.array,
+                       kinetic: Callable = None,
+                       potential: Callable = None,
+                       inertia: Callable = None,
+                       friction: Callable = None
+                       ):
+    q, q_buff, dq, dq_buff, tau = split_state(state, 10)
+
+    # obtain equation terms
+    M = inertia(q, q_buff, dq, dq_buff)
+    cross_hessian = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
+    # dM_q = jax.jacobian(inertia, 0)(q, q_buff, dq, dq_buff)
+    # cross_hessian = jnp.transpose(dq) @ dM_q @ dq
+    N = cross_hessian @ dq + (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
                               jax.grad(potential, 0)(q, q_buff, dq, dq_buff))
 
     # bundle terms
@@ -351,19 +377,20 @@ def energy_func(params: dict, train_state: ts.TrainState,
     @jax.jit
     def compiled_func(q: jnp.array, q_buff: jnp.array, dq: jnp.array, dq_buff:
     jnp.array):
-        state = jnp.concatenate([q, q_buff, dq, dq_buff])
+        # state = jnp.concatenate([q, q_buff, dq, dq_buff])
+        state = jnp.concatenate([q, q_buff])
         out = train_state.apply_fn({'params': params}, x=state)
-        # l = out[:10]
-        # L = [[l[0], 0, 0, 0],
-        #      [l[1], l[2], 0, 0],
-        #      [l[3], l[4], l[5], 0],
-        #      [l[6], l[7], l[8], l[9]]]
-        # L = jnp.array(L)
-        # M = L @ jnp.transpose(L)
-        # T = 1/2 * jnp.transpose(dq) @ M @ dq
-        T = out[0]
-        V = out[1]
-        k_dq = out[-4:] ** 2
+        l = out[:10]
+        L = [[l[0], 0, 0, 0],
+             [l[1], l[2], 0, 0],
+             [l[3], l[4], l[5], 0],
+             [l[6], l[7], l[8], l[9]]]
+        L = jnp.array(L)
+        M = L @ jnp.transpose(L) + jnp.eye(4,4) * 1
+        T = 1/2 * jnp.transpose(dq) @ M @ dq
+        # T = out[0]
+        V = out[10]
+        # k_dq = out[-4:]
         # k_dq = jnp.tanh(out[-4:]) + 1
         # k_dq = jnp.abs(out[-4:])
         # k_tau = out[-4:] ** 2
@@ -377,7 +404,10 @@ def energy_func(params: dict, train_state: ts.TrainState,
             return T
         elif output == 'friction':
             # return (k_tau, k_dq)
-            return k_dq
+            return jnp.array([0,0,0,0])
+            # return k_dq
+        elif output == 'inertia':
+            return M
 
     return compiled_func
 
@@ -396,6 +426,7 @@ def energy_calcuations(batch,
     # Get the energies as the output of the NN
     T = kinetic(q, q_buff, dq, dq_buff)
     V = potential(q, q_buff, dq, dq_buff)
+    # M = inertia(q, q_buff, dq, dq_buff)
 
     # Get the derivatives on q and dq
     dT_q = jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
@@ -426,17 +457,17 @@ def loss(params: dict,
          batch: (jnp.array, jnp.array)) -> jnp.array:
     # @jax.jit
     def reduced_loss(params, train_state, batch):
-        (L_acc_ddq, L_acc_tau), \
-            (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
-            L_con = loss_instant(params, train_state, batch)
+        # (L_acc_ddq, L_acc_tau), \
+        #     (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+        #     L_con = loss_instant(params, train_state, batch)
 
-        # (L_acc_ddq, L_acc_tau) = loss_instant(params, train_state, batch)
+        (L_acc_ddq, L_acc_tau) = loss_instant(params, train_state, batch)
 
         L_acc = (L_acc_ddq + L_acc_tau * 10000) / 2
-        L_mec = L_mass + L_kin_pos * 100 + L_kin_shape * 100 + L_dV_shape * 100
-        L_energies = L_con
+        # L_mec = L_mass + L_kin_pos * 100 + L_kin_shape * 100 + L_dV_shape * 100
+        # L_energies = L_con
 
-        return L_acc + L_mec + L_energies
+        return L_acc
 
     compiled_loss = jax.vmap(jax.jit(partial(reduced_loss,
                                              params,
@@ -458,13 +489,19 @@ def loss_instant(params: dict,
     potential_func = energy_func(params, train_state, output='potential')
     lagrangian_func = energy_func(params, train_state, output='lagrangian')
     friction_func = energy_func(params, train_state, output='friction')
+    inertia_func = energy_func(params, train_state, output='inertia')
     # dyn_builder = partial(lagrangian_dyn_builder,
     #                       lagrangian=lagrangian_func,
     #                       friction=friction_func)
-    dyn_builder = partial(energy_dyn_builder,
+    # dyn_builder = partial(energy_dyn_builder,
+    #                       kinetic=kinetic_func,
+    #                       potential=potential_func,
+    #                       lagrangian=lagrangian_func,
+    #                       friction=friction_func)
+    dyn_builder = partial(inertia_dyn_builder,
                           kinetic=kinetic_func,
                           potential=potential_func,
-                          lagrangian=lagrangian_func,
+                          inertia=inertia_func,
                           friction=friction_func)
     dyn_builder_compiled = jax.jit(dyn_builder)
     dyn_terms = dyn_builder_compiled(state)
@@ -474,48 +511,48 @@ def loss_instant(params: dict,
     tau_pred, tau_target, _ = for_dyn_lagrangian(ddq=ddq_target,
                                                  terms=dyn_terms)
 
-    # Calculate the energies and related terms
-    energy_calcs = jax.jit(partial(energy_calcuations,
-                                   kinetic=kinetic_func,
-                                   potential=potential_func))
-    T, V, T_rec, dV_q, dV_q_rec, M, (pow_V, pow_T, pow_input, pow_f) = \
-        energy_calcs(batch=batch,
-                     dyn_terms=dyn_terms)
+    # # Calculate the energies and related terms
+    # energy_calcs = jax.jit(partial(energy_calcuations,
+    #                                kinetic=kinetic_func,
+    #                                potential=potential_func))
+    # T, V, T_rec, dV_q, dV_q_rec, M, (pow_V, pow_T, pow_input, pow_f) = \
+    #     energy_calcs(batch=batch,
+    #                  dyn_terms=dyn_terms)
 
     # Caclulate model accuracy error
     L_acc_ddq = jnp.mean((ddq_pred - ddq_target) ** 2)
     L_acc_tau = jnp.mean((tau_pred - tau_target) ** 2)
-    # L_acc = (L_acc_qdd + L_acc_tau * 10000) / 2
 
-    # Calculate energetic errors
-    # positive hamiltonian
-    # H = T + V
-    # L_ham = jnp.mean(jnp.clip(H, a_min=None, a_max=0) ** 2)
+    # # Calculate energetic errors
+    # # positive hamiltonian
+    # # H = T + V
+    # # L_ham = jnp.mean(jnp.clip(H, a_min=None, a_max=0) ** 2)
+    #
+    # # energy conservation on the losses
+    # # pow_loss = pow_aff + pow_f
+    # pow_loss = pow_f
+    # power_residual = pow_V + pow_T - pow_input - pow_loss
+    # L_con = jnp.mean(power_residual ** 2)
+    #
+    # # purely dissipative losses
+    # # pow_loss_pos = jnp.clip(pow_loss, a_min=0, a_max=None)
+    # # L_loss = jnp.mean(pow_loss_pos ** 2)
+    # # L_energies = L_ham + L_con + L_loss
+    #
+    # # Calculate error in energy generation
+    # L_mass = L_mass_func(M)
+    # L_kin_pos = jnp.clip(T, a_min=None, a_max=0) ** 2
+    # L_kin_shape = jnp.mean((T - T_rec) ** 2)
+    # dV_q_rec = jax.lax.stop_gradient(dV_q_rec)
+    # L_dV_shape = jnp.mean((dV_q - dV_q_rec) ** 2)
+    # # L_pot = jnp.mean(dV_dq ** 2) * 1000
+    # # L_mec = L_mass + L_kin_pos + L_kin_shape
+    #
+    # return (L_acc_ddq, L_acc_tau), \
+    #     (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+    #     L_con
 
-    # energy conservation on the losses
-    # pow_loss = pow_aff + pow_f
-    pow_loss = pow_f
-    power_residual = pow_V + pow_T - pow_input - pow_loss
-    L_con = jnp.mean(power_residual ** 2)
-
-    # purely dissipative losses
-    # pow_loss_pos = jnp.clip(pow_loss, a_min=0, a_max=None)
-    # L_loss = jnp.mean(pow_loss_pos ** 2)
-    # L_energies = L_ham + L_con + L_loss
-
-    # Calculate error in energy generation
-    L_mass = L_mass_func(M)
-    L_kin_pos = jnp.clip(T, a_min=None, a_max=0) ** 2
-    L_kin_shape = jnp.mean((T - T_rec) ** 2)
-    L_dV_shape = jnp.mean((dV_q - dV_q_rec) ** 2)
-    # L_pot = jnp.mean(dV_dq ** 2) * 1000
-    # L_mec = L_mass + L_kin_pos + L_kin_shape
-
-    return (L_acc_ddq, L_acc_tau), \
-        (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
-        L_con
-
-    # return (L_acc_ddq, L_acc_tau)
+    return (L_acc_ddq, L_acc_tau)
 
 
 # @jax.jit
@@ -659,7 +696,7 @@ None) -> ts.TrainState:
 
     # If available load the parameters
     if params is None:
-        input_size = (2 * num_dof * buffer_length,)
+        input_size = (1 * num_dof * buffer_length,)
         params = network.init(key, jax.random.normal(key, input_size))['params']
 
     # Set up the optimizer and bundle everything into a train state
@@ -976,7 +1013,8 @@ def format_sample(sample, buffer_length, buffer_length_max):
     dstate_0 = jnp.concatenate([dq_0, ddq_0])
     state_ext = jnp.concatenate([state, tau])
 
-    return state_ext, dstate_0
+    # return state_ext, dstate_0
+    return jnp.concatenate([dstate_0, state_ext])
 
 
 # def format_sample_test(sample, buffer_length):
@@ -1030,21 +1068,20 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     # Count the samples
     table_name = settings['table_name']
     samples_total = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    samples_train = int(samples_total * 0.8)
+    samples_train = int(samples_total * 0.1)
     samples_validation = int(samples_total * 0.1)
     samples_test = int(samples_total * 0.1)
 
     # Prepare query commands
     query_sample_training = f'SELECT * FROM {table_name} ' \
-                            f'ORDER BY RANDOM() ' \
                             f'LIMIT {samples_train}'
     query_sample_validation = f'SELECT * FROM {table_name} ' \
-                              f'ORDER BY RANDOM()' \
                               f'LIMIT {samples_validation} OFFSET {samples_train} '
 
     format_samples = jax.vmap(jax.jit(partial(format_sample,
                                               buffer_length=buffer_length,
                                               buffer_length_max=buffer_length_max)))
+    split_data_vec = jax.vmap(split_data)
 
     # Fetch all training and validation data
     print('Fetching a lot of data...')
@@ -1072,17 +1109,18 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
                                                  (data_size_test,))
 
         # split the data
-        batch_training = split_data(batch_training_sub)
-        batch_validation = split_data(batch_validation_sub)
+        batch_training = split_data_vec(batch_training_sub)
+        batch_validation = split_data_vec(batch_validation_sub)
 
         return batch_training, batch_validation
 
     return dataloader
 
 
+@jax.jit
 def split_data(data):
-    state = jnp.array(data[:, -8])
-    ddq = jnp.array(data[:, -8:])
+    state = jnp.array(data[:-8])
+    ddq = jnp.array(data[-8:])
 
     return state, ddq
 

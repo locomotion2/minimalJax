@@ -46,6 +46,7 @@ def build_dynamics(params, train_state):
     potential = lx.energy_func(params, train_state, output='potential')
     lagrangian = lx.energy_func(params, train_state, output='lagrangian')
     friction = lx.energy_func(params, train_state, output='friction')
+    inertia = lx.energy_func(params, train_state, output='inertia')
 
     # # Build modelled dynamics
     # compiled_dynamics = partial(lx.calc_dynamics,
@@ -76,6 +77,12 @@ def build_dynamics(params, train_state):
                           potential=potential,
                           lagrangian=lagrangian,
                           friction=friction)
+    dyn_builder_ine = partial(lx.inertia_dyn_builder,
+                          kinetic=kinetic,
+                          potential=potential,
+                          inertia=inertia,
+                          friction=friction)
+    dyn_builder_ine_compiled = jax.vmap(jax.jit(dyn_builder_ine))
     dyn_builder_ene_compiled = jax.vmap(jax.jit(dyn_builder_ene))
     dyn_builder_lan_compiled = jax.vmap(jax.jit(dyn_builder_lan))
 
@@ -83,7 +90,7 @@ def build_dynamics(params, train_state):
                                             kinetic=kinetic,
                                             potential=potential)))
 
-    return dyn_builder_ene_compiled, energy_calcs
+    return dyn_builder_ine_compiled, energy_calcs
 
 
 def handle_data(cursor):
@@ -93,7 +100,7 @@ def handle_data(cursor):
 
     data_raw = jnp.array(cursor.execute(query).fetchall())
     data_formatted = format_samples(data_raw)
-    state, ddq_target = data_formatted
+    state, ddq_target = jax.vmap(lx.split_data)(data_formatted)
     q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
     # q, dq, _, _, _, _, _, _ = vectorized_dynamics(state)
 
@@ -146,11 +153,11 @@ if __name__ == "__main__":
                                          params,
                                          train_state,
                                          )))
-    (L_acc_qdd, L_acc_tau), \
-        (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
-        L_con = loss_func((state, ddq_target))
+    # (L_acc_qdd, L_acc_tau), \
+    #     (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+    #     L_con = loss_func((state, ddq_target))
 
-    # (L_acc_qdd, L_acc_tau) = loss_func((state, ddq_target))
+    (L_acc_qdd, L_acc_tau) = loss_func((state, ddq_target))
 
     # calculate magnitudes of interest
     V_ana = calc_V_ana_vec(tau_target)
@@ -257,14 +264,14 @@ if __name__ == "__main__":
 
     # Losses
     plt.figure(figsize=(8, 4.5), dpi=120)
-    # plt.plot(L_acc_qdd, linewidth=2, label='ddq')
-    # plt.plot(L_acc_tau * 10000, linewidth=2, label='tau')
-    plt.plot(L_mass, linewidth=2, label='mass')
-    plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
-    plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
-    plt.plot(L_dV_shape * 100, linewidth=2, label='pot_shape')
+    plt.plot(L_acc_qdd, linewidth=2, label='ddq')
+    plt.plot(L_acc_tau * 10000, linewidth=2, label='tau')
+    # plt.plot(L_mass, linewidth=2, label='mass')
+    # plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
+    # plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
+    # plt.plot(L_dV_shape * 100, linewidth=2, label='pot_shape')
     # plt.plot(L_ham, linewidth=2, label='hamiltonian')
-    plt.plot(L_con, linewidth=2, label='conservative')
+    # plt.plot(L_con, linewidth=2, label='conservative')
     # plt.plot(L_loss * 10000, linewidth=2, label='loss')
     plt.legend()
     # plt.ylim(-5, 200)

@@ -14,7 +14,7 @@ if __name__ == "__main__":
     run['hparams'] = settings
 
     # Create a training state
-    stage = 2
+    stage = 0
     num_iterations = settings['num_epochs'] * settings['num_batches'] * settings['num_minibatches']
     learning_rate_fn = optax.linear_schedule(init_value=settings['lr_start']*10**(-stage),
                                              end_value=settings['lr_end']*10**(-stage),
@@ -39,8 +39,8 @@ if __name__ == "__main__":
                                                        verbose=1)
         dataloader = lx.build_general_dataloader(batch_train, batch_test, settings)
     elif settings['data_source'] == 'database':
-        dataloader = lx.build_database_dataloader(settings)
-        # dataloader = lx.build_database_dataloader_eff(settings)
+        # dataloader = lx.build_database_dataloader(settings)
+        dataloader = lx.build_database_dataloader_eff(settings)
     print('Setup completed, training will now begin.')
 
     # Train the model
