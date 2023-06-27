@@ -22,11 +22,11 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        # unpacing data
-        q_state = x[:4 * 10]
+        # unpacking data
+        q_state = x[:4 * 20]
         full_state = x
 
-        net_size = 64 * 7
+        net_size = 64 * 10
         # build kinetic net
         x_kin = self.layer(full_state, features=net_size)
         x_kin = nn.Dense(features=1)(x_kin)
@@ -38,8 +38,17 @@ class MLP(nn.Module):
         # build friction net
         x_f = self.layer(full_state, features=net_size)
         x_f = nn.Dense(features=4)(x_f)
+        # x_f = nn.tanh(x_f) + 1
 
         return jnp.concatenate([x_kin, x_pot, x_f])
+
+    # @nn.compact
+    # def __call__(self, x):
+    #     net_size = 64 * 10
+    #     x = self.layer(x, features=net_size)
+    #     x = nn.Dense(features=2 + 4)(x)
+    #
+    #     return x
 
     def layer(self, x: jnp.array, features: int = 128):
         x = nn.Dense(features=features)(x)
@@ -138,7 +147,8 @@ def energy_dyn_builder(state: jnp.array,
     # obtain equation terms
     M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
     cross_hessian = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
-    N = cross_hessian @ dq - jax.grad(lagrangian, 0)(q, q_buff, dq, dq_buff)
+    N = cross_hessian @ dq - (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
+                              jax.grad(potential, 0)(q, q_buff, dq, dq_buff))
 
     # bundle terms
     state_current = (q, dq, tau)
@@ -179,7 +189,7 @@ def for_dyn_lagrangian(ddq, terms):
     tau_f = - k_dq * dq
     tau = tau_eff - tau_f
 
-    return tau, tau_target
+    return tau, tau_target, tau_f
 
 
 # @jax.jit
@@ -343,10 +353,19 @@ def energy_func(params: dict, train_state: ts.TrainState,
     jnp.array):
         state = jnp.concatenate([q, q_buff, dq, dq_buff])
         out = train_state.apply_fn({'params': params}, x=state)
+        # l = out[:10]
+        # L = [[l[0], 0, 0, 0],
+        #      [l[1], l[2], 0, 0],
+        #      [l[3], l[4], l[5], 0],
+        #      [l[6], l[7], l[8], l[9]]]
+        # L = jnp.array(L)
+        # M = L @ jnp.transpose(L)
+        # T = 1/2 * jnp.transpose(dq) @ M @ dq
         T = out[0]
         V = out[1]
-        # k_dq = out[-8:-4] ** 2
         k_dq = out[-4:] ** 2
+        # k_dq = jnp.tanh(out[-4:]) + 1
+        # k_dq = jnp.abs(out[-4:])
         # k_tau = out[-4:] ** 2
         if output == 'energies':
             return T, V
@@ -364,11 +383,12 @@ def energy_func(params: dict, train_state: ts.TrainState,
 
 
 # @jax.jit
-def energy_calcuations(state,
+def energy_calcuations(batch,
                        dyn_terms,
                        kinetic: Callable,
                        potential: Callable):
     # Unpack the terms
+    state, ddq = batch
     q, q_buff, dq, dq_buff, tau = split_state(state, 10)
     # _, (M, N), (k_tau, k_dq) = dyn_terms
     _, (M, N), k_dq = dyn_terms
@@ -380,27 +400,45 @@ def energy_calcuations(state,
     # Get the derivatives on q and dq
     dT_q = jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
     dV_q = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
-    dV_dq = jax.grad(potential, 2)(q, q_buff, dq, dq_buff)
+    # dV_dq = jax.grad(potential, 2)(q, q_buff, dq, dq_buff)
 
     # Reconstruct the kin.energy from its deriv.
     T_rec = 1 / 2 * jnp.transpose(dq) @ M @ dq
+
+    # Reconstruct the gradient of V
+    dV_q_rec = - 1 / 2 * (M @ ddq[-4:] + N + dT_q - dV_q)
 
     # Calculate powers
     pow_T = jnp.transpose(dq) @ dT_q
     pow_V = jnp.transpose(dq) @ dV_q
     pow_input = jnp.transpose(dq) @ tau
     # pow_aff = - jnp.transpose(dq) @ (k_tau * tau)
-    pow_f = - jnp.transpose(dq) @ (k_dq * dq)
+    pow_f = jnp.transpose(dq) @ (- k_dq * dq)
+    # pow_f = jnp.transpose(dq) @ tau_f
 
     # return T, V, T_rec, dV_dq, M, (pow_V, pow_T, pow_input, pow_aff, pow_f)
-    return T, V, T_rec, dV_dq, M, (pow_V, pow_T, pow_input, pow_f)
+    return T, V, T_rec, dV_q, dV_q_rec, M, (pow_V, pow_T, pow_input, pow_f)
 
 
 @jax.jit
 def loss(params: dict,
          train_state: ts.TrainState,
          batch: (jnp.array, jnp.array)) -> jnp.array:
-    compiled_loss = jax.vmap(jax.jit(partial(loss_instant,
+    # @jax.jit
+    def reduced_loss(params, train_state, batch):
+        (L_acc_ddq, L_acc_tau), \
+            (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+            L_con = loss_instant(params, train_state, batch)
+
+        # (L_acc_ddq, L_acc_tau) = loss_instant(params, train_state, batch)
+
+        L_acc = (L_acc_ddq + L_acc_tau * 10000) / 2
+        L_mec = L_mass + L_kin_pos * 100 + L_kin_shape * 100 + L_dV_shape * 100
+        L_energies = L_con
+
+        return L_acc + L_mec + L_energies
+
+    compiled_loss = jax.vmap(jax.jit(partial(reduced_loss,
                                              params,
                                              train_state,
                                              )))
@@ -408,6 +446,7 @@ def loss(params: dict,
     return jnp.mean(L)
 
 
+@jax.jit
 def loss_instant(params: dict,
                  train_state: ts.TrainState,
                  batch: (jnp.array, jnp.array)) -> jnp.array:
@@ -432,26 +471,26 @@ def loss_instant(params: dict,
 
     # Calculate the inverse and forward dynamics
     ddq_pred = inv_dyn_lagrangian(dyn_terms)
-    tau_pred, tau_target = for_dyn_lagrangian(ddq=ddq_target,
-                                              terms=dyn_terms)
+    tau_pred, tau_target, _ = for_dyn_lagrangian(ddq=ddq_target,
+                                                 terms=dyn_terms)
 
     # Calculate the energies and related terms
     energy_calcs = jax.jit(partial(energy_calcuations,
                                    kinetic=kinetic_func,
                                    potential=potential_func))
-    T, V, T_rec, dV_dq, M, (pow_V, pow_T, pow_input, pow_f) = \
-        energy_calcs(state=state,
+    T, V, T_rec, dV_q, dV_q_rec, M, (pow_V, pow_T, pow_input, pow_f) = \
+        energy_calcs(batch=batch,
                      dyn_terms=dyn_terms)
 
     # Caclulate model accuracy error
-    L_acc_qdd = jnp.mean((ddq_pred - ddq_target) ** 2)
+    L_acc_ddq = jnp.mean((ddq_pred - ddq_target) ** 2)
     L_acc_tau = jnp.mean((tau_pred - tau_target) ** 2)
-    L_acc = (L_acc_qdd + L_acc_tau * 10000) / 2
+    # L_acc = (L_acc_qdd + L_acc_tau * 10000) / 2
 
     # Calculate energetic errors
     # positive hamiltonian
-    H = T + V
-    L_ham = jnp.mean(jnp.clip(H, a_min=None, a_max=0) ** 2)
+    # H = T + V
+    # L_ham = jnp.mean(jnp.clip(H, a_min=None, a_max=0) ** 2)
 
     # energy conservation on the losses
     # pow_loss = pow_aff + pow_f
@@ -460,18 +499,23 @@ def loss_instant(params: dict,
     L_con = jnp.mean(power_residual ** 2)
 
     # purely dissipative losses
-    pow_loss_pos = jnp.clip(pow_loss, a_min=0, a_max=None)
-    L_loss = jnp.mean(pow_loss_pos ** 2)
-    L_energies = L_ham + L_con + L_loss
+    # pow_loss_pos = jnp.clip(pow_loss, a_min=0, a_max=None)
+    # L_loss = jnp.mean(pow_loss_pos ** 2)
+    # L_energies = L_ham + L_con + L_loss
 
     # Calculate error in energy generation
     L_mass = L_mass_func(M)
-    L_kin_pos = jnp.clip(T_rec, a_min=0, a_max=None)
-    L_kin = jnp.mean((T - T_rec) ** 2)
+    L_kin_pos = jnp.clip(T, a_min=None, a_max=0) ** 2
+    L_kin_shape = jnp.mean((T - T_rec) ** 2)
+    L_dV_shape = jnp.mean((dV_q - dV_q_rec) ** 2)
     # L_pot = jnp.mean(dV_dq ** 2) * 1000
-    L_mec = L_mass + L_kin + L_kin_pos
+    # L_mec = L_mass + L_kin_pos + L_kin_shape
 
-    return L_acc + L_mec + L_energies
+    return (L_acc_ddq, L_acc_tau), \
+        (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+        L_con
+
+    # return (L_acc_ddq, L_acc_tau)
 
 
 # @jax.jit
@@ -867,7 +911,7 @@ def extract_from_sample(sample,
     for iteration in range(indices[2] - indices[1]):
         index = iteration + indices[0]
         start = index * buffer_length_max
-        end = index * buffer_length_max + buffer_length
+        end = start + buffer_length
         buffer_chunk = jnp.array(sample[start:end])
         output = jnp.concatenate([output, buffer_chunk])
 
@@ -920,10 +964,10 @@ def format_sample(sample, buffer_length, buffer_length_max):
 
     # build dq_0, ddq, tau
     index_end = 8 * buffer_length_max
-    dq_0 = jnp.array([sample[4 * buffer_length_max],
-                      sample[5 * buffer_length_max],
-                      sample[6 * buffer_length_max],
-                      sample[7 * buffer_length_max]])
+    dq_0 = jnp.array([dq_n[0 * buffer_length],
+                      dq_n[1 * buffer_length],
+                      dq_n[2 * buffer_length],
+                      dq_n[3 * buffer_length]])
     ddq_0 = jnp.array(sample[index_end: index_end + 4])
     tau = jnp.array(sample[index_end + 4: index_end + 8])
 
@@ -1063,9 +1107,9 @@ def build_database_dataloader(settings: dict) -> Callable:
     table_name = settings['table_name']
     samples_total = cursor.execute(
         f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    samples_train = int(samples_total * 0.8)
+    samples_train = int(samples_total * 0.9)
     samples_validation = int(samples_total * 0.1)
-    samples_test = int(samples_total * 0.1)
+    # samples_test = int(samples_total * 0.1)
 
     # query commands
     # query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \

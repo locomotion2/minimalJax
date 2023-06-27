@@ -18,7 +18,6 @@ import seaborn as sns
 
 
 def query():
-
     return query
 
 
@@ -69,21 +68,22 @@ def build_dynamics(params, train_state):
     # for_dyn = jax.vmap(for_dyn_wrapped)
 
     # New dynamics
-    dyn_builder = partial(lx.lagrangian_dyn_builder,
+    dyn_builder_lan = partial(lx.lagrangian_dyn_builder,
                           lagrangian=lagrangian,
                           friction=friction)
-    # dyn_builder = partial(lx.energy_dyn_builder,
-    #                       kinetic=kinetic,
-    #                       potential=potential,
-    #                       lagrangian=lagrangian,
-    #                       friction=friction)
-    dyn_builder_compiled = jax.vmap(jax.jit(dyn_builder))
+    dyn_builder_ene = partial(lx.energy_dyn_builder,
+                          kinetic=kinetic,
+                          potential=potential,
+                          lagrangian=lagrangian,
+                          friction=friction)
+    dyn_builder_ene_compiled = jax.vmap(jax.jit(dyn_builder_ene))
+    dyn_builder_lan_compiled = jax.vmap(jax.jit(dyn_builder_lan))
 
     energy_calcs = jax.vmap(jax.jit(partial(lx.energy_calcuations,
                                             kinetic=kinetic,
                                             potential=potential)))
 
-    return dyn_builder_compiled, energy_calcs
+    return dyn_builder_ene_compiled, energy_calcs
 
 
 def handle_data(cursor):
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # load data
     database = sqlite3.connect('/home/gonz_jm/Documents/thesis_workspace/databases/'
                                'database_points_fixed')
-    table_name = 'point_50'
+    table_name = 'point_55'
     samples_num = 300
     offset_num = 150
     cursor = database.cursor()
@@ -130,16 +130,27 @@ if __name__ == "__main__":
     # calculate forward and inverse dynamics
     dyn_terms = dyn_builder_compiled(state)
     ddq_pred = jax.vmap(lx.inv_dyn_lagrangian)(dyn_terms)
-    tau_pred, tau_target = jax.vmap(lx.for_dyn_lagrangian)(ddq=ddq_target,
+    tau_pred, tau_target, tau_loss = jax.vmap(lx.for_dyn_lagrangian)(ddq=ddq_target,
                                                            terms=dyn_terms)
 
     # calculate energies
-    T_lnn, V_lnn, T_rec, _, _, (pow_V, pow_T, pow_input, pow_f) = \
-        energy_calcs(state=state,
+    T_lnn, V_lnn, T_rec, _, _, _, (pow_V, pow_T, pow_input, pow_f) = \
+        energy_calcs(batch=(state, ddq_target),
                      dyn_terms=dyn_terms)
 
     # (tau, tau_target, tau_loss), _, _, T_rec, gravity = for_dyn(data_formatted)
     # ddq = inv_dyn(state)
+
+    # calculate losses
+    loss_func = jax.vmap(jax.jit(partial(lx.loss_instant,
+                                         params,
+                                         train_state,
+                                         )))
+    (L_acc_qdd, L_acc_tau), \
+        (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
+        L_con = loss_func((state, ddq_target))
+
+    # (L_acc_qdd, L_acc_tau) = loss_func((state, ddq_target))
 
     # calculate magnitudes of interest
     V_ana = calc_V_ana_vec(tau_target)
@@ -214,8 +225,8 @@ if __name__ == "__main__":
 
     # Accelerations
     plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(ddq_target[:, 4:8], linewidth=2, label='target')
-    plt.plot(ddq_pred[:, 4:8], linewidth=2, linestyle='-.', label='pred')
+    plt.plot(ddq_target[:, 4:8], linewidth=3, label='target')
+    plt.plot(ddq_pred[:, 4:8], linewidth=3, linestyle='--', label='pred')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
@@ -229,9 +240,9 @@ if __name__ == "__main__":
 
     # Torques
     plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(tau_target[:, 2:4], linewidth=2, label='target')
-    plt.plot(tau_pred[:, 2:4], linewidth=2, linestyle='-.', label='pred')
-    # plt.plot(tau_loss[:, 2:4], linewidth=2, linestyle='--', label='loss')
+    plt.plot(tau_target[:, 2:4], linewidth=3, label='target')
+    plt.plot(tau_pred[:, 2:4], linewidth=3, linestyle='--', label='pred')
+    plt.plot(tau_loss[:, 2:4], linewidth=2, linestyle='--', label='loss')
     plt.legend()
     # plt.ylim(-0.1, 0.5)
     # plt.xlim(0, 5)
@@ -241,6 +252,29 @@ if __name__ == "__main__":
     plt.legend([r'$\theta_1$', r'$\theta_2$',
                 r'$\theta^p_1$', r'$\theta^p_2$',
                 r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
+    # plt.savefig('media/Model identification/Loss.png')
+    plt.show()
+
+    # Losses
+    plt.figure(figsize=(8, 4.5), dpi=120)
+    # plt.plot(L_acc_qdd, linewidth=2, label='ddq')
+    # plt.plot(L_acc_tau * 10000, linewidth=2, label='tau')
+    plt.plot(L_mass, linewidth=2, label='mass')
+    plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
+    plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
+    plt.plot(L_dV_shape * 100, linewidth=2, label='pot_shape')
+    # plt.plot(L_ham, linewidth=2, label='hamiltonian')
+    plt.plot(L_con, linewidth=2, label='conservative')
+    # plt.plot(L_loss * 10000, linewidth=2, label='loss')
+    plt.legend()
+    # plt.ylim(-5, 200)
+    # plt.xlim(0, 5)
+    plt.title('Losses')
+    # plt.ylabel('Nm')
+    # plt.xlabel('sample (n)')
+    # plt.legend([r'$\theta_1$', r'$\theta_2$',
+    #             r'$\theta^p_1$', r'$\theta^p_2$',
+    #             r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
@@ -283,13 +317,13 @@ if __name__ == "__main__":
     # Energies
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, T_ana, linewidth=3, label='Kin. Analytic')
-    plt.plot(V_ana, linewidth=2, label='Pot. Ana')
-    # plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
+    # plt.plot(V_ana, linewidth=2, label='Pot. Ana')
+    plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     # plt.plot(T_rec, linewidth=2, label='Kin. Recon')
     # plt.plot(V_rec, linewidth=2, label='Pot. Recon')
     plt.plot(T_cal, linewidth=2, label='Kin. Cal')
-    plt.plot(V_cal, linewidth=2, label='Pot. Cal')
+    # plt.plot(V_cal, linewidth=2, label='Pot. Cal')
     # plt.plot(t_sim, T_f, '--', linewidth=2, label='Kin. Final')
     # plt.plot(t_sim, V_f, '--', linewidth=2, label='Pot. Final')
     plt.title('Energies from the Snake')
