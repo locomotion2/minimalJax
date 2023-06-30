@@ -171,7 +171,7 @@ class BaseModel(ABC):
         x_final = np.asarray(output.y[:, -1])
 
         # Todo: compare with the current system
-        # old
+        # old_reference
         # xs = odeint(self.eqs_motion, y0=self.x_cur, t=ts, args=(params,), rtol=1.49012e-8, atol=1.49012e-8)  # default tolerances: 1.49012e-8.
         # x_cur = np.asarray(xs[-1])
 

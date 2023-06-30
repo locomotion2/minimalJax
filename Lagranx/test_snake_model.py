@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import stable_baselines3.common.save_util as loader
 from src import dpend_model_arne as model
+
 from src import lagranx as lx
+from src import trainer
+from src import utils
+from src import  snake_utils
 
 from hyperparams import settings
 
@@ -36,55 +40,39 @@ def query():
 
 
 @jax.jit
-def calc_V_ana(tau):
-    return 1 / 2 * 1 / 1.75 * jnp.sum(tau ** 2)
+def calc_V_ana(q):
+    # q, theta = jnp.split(angles, 2)
+    # K = 1.75
+    # x = q - theta
+    # return 1/2 * K * jnp.sum(x ** 2)
+    K_small = jnp.array([[1.75, 0], [0, 1.75]])
+    K = jnp.block([[K_small, -K_small], [-K_small, K_small]])
+    return 1/2 * jnp.transpose(q) @ K @ q
 
 
 def build_dynamics(params, train_state):
     # Create basic building blocks
     kinetic = lx.energy_func(params, train_state, output='kinetic')
     potential = lx.energy_func(params, train_state, output='potential')
-    lagrangian = lx.energy_func(params, train_state, output='lagrangian')
+    # lagrangian = lx.energy_func(params, train_state, output='lagrangian')
     friction = lx.energy_func(params, train_state, output='friction')
     inertia = lx.energy_func(params, train_state, output='inertia')
 
-    # # Build modelled dynamics
-    # compiled_dynamics = partial(lx.calc_dynamics,
-    #                             kinetic=kinetic,
-    #                             potential=potential,
-    #                             friction=friction)
-    # compiled_dyn_wrapper = jax.jit(partial(lx.dynamic_matrices,
-    #                                        dynamics=compiled_dynamics))
-    # vectorized_dynamics = jax.vmap(compiled_dyn_wrapper)
-    # inv_dyn = jax.vmap(jax.jit(partial(lx.equation_of_motion,
-    #                                    dynamics=compiled_dyn_wrapper)))
-    # for_dyn_single = jax.jit(partial(lx.forward_dynamics,
-    #                                  dynamics=compiled_dyn_wrapper))
-    #
-    # def for_dyn_wrapped(data_point):
-    #     state, ddq = data_point
-    #     ddq = ddq[4:8]
-    #     return for_dyn_single(ddq=ddq, state=state)
-    #
-    # for_dyn = jax.vmap(for_dyn_wrapped)
-
     # New dynamics
-    dyn_builder_lan = partial(lx.lagrangian_dyn_builder,
-                          lagrangian=lagrangian,
-                          friction=friction)
-    dyn_builder_ene = partial(lx.energy_dyn_builder,
-                          kinetic=kinetic,
-                          potential=potential,
-                          lagrangian=lagrangian,
-                          friction=friction)
+    # dyn_builder_lan = partial(lx.lagrangian_dyn_builder,
+    #                           lagrangian=lagrangian,
+    #                           friction=friction)
+    # dyn_builder_ene = partial(lx.energy_dyn_builder,
+    #                           kinetic=kinetic,
+    #                           potential=potential,
+    #                           lagrangian=lagrangian,
+    #                           friction=friction)
     dyn_builder_ine = partial(lx.inertia_dyn_builder,
-                          kinetic=kinetic,
-                          potential=potential,
-                          inertia=inertia,
-                          friction=friction)
+                              kinetic=kinetic,
+                              potential=potential,
+                              inertia=inertia,
+                              friction=friction)
     dyn_builder_ine_compiled = jax.vmap(jax.jit(dyn_builder_ine))
-    dyn_builder_ene_compiled = jax.vmap(jax.jit(dyn_builder_ene))
-    dyn_builder_lan_compiled = jax.vmap(jax.jit(dyn_builder_lan))
 
     energy_calcs = jax.vmap(jax.jit(partial(lx.energy_calcuations,
                                             kinetic=kinetic,
@@ -99,9 +87,12 @@ def handle_data(cursor):
             f'OFFSET {offset_num}'
 
     data_raw = jnp.array(cursor.execute(query).fetchall())
+    format_samples = jax.vmap(partial(snake_utils.format_sample,
+                                      buffer_length=20,
+                                      buffer_length_max=20))
     data_formatted = format_samples(data_raw)
-    state, ddq_target = jax.vmap(lx.split_data)(data_formatted)
-    q, _, dq, _, _ = jax.vmap(partial(lx.split_state, buffer_length=10))(state)
+    state, ddq_target = jax.vmap(snake_utils.split_data)(data_formatted)
+    q, _, dq, _, _ = jax.vmap(partial(snake_utils.split_state, buffer_length=20))(state)
     # q, dq, _, _, _, _, _, _ = vectorized_dynamics(state)
 
     return (q, dq, ddq_target), state
@@ -110,24 +101,19 @@ def handle_data(cursor):
 if __name__ == "__main__":
     # load model
     params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
-    train_state = lx.create_train_state(settings, 0,
-                                        params=params)
+    train_state = trainer.create_train_state(settings, 0,
+                                             params=params)
 
     # load data
     database = sqlite3.connect('/home/gonz_jm/Documents/thesis_workspace/databases/'
-                               'database_points_fixed')
-    table_name = 'point_55'
-    samples_num = 300
+                               'database_points_20buff_command')
+    table_name = 'point_2'
+    samples_num = 600
     offset_num = 150
     cursor = database.cursor()
 
     # build dynamics
     dyn_builder_compiled, energy_calcs = build_dynamics(params, train_state)
-
-    # utilities
-    format_samples = jax.vmap(partial(lx.format_sample,
-                                      buffer_length=10,
-                                      buffer_length_max=10))
 
     calc_V_ana_vec = jax.vmap(calc_V_ana)
 
@@ -136,9 +122,9 @@ if __name__ == "__main__":
 
     # calculate forward and inverse dynamics
     dyn_terms = dyn_builder_compiled(state)
-    ddq_pred = jax.vmap(lx.inv_dyn_lagrangian)(dyn_terms)
-    tau_pred, tau_target, tau_loss = jax.vmap(lx.for_dyn_lagrangian)(ddq=ddq_target,
-                                                           terms=dyn_terms)
+    ddq_pred = jax.vmap(lx.forw_dyn)(dyn_terms)
+    tau_pred, tau_target, tau_loss = jax.vmap(lx.inv_dyn)(ddq=ddq_target,
+                                                          terms=dyn_terms)
 
     # calculate energies
     T_lnn, V_lnn, T_rec, _, _, _, (pow_V, pow_T, pow_input, pow_f) = \
@@ -149,18 +135,18 @@ if __name__ == "__main__":
     # ddq = inv_dyn(state)
 
     # calculate losses
-    loss_func = jax.vmap(jax.jit(partial(lx.loss_instant,
-                                         params,
-                                         train_state,
-                                         )))
-    # (L_acc_qdd, L_acc_tau), \
-    #     (L_mass, L_kin_pos, L_kin_shape, L_dV_shape), \
-    #     L_con = loss_func((state, ddq_target))
-
-    (L_acc_qdd, L_acc_tau) = loss_func((state, ddq_target))
+    def loss_split(sample):
+        loss_func = jax.jit(partial(lx.loss_instant,
+                        params,
+                        train_state,
+                        ))
+        losses = loss_func(sample)
+        return jnp.split(losses, 3)
+    loss_func = jax.vmap(loss_split)
+    (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
 
     # calculate magnitudes of interest
-    V_ana = calc_V_ana_vec(tau_target)
+    V_ana = calc_V_ana_vec(q)
     H_ana = T_rec + V_ana
     L_ana = T_rec - V_ana
 
@@ -176,16 +162,16 @@ if __name__ == "__main__":
     # power = calc_power_vec(power_vars)
     # power_loss = calc_power_vec(loss_vars)
 
-    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
-    H_loss = cumtrapz(jax.device_get(pow_f), dx=1 / 100, initial=0)
-    H_cor = H_mec + H_loss
-
     # Calibration
-    [alpha, beta], V_cal = lx.calibrate(V_ana, V_rec)
+    [alpha, beta], V_cal = utils.calibrate(V_ana, V_rec)
     print(f'Factors: {alpha}, {beta}.')
 
+    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
+    H_loss = cumtrapz(jax.device_get(pow_f * 1/alpha), dx=1 / 100, initial=0)
+    H_cor = H_mec + H_loss
+
     T_cal = T_rec
-    H_cal = T_cal + V_cal
+    H_cal = T_cal + V_cal - H_loss
     L_cal = T_cal - V_cal
 
     # Plotting
@@ -217,18 +203,18 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
-    # # Frictions
-    # plt.figure(figsize=(8, 4.5), dpi=120)
-    # plt.plot(k_f, linewidth=2, label='k_f')
-    # plt.legend()
-    # # plt.ylim(-0.1, 0.5)
-    # # plt.xlim(0, 5)
-    # plt.title('Friction coeffs.')
-    # plt.ylabel('Something')
-    # plt.xlabel('sample (n)')
-    # plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$'], loc="best")
-    # # plt.savefig('media/Model identification/Loss.png')
-    # plt.show()
+    # Frictions
+    plt.figure(figsize=(8, 4.5), dpi=120)
+    plt.plot(- tau_loss / dq, linewidth=2, label='k_f')
+    plt.legend()
+    # plt.ylim(-0.1, 0.5)
+    # plt.xlim(0, 5)
+    plt.title('Friction coeffs.')
+    plt.ylabel('Something')
+    plt.xlabel('sample (n)')
+    plt.legend([r'$q_1$', r'$q_2$', r'$\theta_1$', r'$\theta_2$'], loc="best")
+    # plt.savefig('media/Model identification/Loss.png')
+    plt.show()
 
     # Accelerations
     plt.figure(figsize=(8, 4.5), dpi=120)
@@ -256,22 +242,23 @@ if __name__ == "__main__":
     plt.title('Motor torques')
     plt.ylabel('Nm')
     plt.xlabel('sample (n)')
-    plt.legend([r'$\theta_1$', r'$\theta_2$',
-                r'$\theta^p_1$', r'$\theta^p_2$',
-                r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
+    # plt.legend([r'$\theta_1$', r'$\theta_2$',
+    #             r'$\theta^p_1$', r'$\theta^p_2$',
+    #             r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
     # Losses
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(L_acc_qdd, linewidth=2, label='ddq')
-    plt.plot(L_acc_tau * 10000, linewidth=2, label='tau')
+    plt.plot(10 * L_acc_tau, linewidth=2, label='tau')
+    plt.plot(100 * L_pot, linewidth=2, label='pot')
     # plt.plot(L_mass, linewidth=2, label='mass')
     # plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
     # plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
-    # plt.plot(L_dV_shape * 100, linewidth=2, label='pot_shape')
+    # plt.plot(L_dV_shape * 10000, linewidth=2, label='pot_shape')
     # plt.plot(L_ham, linewidth=2, label='hamiltonian')
-    # plt.plot(L_con, linewidth=2, label='conservative')
+    # plt.plot(10000 * L_con, linewidth=2, label='conservative')
     # plt.plot(L_loss * 10000, linewidth=2, label='loss')
     plt.legend()
     # plt.ylim(-5, 200)
@@ -324,13 +311,13 @@ if __name__ == "__main__":
     # Energies
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, T_ana, linewidth=3, label='Kin. Analytic')
-    # plt.plot(V_ana, linewidth=2, label='Pot. Ana')
+    plt.plot(V_ana, linewidth=2, label='Pot. Ana')
     plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     # plt.plot(T_rec, linewidth=2, label='Kin. Recon')
     # plt.plot(V_rec, linewidth=2, label='Pot. Recon')
-    plt.plot(T_cal, linewidth=2, label='Kin. Cal')
-    # plt.plot(V_cal, linewidth=2, label='Pot. Cal')
+    # plt.plot(T_cal, linewidth=2, label='Kin. Cal')
+    plt.plot(V_cal, linewidth=2, label='Pot. Cal')
     # plt.plot(t_sim, T_f, '--', linewidth=2, label='Kin. Final')
     # plt.plot(t_sim, V_f, '--', linewidth=2, label='Pot. Final')
     plt.title('Energies from the Snake')

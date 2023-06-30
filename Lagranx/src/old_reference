@@ -1,0 +1,164 @@
+# # @jax.jit
+# def calc_dynamics(state: jnp.array,
+#                   kinetic: Callable = None,
+#                   potential: Callable = None,
+#                   friction: Callable = None
+#                   ) -> jnp.array:
+#     q, q_buff, dq, dq_buff, tau = split_state(state, 10)
+#
+#     # M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+#     # C = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) @ dq - \
+#     #     jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
+#     # g = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
+#     # k_f = friction(q, q_buff, dq, dq_buff)
+#     @jax.jit
+#     def inertia(q, q_buff, dq, dq_buff):
+#         M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+#         return M
+#
+#     def friction_simple(q, dq):
+#         return friction(q, q_buff, dq, dq_buff)
+#
+#     # build dynamic functions
+#     def inertia_simple(q, dq):
+#         return inertia(q, q_buff, dq, dq_buff)
+#
+#     # def coriolis(q, dq):
+#     #     return jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff) - \
+#     #         1 / 2 * jnp.transpose(dq) @ \
+#     #         jax.jacobian(inertia, 0)(q, q_buff, dq, dq_buff)
+#
+#     @jax.jit
+#     def coriolis(q, dq):
+#         M = jax.hessian(kinetic, 2)
+#         jac_inertia = jax.jacobian(M, 0)(q, q_buff, dq, dq_buff)
+#         jac_cross = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
+#         return jac_cross - 1 / 2 * jnp.transpose(dq) @ jac_inertia
+#
+#     gamma = 1.75
+#     K_x = np.diag([gamma, gamma])
+#     K = np.bmat([[K_x, -K_x], [-K_x, K_x]])
+#     K = jnp.array(K)
+#
+#     @jax.jit
+#     def gravity(q, dq):
+#         return jax.grad(potential, 0)(q, q_buff, dq, dq_buff) - K @ q
+#
+#     # return q, dq, tau, M, C_mat @ dq, g, k_f
+#     return q, dq, tau, inertia_simple, coriolis, K, gravity, friction_simple
+#
+#
+# def dynamic_matrices(state: jnp.array,
+#                      dynamics: Callable
+#                      ) -> jnp.array:
+#     q, dq, tau, inertia, coriolis, K, gravity, friction = dynamics(state)
+#     M = inertia(q, dq)
+#     C = coriolis(q, dq)
+#     g = gravity(q, dq)
+#     tau_f = friction(q, dq)
+#
+#     # return q, dq, tau, M, C, K, g, k_f
+#     return q, dq, tau, M, C, K, g, tau_f
+#
+#
+# def simplified_dynamic_matrices(state: jnp.array,
+#                                 dynamics: Callable
+#                                 ) -> jnp.array:
+#     # _, _, _, M, C, K, g, k_f = dynamics(state)
+#     _, _, _, M, C, K, g, tau_f = dynamics(state)
+#
+#     # inertias
+#     M_rob = M[:2, :2]
+#     B = M[2:, 2:]
+#
+#     # coriolis
+#     C_rob = C[:2, :2]
+#
+#     # potentials
+#     K_red = K[:2, :2]
+#     g_rob = g[:2]
+#
+#     # frictions
+#     # k_f_rob = k_f[:2]
+#     # k_f_mot = k_f[2:]
+#     tau_f_rob = tau_f[:2]
+#     tau_f_mot = tau_f[2:]
+#
+#     return (M_rob, C_rob, g_rob, tau_f_rob), (B, tau_f_mot), K_red
+#
+#
+# def equation_of_motion(state: jnp.array,
+#                        dynamics: Callable
+#                        ) -> jnp.array:
+#     # q, dq, tau, M, C, g, k_f = dynamics(state)
+#     # q, dq, tau, M, C, K, g, k_f = dynamics(state)
+#     q, dq, tau, M, C, K, g, tau_f = dynamics(state)
+#
+#     # account for friction
+#     # tau_eff = tau - k_f * dq
+#     tau_eff = tau - tau_f
+#
+#     # backward dyns.
+#     # ddq = jnp.linalg.pinv(M) @ (tau_eff - C - g)
+#     ddq = jnp.linalg.pinv(M) @ (tau_eff - C @ dq - K @ q - g)
+#
+#     return jnp.concatenate([dq, ddq])
+#
+#
+# # def equation_of_motion_lag(lagrangian: Callable, state: jnp.array, t=None):
+# #     q, q_t, tau = jnp.split(state, 3)
+# #     q_tt = (jnp.linalg.pinv(jax.hessian(lagrangian, 1)(q, q_t))
+# #             @ (jax.grad(lagrangian, 0)(q, q_t) + tau
+# #                - jax.jacobian(jax.jacobian(lagrangian, 1), 0)(q, q_t) @ q_t))
+# #     return jnp.concatenate([q_t, q_tt])
+#
+# def forward_dynamics(ddq: jnp.array,
+#                      state: jnp.array,
+#                      dynamics: Callable,
+#                      ) -> jnp.array:
+#     # q, dq, tau_target, M, C, g, k_f = dynamics(state)
+#     # q, dq, tau_target, M, C, K, g, k_f = dynamics(state)
+#     q, dq, tau_target, M, C, K, g, tau_f = dynamics(state)
+#
+#     # foward dyns.
+#     tau_eff = M @ ddq + C @ dq + K @ q + g
+#
+#     # account for friction
+#     # tau_fric = k_f * dq
+#     tau = tau_eff + tau_f
+#
+#     # TODO: Move this elsewhere
+#     T_rec = 1 / 2 * jnp.transpose(dq) @ M @ dq
+#     # jnp.clip(T_rec, a_min=0, a_max=None)
+#     pow_fric = jnp.transpose(dq) @ tau_f
+#     pow_cont = jnp.transpose(dq) @ tau_target
+#
+#     return (tau, tau_target, tau_f), (pow_cont, pow_fric), M, T_rec, g
+
+
+# @jax.jit
+# def L_mass_func(M):
+#     # top_M = jnp.triu(M, k=1)
+#     # bot_M = jnp.tril(M, k=-1)
+#     diag_M = jnp.diagonal(M)
+#     # diag_M = jnp.real(jnp.linalg.eigvals(M))
+#     diag_M = jnp.clip(diag_M, a_min=None, a_max=0)
+#     return jnp.mean((M - jnp.transpose(M)) ** 2) + jnp.sum(diag_M ** 2)
+
+# def lagrangian_dyn_builder(state: jnp.array,
+#                            lagrangian: Callable = None,
+#                            friction: Callable = None
+#                            ):
+#     q, q_buff, dq, dq_buff, tau = split_state(state, 20)
+# 
+#     # obtain equation terms
+#     M = jax.hessian(lagrangian, 2)(q, q_buff, dq, dq_buff)
+#     cross_hessian = jax.jacobian(jax.jacobian(lagrangian, 2), 0)(q, q_buff, dq, dq_buff)
+#     N = cross_hessian @ dq - jax.grad(lagrangian, 0)(q, q_buff, dq, dq_buff)
+# 
+#     # bundle terms
+#     state_current = (q, dq, tau)
+#     dynamics = (M, N)
+#     frictions = friction(q, q_buff, dq, dq_buff)
+# 
+#     return state_current, dynamics, frictions
