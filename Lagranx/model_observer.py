@@ -10,6 +10,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from src import lagranx as lx
+from src import trainer
+from src import snake_utils
 
 import stable_baselines3.common.save_util as loader
 
@@ -54,34 +56,37 @@ if __name__ == '__main__':
     publisher = clnt.publish("observer.red.out", "observer_red_out")
     print('LN connection established')
 
+    # load params from settings
+    num_dof = settings['num_dof']
+    buffer_length = settings['buffer_length']
+
     # load the trained model
     params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
-    train_state = lx.create_train_state(settings, 0, params=params)
+    train_state = trainer.create_train_state(settings, 0, params=params)
 
     # build dynamics
-    kinetic = lx.energy_func(params, train_state, output='kinetic')
-    potential = lx.energy_func(params, train_state, output='potential')
-    friction = lx.energy_func(params, train_state, output='friction')
-    compiled_dynamics = partial(lx.calc_dynamics,
-                                kinetic=kinetic,
-                                potential=potential,
-                                friction=friction)
-    compiled_dyn_matrices = partial(lx.dynamic_matrices,
-                                    dynamics=compiled_dynamics)
-    compiled_dyn_matrices_red = jax.jit(partial(lx.simplified_dynamic_matrices,
-                                                dynamics=compiled_dyn_matrices))
-    cdmr = compiled_dyn_matrices_red
-    # inv_dyn = jax.jit(partial(lx.equation_of_motion,
-    #                           dynamics=compiled_dyn_matrices))
-    # for_dyn = jax.jit(partial(lx.forward_dynamics,
-    #                           dynamics=compiled_dyn_matrices))
+    kinetic = lx.energy_func(params, train_state, settings=settings,
+                             output='kinetic')
+    potential = lx.energy_func(params, train_state, settings=settings,
+                               output='potential')
+    friction = lx.energy_func(params, train_state, settings=settings,
+                              output='friction')
+    inertia = lx.energy_func(params, train_state, settings=settings,
+                             output='inertia')
+    split_tool = snake_utils.build_split_tool(buffer_length)
+    dyn_builder = partial(lx.inertia_dyn_builder,
+                          split_tool=split_tool,
+                          potential=potential,
+                          inertia=inertia,
+                          friction=friction)
+    dyns_compiled = jax.jit(dyn_builder)
+    dyns_reduced = partial(lx.decouple_model, dynamics = dyns_compiled)
 
     # setup the state buffering
-    buffer_length = settings['buffer_length']
     # q_buff = jnp.zeros((4, buffer_length * 10))
     # dq_buff = jnp.zeros((4, buffer_length * 10))
-    q_buff = jnp.zeros((4, buffer_length))
-    dq_buff = jnp.zeros((4, buffer_length))
+    q_buff = jnp.zeros((num_dof, buffer_length))
+    dq_buff = jnp.zeros((num_dof, buffer_length))
     try:
         while True:
             # Get q, dq, ddq, time
@@ -96,7 +101,7 @@ if __name__ == '__main__':
 
             # Calculate dynamics
             state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff)
-            (M_rob, C_rob, g_rob, k_f_rob), (B, k_f_mot), K_red = cdmr(state)
+            (M_rob, C_rob, g_rob, k_f_rob), (B, k_f_mot) = dyns_reduced(state)
 
             # Send tau
             publisher.packet.M_rob = np.array(M_rob.flatten())
@@ -105,7 +110,7 @@ if __name__ == '__main__':
             publisher.packet.k_f_rob = np.array(k_f_rob.flatten())
             publisher.packet.B = np.array(B.flatten())
             publisher.packet.k_f_mot = np.array(k_f_mot.flatten())
-            publisher.packet.K_red = np.array(K_red.flatten())
+            # publisher.packet.K_red = np.array(K_red.flatten())
             # print(f"sending: {tau[0:2]}, {ddq_pred[4:8]}")
             publisher.write()
 

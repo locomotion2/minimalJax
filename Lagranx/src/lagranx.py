@@ -58,6 +58,29 @@ def inertia_dyn_builder(state: jnp.array,
     return state_current, dynamics, frictions
 
 
+@partial(jax.jit, static_argnums=1)
+def decouple_model(state: jnp.array,
+                   dynamics: Callable = None):
+    _, dynamics, frictions = dynamics(state)
+
+    # (q, dq, tau) = state_current
+    (M, C, dV_q) = dynamics
+    k_dq = frictions
+
+    # matrices
+    rows, cols = M.shape
+    M_rob = M[:rows // 2, :cols // 2]
+    C_rob = C[:rows // 2, :cols // 2]
+    M_mot = M[rows // 2:, cols // 2:]
+    # C_mot = C[rows // 2:, cols // 2:]
+
+    # vectors
+    dV_q_rob, dV_q_mot = jnp.split(dV_q, 2)
+    k_dq_rob, k_dq_mot = jnp.split(k_dq, 2)
+
+    return (M_rob, C_rob, dV_q_rob, k_dq_rob), (M_mot, k_dq_mot)
+
+
 @jax.jit
 def forward_dynamics(terms):
     # unpack terms
