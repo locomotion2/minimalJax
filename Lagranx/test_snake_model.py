@@ -127,7 +127,7 @@ if __name__ == "__main__":
                                                           terms=dyn_terms)
 
     # calculate energies
-    T_lnn, V_lnn, T_rec, _, _, _, (pow_V, pow_T, pow_input, pow_f) = \
+    T_lnn, V_lnn, _, _, _, _, (pow_V, pow_T, pow_input, pow_f) = \
         energy_calcs(batch=(state, ddq_target),
                      dyn_terms=dyn_terms)
 
@@ -145,17 +145,14 @@ if __name__ == "__main__":
     loss_func = jax.vmap(loss_split)
     (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
 
+    # Calculate measured energies
+    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
+    H_loss = cumtrapz(jax.device_get(pow_f), dx=1 / 100, initial=0)
+    H_cor = H_mec + H_loss
+
     # calculate magnitudes of interest
     V_ana = calc_V_ana_vec(q)
-    H_ana = T_rec + V_ana
-    L_ana = T_rec - V_ana
-
-    H_lnn = T_lnn + V_lnn
-    L_lnn = T_lnn - V_lnn
-
-    V_rec = V_lnn
-    L_rec = T_rec - V_rec
-    H_rec = T_rec + V_rec
+    T_cor = H_cor - V_ana
 
     # power_vars = jnp.array(list(zip(dq, tau_target)))
     # loss_vars = jnp.array(list(zip(dq, tau_loss)))
@@ -163,16 +160,30 @@ if __name__ == "__main__":
     # power_loss = calc_power_vec(loss_vars)
 
     # Calibration
-    [alpha, beta], V_cal = utils.calibrate(V_ana, V_rec)
-    print(f'Factors: {alpha}, {beta}.')
+    [alpha_V, beta_V], V_cal = utils.calibrate(V_ana, V_lnn)
+    print(f'Factors: {alpha_V}, {beta_V}.')
+    [alpha_T, beta_T], T_cal = utils.calibrate(T_cor, T_lnn)
+    print(f'Factors: {alpha_T}, {beta_T}.')
 
-    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
-    H_loss = cumtrapz(jax.device_get(pow_f * 1/alpha), dx=1 / 100, initial=0)
-    H_cor = H_mec + H_loss
+    coef_V = [0.010010098107159138, -0.23374556005001068]
+    coef_T = [0.19293320178985596, -0.06825241446495056]
+    diff_beta = coef_T[1] - coef_V[0]
 
-    T_cal = T_rec
+    # T_cal = T_lnn * alpha_T
     H_cal = T_cal + V_cal - H_loss
     L_cal = T_cal - V_cal
+
+    H_ana = T_cal + V_ana
+    L_ana = T_cal - V_ana
+
+    H_lnn = T_lnn + V_lnn
+    L_lnn = T_lnn - V_lnn
+
+    V_ana += diff_beta
+    V_f = V_lnn * coef_V[0] + coef_V[1] + diff_beta
+    T_f = T_lnn * coef_T[0] + coef_T[1] - diff_beta
+    H_f = T_f + V_f
+    L_f = T_f - V_f
 
     # Plotting
     sns.set(style="darkgrid")
@@ -272,16 +283,36 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
+    # Powers
+    plt.figure(figsize=(8, 4.5), dpi=120)
+    plt.plot(pow_input, linewidth=2, label='Power input.')
+    # plt.plot(H_lnn, linewidth=2, label='H. Lnn')
+    # plt.plot(H_rec, linewidth=2, label='H. Recon')
+    # plt.plot(H_mec, linewidth=2, label='H. Mec')
+    # plt.plot(H_loss, linewidth=2, label='H. Loss')
+    # plt.plot(H_cor, linewidth=2, label='H. Cor')
+    # plt.plot(H_cal, linewidth=2, label='H. Cal')
+    # plt.plot(t_sim, H_f, '--', linewidth=3, label='H. Final')
+    plt.title('Powers')
+    # plt.ylim(0, 2.0)
+    # plt.xlim(0, 5)
+    plt.ylabel('Power (J/s)')
+    plt.xlabel('Time (s)')
+    plt.legend()
+    # plt.legend([r'$H_{ana}$', r'$H_{nn}$', r'$H_{calib.}$'], loc="best")
+    # plt.savefig('media/Model identification/Hamiltonian.png')
+    plt.show()
+
     # Energies
     plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(H_ana, linewidth=2, label='H. Ana')
+    # plt.plot(H_ana, linewidth=2, label='H. Ana')
     # plt.plot(H_lnn, linewidth=2, label='H. Lnn')
     # plt.plot(H_rec, linewidth=2, label='H. Recon')
     plt.plot(H_mec, linewidth=2, label='H. Mec')
     plt.plot(H_loss, linewidth=2, label='H. Loss')
     plt.plot(H_cor, linewidth=2, label='H. Cor')
-    plt.plot(H_cal, linewidth=2, label='H. Cal')
-    # plt.plot(t_sim, H_f, '--', linewidth=3, label='H. Final')
+    # plt.plot(H_cal, linewidth=2, label='H. Cal')
+    # plt.plot(H_f, linewidth=3, label='H. Final')
     plt.title('Hamiltonians')
     # plt.ylim(0, 2.0)
     # plt.xlim(0, 5)
@@ -296,8 +327,8 @@ if __name__ == "__main__":
     plt.plot(L_ana, linewidth=2, label='L. Ana')
     # plt.plot(L_lnn, linewidth=2, label='L. Lnn')
     # plt.plot(L_rec, linewidth=2, label='L. Recon')
-    plt.plot(L_cal, linewidth=2, label='L. Cal')
-    # plt.plot(t_sim, L_f, '--', linewidth=2, label='L. Final')
+    # plt.plot(L_cal, linewidth=2, label='L. Cal')
+    plt.plot(L_f, linewidth=2, label='L. Final')
     plt.title('Lagrangians from the Snake')
     # plt.ylim(-1.5, 2.0)
     # plt.xlim(0, 5)
@@ -312,14 +343,14 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 4.5), dpi=120)
     # plt.plot(t_sim, T_ana, linewidth=3, label='Kin. Analytic')
     plt.plot(V_ana, linewidth=2, label='Pot. Ana')
-    plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
+    # plt.plot(T_lnn, linewidth=2, label='Kin. Lnn.')
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     # plt.plot(T_rec, linewidth=2, label='Kin. Recon')
     # plt.plot(V_rec, linewidth=2, label='Pot. Recon')
     # plt.plot(T_cal, linewidth=2, label='Kin. Cal')
-    plt.plot(V_cal, linewidth=2, label='Pot. Cal')
-    # plt.plot(t_sim, T_f, '--', linewidth=2, label='Kin. Final')
-    # plt.plot(t_sim, V_f, '--', linewidth=2, label='Pot. Final')
+    # plt.plot(V_cal, linewidth=2, label='Pot. Cal')
+    plt.plot(T_f, linewidth=2, label='Kin. Final')
+    plt.plot(V_f, linewidth=2, label='Pot. Final')
     plt.title('Energies from the Snake')
     # plt.ylim(-0.25, 2.0)
     # plt.xlim(0, 5)

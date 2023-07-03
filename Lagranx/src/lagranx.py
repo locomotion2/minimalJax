@@ -143,7 +143,8 @@ def energy_func(params: dict, train_state: ts.TrainState,
         V = out[10]
 
         # get the friction
-        k_dq = out[-4:]
+        # k_dq = out[-4:]
+        k_dq = jnp.array([0.0225] * 4)
 
         # choose the output
         if output == 'energies':

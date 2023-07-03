@@ -156,7 +156,7 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     # Count the samples
     table_name = settings['table_name']
     samples_total = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    samples_train = int(samples_total * 0.1)
+    samples_train = int(samples_total * 0.7)
     samples_validation = int(samples_total * 0.1)
     samples_test = int(samples_total * 0.1)
 
