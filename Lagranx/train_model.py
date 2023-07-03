@@ -5,6 +5,8 @@ from aim import Run
 from src import trainer
 from src import lagranx as lx
 
+from src import dpendulum_utils
+from src import snake_utils
 
 from hyperparams import settings
 
@@ -31,6 +33,12 @@ if __name__ == "__main__":
     train_state = trainer.create_train_state(settings,
                                              learning_rate_fn,
                                              params=params)
+
+    # Define sys_utils (functions that depend on the particular system)
+    if settings['system'] == 'snake':
+        settings['sys_utils'] = snake_utils
+    elif settings['system'] == 'dpend':
+        settings['sys_utils'] = dpendulum_utils
 
     # Define data & dataloader TODO: change everything to work with databases
     dataloader = trainer.choose_data_loader(settings)

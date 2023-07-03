@@ -10,9 +10,6 @@ import optax
 from aim import Run
 from flax.training import train_state as ts
 
-from Lagranx.src import lagranx as lx
-from Lagranx.src import snake_utils as sys_utils
-
 import stable_baselines3.common.save_util as loader
 
 from src import dpendulum_utils
@@ -48,7 +45,12 @@ def create_train_state(settings: dict,
     key = jax.random.PRNGKey(settings['seed'])
     buffer_length = settings['buffer_length']
     we_param = settings['weight_decay']
+    sys_utils = settings['sys_utils']
+
+    # network params
+    h_dim = settings['h_dim']
     num_dof = settings['num_dof']
+    friction = settings['friction']
 
     # Create network
     network = sys_utils.DeLaNN()
@@ -56,35 +58,15 @@ def create_train_state(settings: dict,
     # If available load the parameters
     if params is None:
         input_size = (2 * num_dof * buffer_length,)
-        params = network.init(key, jax.random.normal(key, input_size))['params']
+        params = network.init(key,
+                              jax.random.normal(key, input_size),
+                              friction=friction,
+                              net_size=h_dim,
+                              num_dof=num_dof)['params']
 
     # Set up the optimizer and bundle everything into a train state
     adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=we_param)
     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
-
-
-# def build_train_step(train_state: ts.TrainState,
-#                      loss_func: Callable,
-#                      learning_rate_fn: Callable) -> Callable:
-#     @jax.jit
-#     def _train_step(batch: (jnp.array, jnp.array),
-#                     _train_state: ts.TrainState = train_state) -> (ts.TrainState, dict):
-#         # Creates compiled function that contains the batch data
-#         @jax.jit
-#         def loss_fn(params: dict):
-#             return loss_func(params, _train_state, batch)
-#
-#         # Update the model
-#         loss_value, grads = jax.value_and_grad(loss_fn)(_train_state.params)
-#         _train_state = _train_state.apply_gradients(grads=grads)
-#
-#         # Build the result metrics
-#         metrics = {'learning_rate': learning_rate_fn(_train_state.step),
-#                    'loss': loss_value}
-#
-#         return _train_state, metrics
-#
-#     return _train_step
 
 
 @partial(jax.jit, static_argnums=[2, 3])

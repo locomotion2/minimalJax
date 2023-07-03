@@ -12,33 +12,28 @@ from Lagranx.src import utils
 class DeLaNN(nn.Module):
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, num_dof=4, net_size=64 * 4, friction=False):
         # unpacking data
         q_state, _ = jnp.split(x, 2)
-        full_state = jnp.concatenate([q_state, jnp.array([0] * 20 * 4)])
-        # q_state = x
+        full_state = jnp.concatenate([q_state, jnp.array([0] * len(q_state))])
 
-        net_size = 64 * 4
         # build kinetic net
+        dim = int(num_dof * (num_dof + 1) / 2)
         x_kin_1 = self.layer(q_state, features=net_size)
         x_kin_2 = self.layer(x_kin_1, features=net_size)
-        # x_kin_3 = self.layer(x_kin_2, features=net_size)
-        x_kin = nn.Dense(features=10)(x_kin_1 + x_kin_2)
+        x_kin = nn.Dense(features=dim)(x_kin_1 + x_kin_2)
 
         # build potential net
         x_pot_1 = self.layer(q_state, features=net_size)
         x_pot_2 = self.layer(x_pot_1, features=net_size)
-        # x_pot_3 = self.layer(x_pot_2, features=net_size)
         x_pot = nn.Dense(features=1)(x_pot_1 + x_pot_2)
 
         # # build friction net
         x_f_1 = self.layer(full_state, features=net_size)
         x_f_2 = self.layer(x_f_1, features=net_size)
-        # x_f = self.layer(x_f, features=net_size)
-        x_f = self.layer(x_f_1 + x_f_2, features=4)
+        x_f = self.layer(x_f_1 + x_f_2, features=num_dof) * int(friction)
 
         return jnp.concatenate([x_kin, x_pot, x_f])
-        # return jnp.concatenate([x_kin, x_pot])
 
     def layer(self, x: jnp.array, features: int = 128):
         x = nn.Dense(features=features)(x)
@@ -46,9 +41,9 @@ class DeLaNN(nn.Module):
         return x
 
 
-def split_state(state, buffer_length):
+def build_split_tool(buffer_length):
     @jax.jit
-    def _split_state(state):
+    def _split_tool(state):
         q = jnp.array([state[0 * buffer_length],
                        state[1 * buffer_length],
                        state[2 * buffer_length],
@@ -86,7 +81,7 @@ def split_state(state, buffer_length):
 
         return q, q_buff, dq, dq_buff, tau
 
-    return _split_state(state)
+    return _split_tool
 
 
 # @jax.jit
@@ -144,6 +139,7 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     num_skips = settings['eff_datasampling']
     buffer_length = settings['buffer_length']
     buffer_length_max = settings['buffer_length_max']
+    partition = settings['data_partition']
 
     # Set up help variables
     data_size_train = batch_size * num_minibatches * num_skips
@@ -156,9 +152,9 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     # Count the samples
     table_name = settings['table_name']
     samples_total = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    samples_train = int(samples_total * 0.7)
-    samples_validation = int(samples_total * 0.1)
-    samples_test = int(samples_total * 0.1)
+    samples_train = int(samples_total * partition[0])
+    samples_validation = int(samples_total * partition[1])
+    samples_test = int(samples_total * partition[2])
 
     # Prepare query commands
     query_sample_training = f'SELECT * FROM {table_name} ' \
@@ -169,7 +165,6 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     format_samples = jax.vmap(jax.jit(partial(format_sample,
                                               buffer_length=buffer_length,
                                               buffer_length_max=buffer_length_max)))
-
 
     split_data_vec = jax.vmap(split_data)
 
@@ -265,6 +260,7 @@ def build_database_dataloader(settings: dict) -> Callable:
         return batch_training, batch_validation
 
     return dataloader
+
 
 @jax.jit
 def split_data(data):

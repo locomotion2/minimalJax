@@ -10,7 +10,7 @@ class EnergyObserver:
         params = loader.load_from_pkl(path='tmp/current', verbose=1)
         train_state = lx.create_train_state(0, 0, params=params)
         # self.lagrangian = lx.learned_lagrangian(params, train_state, output='lagrangian')
-        self.energies = lx.partial(lx.energy_calcuations, params=params, train_state=train_state)
+        self.energies = lx.partial(lx.test_calculations, params=params, train_state=train_state)
         self.kin_factors = np.array([1.785508155822754, 0.009507834911346436])
         self.pot_factors = np.array([1.785508155822754, -23.28985595703125])
     print('Using me!')
