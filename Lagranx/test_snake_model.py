@@ -29,7 +29,7 @@ def calc_V_ana(q):
     # return 1/2 * K * jnp.sum(x ** 2)
     K_small = jnp.array([[1.75, 0], [0, 1.75]])
     K = jnp.block([[K_small, -K_small], [-K_small, K_small]])
-    return 1 / 2 * jnp.transpose(q) @ K @ q
+    return jnp.transpose(q) @ K @ q
 
 
 def build_dynamics(params, train_state):
@@ -49,9 +49,15 @@ def build_dynamics(params, train_state):
     # Create compiled dynamics
     dyn_builder = partial(lx.inertia_dyn_builder,
                           split_tool=split_tool,
+                          kinetic=kinetic,
                           potential=potential,
                           inertia=inertia,
                           friction=friction)
+    # dyn_builder = partial(lx.energy_dyn_builder,
+    #                       split_tool=split_tool,
+    #                       potential=potential,
+    #                       kinetic=kinetic,
+    #                       friction=friction)
     dyn_builder_compiled = jax.jit(dyn_builder)
 
     # Vectorize some important calculations
@@ -112,6 +118,10 @@ if __name__ == "__main__":
     ddq_pred = jax.vmap(lx.forward_dynamics)(dyn_terms)
     tau_pred, tau_target, tau_loss = jax.vmap(lx.inverse_dynamics)(ddq=ddq_target,
                                                                    terms=dyn_terms)
+    # ddq_pred = jax.vmap(lx.forward_dynamics_energies)(dyn_terms)
+    # tau_pred, tau_target, tau_loss = jax.vmap(lx.inverse_dynamics_energies)(
+    #     ddq=ddq_target,
+    #     terms=dyn_terms)
 
     # calculate energies and powers
     T_lnn, V_lnn, powers = energy_calcs(batch=(state, ddq_target),
@@ -127,8 +137,8 @@ if __name__ == "__main__":
         return jnp.split(losses, 3)
 
 
-    loss_func = jax.vmap(loss_split)
-    (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
+    # loss_func = jax.vmap(loss_split)
+    # (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
 
     # TODO: Load the timestep from settings
     # Calculate measured energies
@@ -151,9 +161,9 @@ if __name__ == "__main__":
     print(f'Factors: {alpha_T}, {beta_T}.')
 
     # saved coefficients after calibration
-    coef_V = [0.010010098107159138, -0.23374556005001068]
-    coef_T = [0.19293320178985596, -0.06825241446495056]
-    diff_beta = coef_T[1] - coef_V[0]
+    coef_V = [0.015464769676327705, -0.35983967781066895]
+    coef_T = [0.32059621810913086, -0.13045060634613037]
+    diff_beta = coef_T[1] - coef_V[1]
 
     # calculate calibrated energies
     H_cal = T_cal + V_cal - H_loss
@@ -163,10 +173,10 @@ if __name__ == "__main__":
     H_ana = T_cal + V_ana
     L_ana = T_cal - V_ana
 
-    V_ana += diff_beta
-    V_f = V_lnn * coef_V[0] + coef_V[1] + diff_beta
-    T_f = T_lnn * coef_T[0] + coef_T[1] - diff_beta
-    H_f = T_f + V_f
+    # V_ana += diff_beta
+    V_f = V_lnn * coef_V[0] + coef_V[1] + coef_T[1]
+    T_f = T_lnn * coef_T[0]
+    H_f = T_f + V_f - H_loss
     L_f = T_f - V_f
 
     # TODO: Improve plotting
@@ -244,29 +254,29 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Loss.png')
     plt.show()
 
-    # Losses
-    plt.figure(figsize=(8, 4.5), dpi=120)
-    plt.plot(L_acc_qdd, linewidth=2, label='ddq')
-    plt.plot(10 * L_acc_tau, linewidth=2, label='tau')
-    plt.plot(100 * L_pot, linewidth=2, label='pot')
-    # plt.plot(L_mass, linewidth=2, label='mass')
-    # plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
-    # plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
-    # plt.plot(L_dV_shape * 10000, linewidth=2, label='pot_shape')
-    # plt.plot(L_ham, linewidth=2, label='hamiltonian')
-    # plt.plot(10000 * L_con, linewidth=2, label='conservative')
-    # plt.plot(L_loss * 10000, linewidth=2, label='loss')
-    plt.legend()
-    # plt.ylim(-5, 200)
-    # plt.xlim(0, 5)
-    plt.title('Losses')
-    # plt.ylabel('Nm')
-    # plt.xlabel('sample (n)')
-    # plt.legend([r'$\theta_1$', r'$\theta_2$',
-    #             r'$\theta^p_1$', r'$\theta^p_2$',
-    #             r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
-    # plt.savefig('media/Model identification/Loss.png')
-    plt.show()
+    # # Losses
+    # plt.figure(figsize=(8, 4.5), dpi=120)
+    # plt.plot(L_acc_qdd, linewidth=2, label='ddq')
+    # plt.plot(10 * L_acc_tau, linewidth=2, label='tau')
+    # plt.plot(100 * L_pot, linewidth=2, label='pot')
+    # # plt.plot(L_mass, linewidth=2, label='mass')
+    # # plt.plot(L_kin_pos, linewidth=2, label='kin_pos')
+    # # plt.plot(L_kin_shape * 100, linewidth=2, label='kin_shape')
+    # # plt.plot(L_dV_shape * 10000, linewidth=2, label='pot_shape')
+    # # plt.plot(L_ham, linewidth=2, label='hamiltonian')
+    # # plt.plot(10000 * L_con, linewidth=2, label='conservative')
+    # # plt.plot(L_loss * 10000, linewidth=2, label='loss')
+    # plt.legend()
+    # # plt.ylim(-5, 200)
+    # # plt.xlim(0, 5)
+    # plt.title('Losses')
+    # # plt.ylabel('Nm')
+    # # plt.xlabel('sample (n)')
+    # # plt.legend([r'$\theta_1$', r'$\theta_2$',
+    # #             r'$\theta^p_1$', r'$\theta^p_2$',
+    # #             r'$\theta^f_1$', r'$\theta^f_2$'], loc="best")
+    # # plt.savefig('media/Model identification/Loss.png')
+    # plt.show()
 
     # Powers
     plt.figure(figsize=(8, 4.5), dpi=120)
@@ -290,14 +300,14 @@ if __name__ == "__main__":
 
     # Energies
     plt.figure(figsize=(8, 4.5), dpi=120)
-    # plt.plot(H_ana, linewidth=2, label='H. Ana')
+    plt.plot(H_ana, linewidth=2, label='H. Ana')
     # plt.plot(H_lnn, linewidth=2, label='H. Lnn')
     # plt.plot(H_rec, linewidth=2, label='H. Recon')
     plt.plot(H_mec, linewidth=2, label='H. Mec')
     plt.plot(H_loss, linewidth=2, label='H. Loss')
     plt.plot(H_cor, linewidth=2, label='H. Cor')
-    # plt.plot(H_cal, linewidth=2, label='H. Cal')
-    # plt.plot(H_f, linewidth=3, label='H. Final')
+    plt.plot(H_cal, linewidth=2, label='H. Cal')
+    plt.plot(H_f, linewidth=3, label='H. Final')
     plt.title('Hamiltonians')
     # plt.ylim(0, 2.0)
     # plt.xlim(0, 5)
@@ -308,11 +318,12 @@ if __name__ == "__main__":
     # plt.savefig('media/Model identification/Hamiltonian.png')
     plt.show()
 
+    # Lagrangians
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(L_ana, linewidth=2, label='L. Ana')
     # plt.plot(L_lnn, linewidth=2, label='L. Lnn')
     # plt.plot(L_rec, linewidth=2, label='L. Recon')
-    # plt.plot(L_cal, linewidth=2, label='L. Cal')
+    plt.plot(L_cal, linewidth=2, label='L. Cal')
     plt.plot(L_f, linewidth=2, label='L. Final')
     plt.title('Lagrangians from the Snake')
     # plt.ylim(-1.5, 2.0)
@@ -332,8 +343,8 @@ if __name__ == "__main__":
     # plt.plot(V_lnn, linewidth=2, label='Pot. Lnn.')
     # plt.plot(T_rec, linewidth=2, label='Kin. Recon')
     # plt.plot(V_rec, linewidth=2, label='Pot. Recon')
-    # plt.plot(T_cal, linewidth=2, label='Kin. Cal')
-    # plt.plot(V_cal, linewidth=2, label='Pot. Cal')
+    plt.plot(T_cal, linewidth=2, label='Kin. Cal')
+    plt.plot(V_cal, linewidth=2, label='Pot. Cal')
     plt.plot(T_f, linewidth=2, label='Kin. Final')
     plt.plot(V_f, linewidth=2, label='Pot. Final')
     plt.title('Energies from the Snake')

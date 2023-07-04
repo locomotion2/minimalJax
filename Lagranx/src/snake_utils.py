@@ -28,7 +28,7 @@ class DeLaNN(nn.Module):
         x_pot_2 = self.layer(x_pot_1, features=net_size)
         x_pot = nn.Dense(features=1)(x_pot_1 + x_pot_2)
 
-        # # build friction net
+        # build friction net
         x_f_1 = self.layer(full_state, features=net_size)
         x_f_2 = self.layer(x_f_1, features=net_size)
         x_f = self.layer(x_f_1 + x_f_2, features=num_dof) * int(friction)
@@ -189,9 +189,9 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
 
         # Random subsample from data
         batch_training_sub = jax.random.choice(key, batch_training_formatted,
-                                               (data_size_train,))
+                                               (data_size_train,), replace=False)
         batch_validation_sub = jax.random.choice(key, batch_validation_formatted,
-                                                 (data_size_test,))
+                                                 (data_size_test,), replace=False)
 
         # split the data
         batch_training = split_data_vec(batch_training_sub)

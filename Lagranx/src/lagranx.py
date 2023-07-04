@@ -9,31 +9,39 @@ from jax.experimental.ode import odeint
 from Lagranx.src import dpend_model_arne as model
 
 
-# def energy_dyn_builder(state: jnp.array,
-#                        kinetic: Callable = None,
-#                        potential: Callable = None,
-#                        friction: Callable = None
-#                        ):
-#     # unpack the data
-#     q, q_buff, dq, dq_buff, tau = sys_utils.split_state(state, 20)
-# 
-#     # obtain equation terms
-#     M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
-#     cross_hessian = jax.jacobian(jax.jacobian(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
-#     N = cross_hessian @ dq - (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
-#                               jax.grad(potential, 0)(q, q_buff, dq, dq_buff))
-# 
-#     # bundle terms
-#     state_current = (q, dq, tau)
-#     dynamics = (M, N)
-#     frictions = friction(q, q_buff, dq, dq_buff)
-# 
-#     return state_current, dynamics, frictions
+def energy_dyn_builder(state: jnp.array,
+                       split_tool: Callable = None,
+                       kinetic: Callable = None,
+                       potential: Callable = None,
+                       friction: Callable = None
+                       ):
+    # unpack the data
+    q, q_buff, dq, dq_buff, tau = split_tool(state)
+
+    # obtain equation terms
+    M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+
+    def dT_q(q, q_buff, dq, dq_buff):
+        M = jax.hessian(kinetic, 2)(q, q_buff, dq, dq_buff)
+        return M @ dq
+
+    # cross_hessian = jax.jacobian(dT_q, 0)(q, q_buff, dq, dq_buff)
+    cross_hessian = jax.jacobian(jax.grad(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
+    N = cross_hessian @ dq - (jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff) -
+                              jax.grad(potential, 0)(q, q_buff, dq, dq_buff))
+
+    # bundle terms
+    state_current = (q, dq, tau)
+    dynamics = (M, N)
+    frictions = friction(q, q_buff, dq, dq_buff)
+
+    return state_current, dynamics, frictions
 
 
 def inertia_dyn_builder(state: jnp.array,
                         split_tool: Callable = None,
                         potential: Callable = None,
+                        kinetic: Callable = None,
                         inertia: Callable = None,
                         friction: Callable = None
                         ):
@@ -42,12 +50,15 @@ def inertia_dyn_builder(state: jnp.array,
     # obtain equation terms
     M = inertia(q, q_buff, dq, dq_buff)
 
-    def dT_q(q, q_buff, dq, dq_buff):
+    def dT_dq(q, q_buff, dq, dq_buff):
         M = inertia(q, q_buff, dq, dq_buff)
         return M @ dq
 
-    dM = jax.jacobian(dT_q, 0)(q, q_buff, dq, dq_buff)
-    C = 1 / 2 * dM
+    dM = jax.jacobian(dT_dq, 0)(q, q_buff, dq, dq_buff)
+    # dM = jax.jacobian(jax.grad(kinetic, 2), 0)(q, q_buff, dq, dq_buff)
+
+    # C = 1 / 2 * dM
+    C = dM - 1/2 * jnp.transpose(dM)
     dV_q = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
 
     # bundle terms
@@ -91,7 +102,7 @@ def forward_dynamics(terms):
     tau_eff = tau + tau_f
 
     # forward dynamics (EOMs)
-    ddq = jnp.linalg.pinv(M) @ (tau_eff - C @ dq - dV_q)
+    ddq = jnp.linalg.inv(M) @ (tau_eff - C @ dq - dV_q)
 
     return jnp.concatenate([dq, ddq])
 
@@ -111,6 +122,58 @@ def inverse_dynamics(ddq, terms):
     tau = tau_eff - tau_f
 
     return tau, tau_target, tau_f
+
+@jax.jit
+def forward_dynamics_energies(terms):
+    # unpack terms
+    (q, dq, tau), (M, N), k_dq = terms
+
+    # account for frictions
+    tau_f = - k_dq * dq
+    tau_eff = tau + tau_f
+
+    # forward dynamics (EOMs)
+    ddq = jnp.linalg.inv(M) @ (tau_eff - N)
+
+    return jnp.concatenate([dq, ddq])
+
+
+@jax.jit
+def inverse_dynamics_energies(ddq, terms):
+    # unpack terms
+    (q, dq, tau_target), (M, N), k_dq = terms
+
+    # inverse dynamics
+    if len(ddq) > len(dq):
+        _, ddq = jnp.split(ddq, 2)
+    tau_eff = M @ ddq + N
+
+    # account for frictions
+    tau_f = - k_dq * dq
+    tau = tau_eff - tau_f
+
+    return tau, tau_target, tau_f
+
+
+def energy_wrapper(state: jnp.array,
+                   split_tool: Callable,
+                   kinetic: Callable,
+                   potential: Callable
+                   ):
+    q, q_buff, dq, dq_buff, _ = split_tool(state)
+
+    T = kinetic(q, q_buff, dq, dq_buff)
+    V = potential(q, q_buff, dq, dq_buff)
+
+    # scale the energies
+    coef_V = [0.015464769676327705, -0.35983967781066895]
+    coef_T = [0.32059621810913086, -0.13045060634613037]
+    # diff_beta = coef_T[1] - coef_V[1]
+
+    V_f = V * coef_V[0] + coef_V[1]
+    T_f = T * coef_T[0]
+
+    return T_f, V_f
 
 
 # TODO: Test if this is working
@@ -174,7 +237,7 @@ def energy_func(params: dict, train_state: ts.TrainState,
 
         # get the friction
         # k_dq = out[-4:]
-        k_dq = jnp.array([0] * 4)
+        k_dq = jnp.array([0.0205] * 4)
 
         # choose the output
         if output == 'energies':
@@ -201,7 +264,7 @@ def test_calculations(batch,
     # Unpack the terms
     state, ddq = batch
     q, q_buff, dq, dq_buff, tau = split_tool(state)
-    _, (M, C, dV_q), k_dq = dyn_terms
+    _, _, k_dq = dyn_terms
 
     # Get the energies as the output of the NN
     T = kinetic(q, q_buff, dq, dq_buff)
@@ -209,7 +272,7 @@ def test_calculations(batch,
 
     # Get the derivatives on q and dq
     dT_q = jax.grad(kinetic, 0)(q, q_buff, dq, dq_buff)
-    # dV_q = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
+    dV_q = jax.grad(potential, 0)(q, q_buff, dq, dq_buff)
 
     # Calculate powers
     pow_T = jnp.transpose(dq) @ dT_q

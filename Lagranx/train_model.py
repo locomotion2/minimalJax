@@ -17,7 +17,7 @@ if __name__ == "__main__":
     run = Run()
     run['hparams'] = settings
 
-    # Create a training state
+    # Define training parameters
     stage = 0
     num_iterations = settings['num_epochs'] * settings['num_batches'] * settings[
         'num_minibatches']
@@ -30,15 +30,17 @@ if __name__ == "__main__":
     if settings['reload']:
         params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
         print(f"Params loaded from file: {settings['ckpt_dir']}")
-    train_state = trainer.create_train_state(settings,
-                                             learning_rate_fn,
-                                             params=params)
 
     # Define sys_utils (functions that depend on the particular system)
     if settings['system'] == 'snake':
         settings['sys_utils'] = snake_utils
     elif settings['system'] == 'dpend':
         settings['sys_utils'] = dpendulum_utils
+
+    # Create the training state
+    train_state = trainer.create_train_state(settings,
+                                             learning_rate_fn,
+                                             params=params)
 
     # Define data & dataloader TODO: change everything to work with databases
     dataloader = trainer.choose_data_loader(settings)

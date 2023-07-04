@@ -16,22 +16,8 @@ from src import utils
 
 import stable_baselines3.common.save_util as loader
 
+from scipy.signal import savgol_filter
 
-# @jax.jit
-# def update_format_buffers(variable_buffer, variable):
-#     var_list_save = []
-#     var_list_send = []
-#     for index, element in enumerate(variable):
-#         # update buffer
-#         vector = variable_buffer[index, 0:-1]
-#         vector = jnp.insert(vector, 0, element)
-#         var_list_save.append(vector)
-#
-#         # format buffer to be send
-#         # var_list_send.append(vector[::10])
-#         var_list_send.append(vector)
-#
-#     return jnp.array(var_list_save), jnp.concatenate(var_list_send)
 
 @jax.jit
 def update_format_buffers(variable_buffer, variable):
@@ -56,7 +42,7 @@ def update_format_buffers(variable_buffer, variable):
 
 
 @jax.jit
-def format_state(q, q_buff, dq, dq_buff):
+def format_state(q, q_buff, dq, dq_buff, tau):
     # format into the right sizes
     q = utils.wrap_angle(q)
 
@@ -65,17 +51,28 @@ def format_state(q, q_buff, dq, dq_buff):
     dq_buff, dq_out = update_format_buffers(dq_buff, dq)
 
     # prepare package
-    state = jnp.concatenate([q_out, dq_out, jnp.array([0, 0, 0, 0])])
+    state = jnp.concatenate([q_out, dq_out, tau])
 
     return state, q_buff, dq_buff
 
+
+def filter_svg(signal):
+    window = 19
+    order = 3
+    sampling_freq = 1 / 1000
+    return savgol_filter(signal,
+                         window_length=window,
+                         polyorder=order,
+                         delta=sampling_freq,
+                         axis=1,
+                         deriv=0)
 
 if __name__ == '__main__':
     # config ln coms
     print('Snake learned controller initiated.')
     clnt = ln.client(sys.argv[0], sys.argv)
     subscriber = clnt.subscribe("ff.controller.in", "ff_controller_in")
-    publisher = clnt.publish("observer.red.out", "observer_red_out")
+    publisher = clnt.publish("ff.controller.out", "ff_controller_out")
     print('LN connection established')
 
     # load params from settings
@@ -104,11 +101,14 @@ if __name__ == '__main__':
                           inertia=inertia,
                           friction=friction)
     dyns_compiled = jax.jit(dyn_builder)
-    dyns_reduced = partial(lx.decouple_model, dynamics=dyns_compiled)
+    energies = jax.jit(partial(lx.energy_wrapper,
+                               split_tool=split_tool,
+                               potential=potential,
+                               kinetic=kinetic))
 
     # set up the state buffering
-    # q_buff = jnp.zeros((4, buffer_length * 10))
-    # dq_buff = jnp.zeros((4, buffer_length * 10))
+    # q_buff = jnp.zeros((num_dof, buffer_length * 10))
+    # dq_buff = jnp.zeros((num_dof, buffer_length * 10))
     q_buff = jnp.zeros((num_dof, buffer_length))
     dq_buff = jnp.zeros((num_dof, buffer_length))
     try:
@@ -119,23 +119,24 @@ if __name__ == '__main__':
             time = subscriber.packet.time
             q = jnp.array(subscriber.packet.q)
             dq = jnp.array(subscriber.packet.dq)
-            # ddq = jnp.array(subscriber.packet.ddq)
-            # tau_target = jnp.array(subscriber.packet.tau)
-            # print(f"received: {q}, {dq}")
+            ddq = jnp.array(subscriber.packet.ddq)
+            tau_target = jnp.array(subscriber.packet.tau)
+            # print(f"received: {q}, {dq}, {ddq}, {tau_target}")
 
             # Calculate dynamics
-            state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff)
-            (M_rob, C_rob, g_rob, k_f_rob), (B, k_f_mot) = dyns_reduced(state)
+            state, q_buff, dq_buff = format_state(q, q_buff, dq, dq_buff, tau_target)
+            dyn_terms = dyn_builder(state)
+            ddq_pred = lx.forward_dynamics(dyn_terms)
+            tau_pred, _, _ = lx.inverse_dynamics(ddq=ddq,
+                                                 terms=dyn_terms)
+            T, V = energies(state)
 
             # Send tau
-            publisher.packet.M_rob = np.array(M_rob.flatten())
-            publisher.packet.C_rob = np.array(C_rob.flatten())
-            publisher.packet.g_rob = np.array(g_rob.flatten())
-            publisher.packet.k_f_rob = np.array(k_f_rob.flatten())
-            publisher.packet.B = np.array(B.flatten())
-            publisher.packet.k_f_mot = np.array(k_f_mot.flatten())
-            # publisher.packet.K_red = np.array(K_red.flatten())
-            # print(f"sending: {tau[0:2]}, {ddq_pred[4:8]}")
+            publisher.packet.tau = np.array(tau_pred[2:4])
+            publisher.packet.ddq = np.array(ddq_pred[4:8])
+            publisher.packet.T = np.array(T)
+            publisher.packet.V = np.array(V)
+            # print(f"sending: {tau_pred[2:4]}, {ddq_pred[4:8]}")
             publisher.write()
 
     except KeyboardInterrupt:
