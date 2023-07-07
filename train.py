@@ -1,7 +1,7 @@
 import rl_zoo3
 import rl_zoo3.train
 from rl_zoo3.train import train
-import sim
+import discovery
 
 from sbx import TQC, SAC
 

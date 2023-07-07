@@ -1,7 +1,7 @@
 import rl_zoo3
 import rl_zoo3.enjoy
 from rl_zoo3.enjoy import enjoy
-import sim
+import discovery
 
 from sbx import TQC, SAC
 
