@@ -1,5 +1,5 @@
 from discovery.CONSTANTS import *
-import discovery.utils as sutils
+import discovery.discovery_utils as sutils
 
 import numpy as np
 

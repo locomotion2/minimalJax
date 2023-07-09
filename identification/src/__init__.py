@@ -1,1 +1,1 @@
-__all__ = ["lagranx", "movie_maker", "trainer", "utils"]
+__all__ = ["dynamix", "extra", "learning"]

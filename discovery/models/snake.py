@@ -7,7 +7,7 @@ from functools import partial
 
 from scipy.integrate import odeint, solve_ivp
 
-import discovery.utils as sutils
+import discovery.discovery_utils as sutils
 import identification.src.utils as iutils
 
 from base_models import BaseModel

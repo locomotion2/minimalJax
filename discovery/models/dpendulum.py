@@ -4,7 +4,7 @@ import numpy as np
 
 from scipy.integrate import odeint, solve_ivp
 
-import discovery.utils as sutils
+import discovery.discovery_utils as sutils
 from discovery.models.pendulum import Pendulum
 
 

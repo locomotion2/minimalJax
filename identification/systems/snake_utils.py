@@ -6,10 +6,10 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-from identification.src import utils
+import identification_utils as utils
 
 
-class PowNN(nn.Module):
+class black_box_model(nn.Module):
 
     @nn.compact
     def __call__(self, x, num_dof=4, net_size=64 * 4, friction=False):
@@ -89,7 +89,7 @@ class DeLaNN(nn.Module):
         return x
 
 
-class DeLaNN_red(nn.Module):
+class DeLaNN_RED(nn.Module):
 
     @nn.compact
     def __call__(self, x, num_dof=4, net_size=64 * 4, friction=False):
@@ -353,3 +353,14 @@ def split_data(data):
     ddq = jnp.array(data[-8:])
 
     return state, ddq
+
+@jax.jit
+def calc_V_ana(q):
+    # q, theta = jnp.split(angles, 2)
+    # K = 1.75
+    # x = q - theta
+    # return 1/2 * K * jnp.sum(x ** 2)
+    K_small = jnp.array([[1.75, 0], [0, 1.75]])
+    K = jnp.block([[K_small, -K_small], [-K_small, K_small]])
+    return 1 / 2 * jnp.transpose(q) @ K @ q
+

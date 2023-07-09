@@ -9,10 +9,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from src import lagranx as lx
-from src import trainer
+from src.dynamix import lagranx as lx
+from src.learning import trainer
 from systems import snake_utils
-from src import utils
+import identification_utils as utils
 
 import stable_baselines3.common.save_util as loader
 

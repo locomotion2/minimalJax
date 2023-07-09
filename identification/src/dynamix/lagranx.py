@@ -7,7 +7,11 @@ from flax.training import train_state as ts
 from jax.experimental.ode import odeint
 from flax import linen as nn
 
-from identification.src import utils
+import identification_utils as utils
+
+from scipy.integrate import cumtrapz
+
+from systems import snake_utils
 
 
 def energy_dyn_builder(state: jnp.array,
@@ -46,7 +50,6 @@ def inertia_dyn_builder(state: jnp.array,
     # obtain equation terms
     M = inertia(q, q_buff, dq, dq_buff)
 
-    # @jax.jit
     def dT_dq(q, q_buff, dq, dq_buff):
         M = inertia(q, q_buff, dq, dq_buff)
         return M @ dq
@@ -103,7 +106,6 @@ def eom_wrapped(x: jnp.array,
     # obtain equation terms
     M = inertia(q, q_buff, dq, dq_buff)
 
-    @jax.jit
     def dT_dq(q, q_buff, dq, dq_buff):
         M = inertia(q, q_buff, dq, dq_buff)
         return M @ dq
@@ -513,6 +515,99 @@ def test_calculations(batch,
 
     return T, V, (pow_V, pow_T, pow_input, pow_f)
 
+# TODO: Change thuis function to take any time of system as input
+def build_dynamics(settings, params, train_state):
+    # Create basic building blocks
+    kinetic = energy_func_model(
+        params, train_state, settings=settings, output="kinetic"
+    )
+    potential = energy_func_model(
+        params, train_state, settings=settings, output="potential"
+    )
+    friction = energy_func_model(
+        params, train_state, settings=settings, output="friction"
+    )
+    inertia = energy_func_model(
+        params, train_state, settings=settings, output="inertia"
+    )
+
+    split_tool = snake_utils.build_split_tool(settings["buffer_length"])
+
+    # Create compiled dynamics
+    dyn_builder = partial(
+        inertia_dyn_builder,
+        split_tool=split_tool,
+        kinetic=kinetic,
+        potential=potential,
+        inertia=inertia,
+        friction=friction,
+    )
+    # dyn_builder = partial(lx.energy_dyn_builder,
+    #                       split_tool=split_tool,
+    #                       potential=potential,
+    #                       kinetic=kinetic,
+    #                       friction=friction)
+    dyn_builder_compiled = jax.jit(dyn_builder)
+
+    # Vectorize some important calculations
+    energy_calcs = jax.vmap(
+        jax.jit(
+            partial(
+                test_calculations,
+                split_tool=split_tool,
+                kinetic=kinetic,
+                potential=potential,
+            )
+        )
+    )
+
+    # build the integrable EOMs
+    eom_compiled = partial(eom_wrapped, potential=potential, inertia=inertia)
+
+    return dyn_builder_compiled, energy_calcs, eom_compiled, split_tool
+
+def calculate_energies(calc_V_ana_vec, pow_input, pow_f, T_lnn, V_lnn, q):
+    # Calculate measured energies
+    H_mec = cumtrapz(jax.device_get(pow_input), dx=1 / 100, initial=0)
+    H_loss = cumtrapz(jax.device_get(pow_f), dx=1 / 100, initial=0)
+    H_ana = H_mec + H_loss
+
+    # calculate NN energies
+    H_lnn = T_lnn + V_lnn
+    L_lnn = T_lnn - V_lnn
+    res_lnn = (T_lnn, V_lnn, H_lnn, L_lnn)
+
+    # calculate analytical energies
+    V_ana = calc_V_ana_vec(q)
+    T_ana = H_ana - V_ana
+    L_ana = T_ana - V_ana
+    res_ana = (T_ana, V_ana, H_ana, L_ana)
+
+    return res_ana, res_lnn, (H_mec, H_loss)
+
+def calibrate_energies(settings, V_ana, V_lnn, T_ana, T_lnn, H_loss):
+    # calibrate the NN output
+    [alpha_V, beta_V], V_cal = utils.calibrate(V_ana, V_lnn)
+    print(f"Potential factors: {alpha_V}, {beta_V}.")
+    [alpha_T, beta_T], T_cal = utils.calibrate(T_ana, T_lnn)
+    print(f"Kinetic factors: {alpha_T}, {beta_T}.")
+
+    # calculate the new calibration
+    H_cal = T_cal + V_cal - H_loss
+    L_cal = T_cal - V_cal
+    res_cal = (T_cal, V_cal, H_cal, L_cal)
+
+    # saved coefficients after calibration
+    coef_V, coef_T = jnp.split(settings["calib_coefs"], 2)
+
+    # calculate final calibrated energies
+    V_f = V_lnn * coef_V[0] + coef_V[1]
+    T_f = T_lnn * coef_T[0]
+    H_f = T_f + V_f - H_loss
+    L_f = T_f - V_f
+    res_final = (T_f, V_cal, H_f, L_f)
+
+    return res_cal, res_final
 
 def build_loss(settings: dict) -> (Callable, Callable):
     # get the weights

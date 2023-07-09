@@ -2,12 +2,12 @@ import optax
 import stable_baselines3.common.save_util as loader
 from aim import Run
 
-from identification.src import trainer
-from identification.src import lagranx as lx
+from src.learning import trainer
+from src.dynamix import lagranx as lx
 
-from identification.systems import dpendulum_utils, snake_utils
+from systems import dpendulum_utils, snake_utils
 
-from identification.hyperparams import settings
+from hyperparams import settings
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)

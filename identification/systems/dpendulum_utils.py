@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from identification.systems import dpend_model_arne as model
-from identification.src import lagranx as lx
+from systems import dpend_model_arne as model
+from src.dynamix import lagranx as lx
 
 def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.array)):
     # Unpack settings

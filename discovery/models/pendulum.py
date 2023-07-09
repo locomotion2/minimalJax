@@ -4,7 +4,7 @@ import numpy as np
 
 from base_models import BaseModel
 
-import discovery.utils as sutils
+import discovery.discovery_utils as sutils
 
 class Pendulum(BaseModel):
     def __init__(self, params: dict = None):
