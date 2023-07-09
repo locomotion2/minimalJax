@@ -4,10 +4,6 @@ from discovery.CONSTANTS import *
 import numpy as np
 from abc import ABC, abstractmethod
 
-# Todo: Fix this, add this to your project
-# sys.path.insert(1, '//')
-# from links_and_joints.planar_dynamical_system.generated.rr import RR as DoublePendulumBackend
-
 from scipy.integrate import odeint, solve_ivp
 
 

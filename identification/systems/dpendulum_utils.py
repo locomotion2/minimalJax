@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from systems import dpend_model_arne as model
-from src.dynamix import lagranx as lx
+from src.dynamix import simulate as lx
 
 def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.array)):
     # Unpack settings

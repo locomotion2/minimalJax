@@ -1,22 +1,18 @@
 import sys
-import links_and_nodes as ln
-
 from functools import partial
-
-from hyperparams import settings
 
 import jax
 import jax.numpy as jnp
+import links_and_nodes as ln
 import numpy as np
+import stable_baselines3.common.save_util as loader
+from scipy.signal import savgol_filter
 
-from src.dynamix import lagranx as lx
+import identification_utils as utils
+from hyperparams import settings
+from src.dynamix import energiex as ex, motionx as mx, wrappings
 from src.learning import trainer
 from systems import snake_utils
-import identification_utils as utils
-
-import stable_baselines3.common.save_util as loader
-
-from scipy.signal import savgol_filter
 
 
 def filter_svg(signal):
@@ -49,32 +45,28 @@ if __name__ == '__main__':
     train_state = trainer.create_train_state_PowNN(settings, 0, params=params)
 
     # build dynamics
-    kinetic = lx.energy_func_model(params, train_state, settings=settings,
+    kinetic = ex.energy_func_model(params, train_state, settings=settings,
                                    output='kinetic')
-    potential = lx.energy_func_model(params, train_state, settings=settings,
+    potential = ex.energy_func_model(params, train_state, settings=settings,
                                      output='potential')
-    friction = lx.energy_func_model(params, train_state, settings=settings,
+    friction = ex.energy_func_model(params, train_state, settings=settings,
                                     output='friction')
-    inertia = lx.energy_func_model(params, train_state, settings=settings,
+    inertia = ex.energy_func_model(params, train_state, settings=settings,
                                    output='inertia')
     split_tool = snake_utils.build_split_tool(buffer_length)
-    dyn_builder = partial(lx.inertia_dyn_builder,
+    dyn_builder = partial(mx.inertia_dyn_builder,
                           split_tool=split_tool,
                           kinetic=kinetic,
                           potential=potential,
                           inertia=inertia,
                           friction=friction)
     dyns_compiled = jax.jit(dyn_builder)
-    energies = jax.jit(partial(lx.energy_wrapper,
+    energies = jax.jit(partial(wrappings.energy_wrapper,
                                split_tool=split_tool,
                                potential=potential,
                                kinetic=kinetic))
 
     # set up the state buffering
-    # q_buff = jnp.zeros((num_dof, buffer_length * 10))
-    # dq_buff = jnp.zeros((num_dof, buffer_length * 10))
-    # q_buff = jnp.zeros((num_dof, buffer_length))
-    # dq_buff = jnp.zeros((num_dof, buffer_length))
     try:
         while True:
             # Get q, dq, ddq, time
@@ -95,8 +87,8 @@ if __name__ == '__main__':
             # state, q_buff, dq_buff = utils.format_state(q, q_buff, dq, dq_buff,
             #                                             tau_target)
             dyn_terms = dyn_builder(state)
-            ddq_pred = lx.forward_dynamics(dyn_terms)
-            tau_pred, _, _ = lx.inverse_dynamics(ddq=ddq,
+            ddq_pred = mx.forward_dynamics(dyn_terms)
+            tau_pred, _, _ = mx.inverse_dynamics(ddq=ddq,
                                                  terms=dyn_terms)
             T, V = energies(state)
 

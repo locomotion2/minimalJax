@@ -217,25 +217,30 @@ def format_sample(sample, buffer_length, buffer_length_max):
 
 def build_database_dataloader_eff(settings: dict) -> Callable:
     # Unpack the settings
-    batch_size = settings['batch_size']
-    num_minibatches = settings['num_minibatches']
-    num_skips = settings['eff_datasampling']
-    partition = settings['data_partition']
-    buffer_length = settings['buffer_length']
-    buffer_length_max = settings['buffer_length_max']
-    # if settings['goal'] == 'model':
-    #     buffer_length = 1
+    settings_training = settings['training_settings']
+    settings_model = settings['model_settings']
+    settings_system = settings['system_settings']
+    settings_data = settings['data_settings']
+
+    batch_size = settings_training['batch_size']
+    num_minibatches = settings_training['num_minibatches']
+
+    num_skips = settings_data['eff_datasampling']
+    partition = settings_data['data_partition']
+
+    buffer_length = settings_model['buffer_length']
+    buffer_length_max = settings_model['buffer_length_max']
 
     # Set up help variables
     data_size_train = batch_size * num_minibatches * num_skips
     data_size_test = batch_size * num_skips
 
     # Set up database connection
-    database = sqlite3.connect(settings['database_name'])
+    database = sqlite3.connect(settings_data['database_name'])
     cursor = database.cursor()
 
     # Count the samples
-    table_name = settings['table_name']
+    table_name = settings_data['table_name']
     samples_total = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
     samples_train = int(samples_total * partition[0])
     samples_validation = int(samples_total * partition[1])
@@ -287,64 +292,64 @@ def build_database_dataloader_eff(settings: dict) -> Callable:
     return dataloader
 
 
-def build_database_dataloader(settings: dict) -> Callable:
-    # Unpack the settings
-    batch_size = settings['batch_size']
-    num_minibathces = settings['num_minibatches']
-    num_skips = settings['eff_datasampling']
-    buffer_length = settings['buffer_length']
-    buffer_length_max = settings['buffer_length_max']
-
-    # Set up help valriables
-    data_size_train = batch_size * num_minibathces * num_skips
-    data_size_test = batch_size * num_skips
-
-    # set up database
-    database = sqlite3.connect(settings['database_name'])
-    cursor = database.cursor()
-
-    # count the samples
-    table_name = settings['table_name']
-    samples_total = cursor.execute(
-        f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    samples_train = int(samples_total * 0.1)
-    samples_validation = int(samples_total * 0.1)
-    # samples_test = int(samples_total * 0.1)
-
-    # query commands
-    # query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
-    #                     f'{samples_train + samples_validation},{samples_test} ' \
-    #                     f'LIMIT {data_size}'
-
-    format_samples = jax.vmap(jax.jit(partial(format_sample,
-                                              buffer_length=buffer_length,
-                                              buffer_length_max=buffer_length_max)))
-
-    # @jax.jit
-    def dataloader(key):
-        def query_sample_training(key):
-            query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
-                    f'LIMIT {samples_train}) ORDER BY RANDOM() ' \
-                    f'LIMIT {data_size_train}'
-            return query
-
-        def query_sample_validation(key):
-            query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
-                    f'LIMIT {samples_validation} ' \
-                    f'OFFSET {samples_train}) ' \
-                    f'ORDER BY RANDOM() ' \
-                    f'LIMIT {data_size_test}'
-            return query
-
-        batch_training_raw = cursor.execute(query_sample_training(key)).fetchall()
-        batch_training = format_samples(jnp.array(batch_training_raw))
-
-        batch_validation_raw = cursor.execute(query_sample_validation(key)).fetchall()
-        batch_validation = format_samples(jnp.array(batch_validation_raw))
-
-        return batch_training, batch_validation
-
-    return dataloader
+# def build_database_dataloader(settings: dict) -> Callable:
+#     # Unpack the settings
+#     batch_size = settings['batch_size']
+#     num_minibathces = settings['num_minibatches']
+#     num_skips = settings['eff_datasampling']
+#     buffer_length = settings['buffer_length']
+#     buffer_length_max = settings['buffer_length_max']
+#
+#     # Set up help valriables
+#     data_size_train = batch_size * num_minibathces * num_skips
+#     data_size_test = batch_size * num_skips
+#
+#     # set up database
+#     database = sqlite3.connect(settings['database_name'])
+#     cursor = database.cursor()
+#
+#     # count the samples
+#     table_name = settings['table_name']
+#     samples_total = cursor.execute(
+#         f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+#     samples_train = int(samples_total * 0.1)
+#     samples_validation = int(samples_total * 0.1)
+#     # samples_test = int(samples_total * 0.1)
+#
+#     # query commands
+#     # query_sample_test = f'SELECT * FROM your_table ORDER BY RANDOM() LIMIT ' \
+#     #                     f'{samples_train + samples_validation},{samples_test} ' \
+#     #                     f'LIMIT {data_size}'
+#
+#     format_samples = jax.vmap(jax.jit(partial(format_sample,
+#                                               buffer_length=buffer_length,
+#                                               buffer_length_max=buffer_length_max)))
+#
+#     # @jax.jit
+#     def dataloader(key):
+#         def query_sample_training(key):
+#             query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
+#                     f'LIMIT {samples_train}) ORDER BY RANDOM() ' \
+#                     f'LIMIT {data_size_train}'
+#             return query
+#
+#         def query_sample_validation(key):
+#             query = f'SELECT * FROM (SELECT * FROM {table_name} ' \
+#                     f'LIMIT {samples_validation} ' \
+#                     f'OFFSET {samples_train}) ' \
+#                     f'ORDER BY RANDOM() ' \
+#                     f'LIMIT {data_size_test}'
+#             return query
+#
+#         batch_training_raw = cursor.execute(query_sample_training(key)).fetchall()
+#         batch_training = format_samples(jnp.array(batch_training_raw))
+#
+#         batch_validation_raw = cursor.execute(query_sample_validation(key)).fetchall()
+#         batch_validation = format_samples(jnp.array(batch_validation_raw))
+#
+#         return batch_training, batch_validation
+#
+#     return dataloader
 
 
 @jax.jit

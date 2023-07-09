@@ -4,8 +4,12 @@ import jax
 import jax.numpy as jnp
 import stable_baselines3.common.save_util as loader
 
-from identification.src.dynamix import lagranx as lx
+from identification.src.dynamix import wrappings, optim
+from identification.src.dynamix import motionx as mx
+from identification.src.dynamix import energiex as ex
+from identification.src.dynamix import simulate
 from identification.src.learning import trainer
+from identification.src.learning import plotting
 from identification.systems import snake_utils
 
 from identification.hyperparams import settings
@@ -17,7 +21,6 @@ from functools import partial
 import seaborn as sns
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
 
 if __name__ == "__main__":
     # load model
@@ -37,9 +40,12 @@ if __name__ == "__main__":
     cursor = database.cursor()
 
     # build dynamics
-    dyn_builder_compiled, energy_calcs, eom_prepared, split_tool = lx.build_dynamics(
-        settings, params, train_state
-    )
+    (
+        dyn_builder_compiled,
+        energy_calcs,
+        eom_prepared,
+        split_tool,
+    ) = wrappings.build_dynamics(settings, params, train_state)
     calc_V_ana_vec = jax.vmap(snake_utils.calc_V_ana)
 
     # format and break up data
@@ -49,18 +55,20 @@ if __name__ == "__main__":
 
     # calculate forward and inverse dynamics
     dyn_terms = jax.vmap(dyn_builder_compiled)(state)
-    ddq_pred = jax.vmap(lx.forward_dynamics)(dyn_terms)
-    tau_pred, tau_target, tau_loss = jax.vmap(lx.inverse_dynamics)(
+    ddq_pred = jax.vmap(mx.forward_dynamics)(dyn_terms)
+    tau_pred, tau_target, tau_loss = jax.vmap(mx.inverse_dynamics)(
         ddq=ddq_target, terms=dyn_terms
     )
 
     # simulate the trajectory
+    q_sim = jnp.array([0, 0, 0, 0] * samples_num)
+    dq_sim = jnp.array([0, 0, 0, 0] * samples_num)
     if settings["simulate"]:
         buffer_length = settings["buffer_length"]
         sys_utils = settings["sys_utils"]
         num_dof = settings["num_dof"]
         simulation = partial(
-            lx.simulate,
+            simulate.simulate,
             buffer_length=buffer_length,
             num_dof=num_dof,
             samples_num=samples_num,
@@ -77,21 +85,21 @@ if __name__ == "__main__":
 
     # calculate losses
     loss_split = lambda sample: jnp.split(
-        lx.loss_sample(split_tool, dyn_builder_compiled, sample), 3
+        optim.loss_sample(split_tool, dyn_builder_compiled, sample), 3
     )
 
     loss_func = jax.vmap(loss_split)
     (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
 
     # calculate energies and
-    res_ana, res_lnn, (H_mec, H_loss) = lx.calculate_energies(
+    res_ana, res_lnn, (H_mec, H_loss) = ex.calculate_energies(
         calc_V_ana_vec, pow_input, pow_f, T_lnn, V_lnn, q
     )
     (T_ana, V_ana, H_ana, L_ana) = res_ana
     (T_lnn, V_lnn, H_lnn, L_lnn) = res_lnn
 
     # calibrate the energies
-    res_cal, res_final = lx.calibrate_energies(
+    res_cal, res_final = ex.calibrate_energies(
         settings, V_ana, V_lnn, T_ana, T_lnn, H_loss
     )
     (T_cal, V_cal, H_cal, L_cal) = res_cal
@@ -99,13 +107,13 @@ if __name__ == "__main__":
 
     # plot results
     sns.set(style="darkgrid")
-    trainer.plot_joint_positions(q, q_sim, settings)
-    trainer.plot_joint_speeds(dq, dq_sim, settings)
-    trainer.plot_friction_coeffs(tau_loss, dq)
-    trainer.plot_accelerations(ddq_target, ddq_pred)
-    trainer.plot_motor_torques(tau_target, tau_pred, tau_loss)
-    trainer.plot_losses(L_acc_qdd, L_acc_tau, L_pot)
-    trainer.plot_powers(pow_input)
-    trainer.plot_hamiltonians(H_ana, H_mec, H_loss, H_cal, H_f)
-    trainer.plot_lagrangians(L_ana, L_cal, L_f)
-    trainer.plot_energies(V_ana, T_cal, V_cal, T_f, V_f)
+    plotting.plot_joint_positions(q, q_sim, settings)
+    plotting.plot_joint_speeds(dq, dq_sim, settings)
+    plotting.plot_friction_coeffs(tau_loss, dq)
+    plotting.plot_accelerations(ddq_target, ddq_pred)
+    plotting.plot_motor_torques(tau_target, tau_pred, tau_loss)
+    plotting.plot_losses(L_acc_qdd, L_acc_tau, L_pot)
+    plotting.plot_powers(pow_input)
+    plotting.plot_hamiltonians(H_ana, H_mec, H_loss, H_cal, H_f)
+    plotting.plot_lagrangians(L_ana, L_cal, L_f)
+    plotting.plot_energies(V_ana, T_cal, V_cal, T_f, V_f)

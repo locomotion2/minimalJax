@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from src.dynamix import lagranx as lx
+from src.dynamix import energiex as ex, motionx as mx
 from src.learning import trainer
 from systems import snake_utils
 import identification_utils as utils
@@ -79,38 +79,34 @@ if __name__ == '__main__':
     print('LN connection established')
 
     # load params from settings
-    num_dof = settings['num_dof']
-    buffer_length = settings['buffer_length']
+    num_dof = settings["system_settings"]['num_dof']
+    buffer_length = settings["model_settings"]['buffer_length']
 
     # load the trained model
-    settings['sys_utils'] = snake_utils
-    params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
+    settings["system_settings"]['sys_utils'] = snake_utils
+    params = loader.load_from_pkl(path=settings["model_settings"]['ckpt_dir'], verbose=1)
     train_state = trainer.create_train_state_DeLaNN(settings, 0, params=params)
 
     # build dynamics
-    kinetic = lx.energy_func(params, train_state, settings=settings,
+    kinetic = ex.energy_func(params, train_state, settings=settings,
                              output='kinetic')
-    potential = lx.energy_func(params, train_state, settings=settings,
+    potential = ex.energy_func(params, train_state, settings=settings,
                                output='potential')
-    friction = lx.energy_func(params, train_state, settings=settings,
+    friction = ex.energy_func(params, train_state, settings=settings,
                               output='friction')
-    inertia = lx.energy_func(params, train_state, settings=settings,
+    inertia = ex.energy_func(params, train_state, settings=settings,
                              output='inertia')
     split_tool = snake_utils.build_split_tool(buffer_length)
-    dyn_builder = partial(lx.inertia_dyn_builder,
+    dyn_builder = partial(mx.inertia_dyn_builder,
                           split_tool=split_tool,
                           kinetic=kinetic,
                           potential=potential,
                           inertia=inertia,
                           friction=friction)
     dyns_compiled = jax.jit(dyn_builder)
-    dyns_reduced = partial(lx.decouple_model, dynamics=dyns_compiled)
+    dyns_reduced = partial(mx.decouple_model, dynamics=dyns_compiled)
 
     # set up the state buffering
-    # q_buff = jnp.zeros((4, buffer_length * 10))
-    # dq_buff = jnp.zeros((4, buffer_length * 10))
-    # q_buff = jnp.zeros((num_dof, buffer_length))
-    # dq_buff = jnp.zeros((num_dof, buffer_length))
     try:
         while True:
             # Get q, dq, ddq, time
