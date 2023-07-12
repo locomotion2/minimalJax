@@ -124,7 +124,7 @@ def f_analytical(state, t=0, m1=0.05, m2=0.05, l1=0.5, l2=0.5, g=9.8):
     return ddq
 
 
-def normalize(state):
+def wrap_angle(state):
     # wrap generalized coordinates to [-pi, pi]
     return jnp.concatenate([(state[:2] + np.pi) % (2 * np.pi) - np.pi, state[2:]])
 

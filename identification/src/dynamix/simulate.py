@@ -4,6 +4,8 @@ import jax
 import jax.numpy as jnp
 from jax.experimental.ode import odeint
 
+from typing import Callable
+
 import identification.identification_utils as utils
 
 
@@ -28,15 +30,15 @@ def solve_eom(initial_state, eom_compiled, time_span, params):
 
 # @jax.jit
 def simulate(
-    state,
-    tau,
-    buffer_length,
-    sys_utils,
-    num_dof,
-    samples_num,
-    eom_prepared,
-    split_tool,
-    data_formatted,
+        state,
+        tau,
+        buffer_length,
+        sys_utils,
+        num_dof,
+        samples_num,
+        eom_prepared,
+        split_tool,
+        data_formatted,
 ):
     # unpack settings
     # buffer_length = settings['buffer_length']
@@ -84,6 +86,12 @@ def simulate(
 
     return q_sim, dq_sim
 
+
+@partial(jax.jit, backend='cpu', static_argnums=1)
+def solve_analytical(analytical_eom: Callable,
+                     initial_state: jnp.array,
+                     times: jnp.array):
+    return odeint(analytical_eom, initial_state, t=times, rtol=1e-13, atol=1e-13)
 
 # def solve_lagrangian(initial_state, lagrangian, **kwargs):
 #     @partial(jax.jit, backend='cpu')

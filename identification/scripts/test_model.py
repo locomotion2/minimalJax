@@ -32,7 +32,7 @@ if __name__ == "__main__":
     t_sim = np.arange(N_sim, dtype=np.float32) * time_step  # time steps 0 to N
     x_sim = lx.solve_analytical(x_0_sim, t_sim)
     xt_sim = jax.vmap(model.f_analytical)(x_sim)  # time derivatives of each state
-    x_sim = jax.vmap(model.normalize)(x_sim)
+    x_sim = jax.vmap(model.wrap_angle)(x_sim)
     print(
         f"Dynamic system generated, ranges: {jnp.amax(x_sim, axis=0)},"
         f" {jnp.amin(x_sim, axis=0)}"

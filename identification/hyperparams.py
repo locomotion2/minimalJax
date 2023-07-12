@@ -10,7 +10,8 @@ snake_system_settings = {
                      0.19171033799648285, -0.05231717973947525],
     "system": "snake",  # current system name being identified
     "num_dof": 4,  # number of DOFs of system
-    "starting_point": [0, 0, 0, 0, 0, 0, 0, 0],  # staring point in trajectory generation
+    "starting_point": [0, 0, 0, 0, 0, 0, 0, 0],  # staring point in trajectory
+    # generation
     "time_step": 0.01,  # time_step for data generation (dpendulum)
 }
 
@@ -18,7 +19,7 @@ dpend_system_settings = {
     # "calib_coeffs": [1, 0, 0.1795465350151062, -0.06468642503023148],
     "calib_coeffs": [0.7252218723297119, 6.979795932769775,
                      0.19171033799648285, -0.05231717973947525],
-    "system": "snake",  # current system name being identified
+    "system": "dpendulum",  # current system name being identified
     "num_dof": 2,  # number of DOFs of system
     "starting_point": [0, 0, 0, 0],  # staring point in trajectory generation
     "time_step": 0.01,  # time_step for data generation (dpendulum)
@@ -72,6 +73,8 @@ data_settings = {
     # unified dir)
     "data_source": "database",  # whether to load date from a database or generate it
     "eff_datasampling": 1,  # number of batches to load in memory at the time (unused)
+    "num_sections": 100,
+    "num_generators": 100
 }
 
 settings = {
