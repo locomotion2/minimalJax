@@ -85,17 +85,17 @@ if __name__ == '__main__':
     # load the trained model
     settings["system_settings"]['sys_utils'] = snake_utils
     params = loader.load_from_pkl(path=settings["model_settings"]['ckpt_dir'], verbose=1)
-    train_state = trainer.create_train_state_DeLaNN(settings, 0, params=params)
+    train_state = trainer.create_train_state(settings, 0, params=params)
 
     # build dynamics
-    kinetic = ex.energy_func(params, train_state, settings=settings,
-                             output='kinetic')
-    potential = ex.energy_func(params, train_state, settings=settings,
-                               output='potential')
-    friction = ex.energy_func(params, train_state, settings=settings,
-                              output='friction')
-    inertia = ex.energy_func(params, train_state, settings=settings,
-                             output='inertia')
+    kinetic = ex.build_energy_func(params, train_state, settings=settings,
+                                   output='kinetic')
+    potential = ex.build_energy_func(params, train_state, settings=settings,
+                                     output='potential')
+    friction = ex.build_energy_func(params, train_state, settings=settings,
+                                    output='friction')
+    inertia = ex.build_energy_func(params, train_state, settings=settings,
+                                   output='inertia')
     split_tool = snake_utils.build_split_tool(buffer_length)
     dyn_builder = partial(mx.inertia_dyn_builder,
                           split_tool=split_tool,

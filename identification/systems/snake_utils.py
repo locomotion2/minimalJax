@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-import identification_utils as utils
+import identification.identification_utils as utils
 
 
 class black_box_model(nn.Module):
@@ -169,6 +169,7 @@ def build_split_tool(buffer_length):
 
 
 def format_sample(sample, buffer_length, buffer_length_max):
+
     # define function to extract one coordinate
     def extract_from_sample(sample,
                             buffer_length,

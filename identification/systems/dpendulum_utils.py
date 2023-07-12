@@ -4,8 +4,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from systems import dpend_model_arne as model
-from src.dynamix import simulate as lx
+from identification.systems import dpend_model_arne as model
+
+
+# from identification.src.dynamix import simulate as lx
 
 def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.array)):
     # Unpack settings
@@ -30,11 +32,12 @@ def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.ar
 
     return train_data, test_data
 
+
 def build_random_data_dataloader(batch_train: tuple, batch_test: tuple,
                                  settings: dict) -> Callable:
     # Unpack the settings
-    batch_size = settings['batch_size']
-    num_minibathces = settings['num_minibatches']
+    batch_size = settings["training_settings"]['batch_size']
+    num_minibathces = settings["training_settings"]['num_minibatches']
 
     # Set up help valriables
     data_size = batch_size * num_minibathces
@@ -55,6 +58,46 @@ def build_random_data_dataloader(batch_train: tuple, batch_test: tuple,
         return (y0, eqs_motion(y0)), batch_test
 
     return dataloader
+
+
+def build_split_tool(buffer_length):
+    @jax.jit
+    def _split_tool(state):
+        q = jnp.array([state[0 * buffer_length],
+                       state[1 * buffer_length]])
+
+        dq = jnp.array([state[4 * buffer_length],
+                        state[5 * buffer_length]])
+
+        q_buff = jnp.array([])
+        dq_buff = jnp.array([])
+
+        def extract_from_sample_split(sample,
+                                      buffer_length,
+                                      indices=(0, 1)):
+            start = indices[0] * buffer_length
+            end = indices[1] * buffer_length
+
+            return jnp.array(sample[start:end])
+
+        for index in range(4):
+            q_temp = extract_from_sample_split(state,
+                                               buffer_length,
+                                               indices=(index, index + 1))
+
+            dq_temp = extract_from_sample_split(state,
+                                                buffer_length,
+                                                indices=(4 + index, 4 + index + 1))
+
+            q_buff = jnp.concatenate([q_buff, q_temp[1:]])
+            dq_buff = jnp.concatenate([dq_buff, dq_temp[1:]])
+
+        tau = state[-2:]
+
+        return q, q_buff, dq, dq_buff, tau
+
+    return _split_tool
+
 
 def generate_trajectory_data(x0: jnp.array, t_window: jnp.array, section_num: int,
                              key: int) -> (jnp.array, jnp.array, jnp.array):

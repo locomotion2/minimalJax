@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 from jax.experimental.ode import odeint
 
-import identification_utils as utils
+import identification.identification_utils as utils
 
 
 # TODO: Test if this is working

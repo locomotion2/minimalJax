@@ -40,9 +40,10 @@ def choose_data_loader(settings: dict):
     return dataloader
 
 
-def create_train_state_DeLaNN(settings: dict,
-                              learning_rate_fn: Callable,
-                              params: dict = None) -> ts.TrainState:
+def create_train_state(goal: str,
+                       settings: dict,
+                       learning_rate_fn: Callable,
+                       params: dict = None) -> ts.TrainState:
     # Unpack settings
     settings_training = settings['training_settings']
     settings_model = settings['model_settings']
@@ -51,15 +52,24 @@ def create_train_state_DeLaNN(settings: dict,
     key = jax.random.PRNGKey(settings_training['seed'])
     we_param = settings_training['weight_decay']
 
-    h_dim = settings_model['h_dim']
-    friction = settings_model['friction']
-    buffer_length = settings_model['buffer_length']
-
     sys_utils = settings_system['sys_utils']
     num_dof = settings_system['num_dof']
 
-    # Create network
-    network = sys_utils.DeLaNN()
+    network = None
+    h_dim = None
+    friction = None
+    buffer_length = settings_model['buffer_length']
+    if goal == "energy":
+        h_dim = settings_model['h_dim']
+        friction = settings_model['friction']
+
+        network = sys_utils.DeLaNN()
+
+    elif goal == "model":
+        h_dim = settings_model['h_dim_model']
+        friction = settings_model['friction_model']
+
+        network = sys_utils.black_box_model()
 
     # If available load the parameters
     if params is None:
@@ -74,39 +84,39 @@ def create_train_state_DeLaNN(settings: dict,
     adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=we_param)
     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
 
-def create_train_state_PowNN(settings: dict,
-                              learning_rate_fn: Callable,
-                              params: dict = None) -> ts.TrainState:
-    # Unpack settings
-    settings_training = settings['training_settings']
-    settings_model = settings['model_settings']
-    settings_system = settings['system_settings']
-
-    key = jax.random.PRNGKey(settings_training['seed'])
-    we_param = settings_training['weight_decay']
-
-    h_dim = settings_model['h_dim_model']
-    friction = settings_model['friction_model']
-    buffer_length = settings_model['buffer_length']
-
-    sys_utils = settings_system['sys_utils']
-    num_dof = settings_system['num_dof']
-
-    # Create network
-    network = sys_utils.black_box_model()
-
-    # If available load the parameters
-    if params is None:
-        input_size = (2 * num_dof * buffer_length,)
-        params = network.init(key,
-                              jax.random.normal(key, input_size),
-                              friction=friction,
-                              net_size=h_dim,
-                              num_dof=num_dof)['params']
-
-    # Set up the optimizer and bundle everything into a train state
-    adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=we_param)
-    return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
+# def create_train_state_PowNN(settings: dict,
+#                               learning_rate_fn: Callable,
+#                               params: dict = None) -> ts.TrainState:
+#     # Unpack settings
+#     settings_training = settings['training_settings']
+#     settings_model = settings['model_settings']
+#     settings_system = settings['system_settings']
+#
+#     key = jax.random.PRNGKey(settings_training['seed'])
+#     we_param = settings_training['weight_decay']
+#
+#     h_dim = settings_model['h_dim_model']
+#     friction = settings_model['friction_model']
+#     buffer_length = settings_model['buffer_length']
+#
+#     sys_utils = settings_system['sys_utils']
+#     num_dof = settings_system['num_dof']
+#
+#     # Create network
+#
+#
+#     # If available load the parameters
+#     if params is None:
+#         input_size = (2 * num_dof * buffer_length,)
+#         params = network.init(key,
+#                               jax.random.normal(key, input_size),
+#                               friction=friction,
+#                               net_size=h_dim,
+#                               num_dof=num_dof)['params']
+#
+#     # Set up the optimizer and bundle everything into a train state
+#     adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=we_param)
+#     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
 
 
 def create_train_state_red(settings: dict,
@@ -304,8 +314,8 @@ def run_training(train_state: ts.TrainState,
             if epoch_loss > epoch_loss_last * early_stopping_gain and False:
                 print(f'Early stopping! Epoch loss: {epoch_loss}. Now resetting.')
                 settings_training['seed'] += 10
-                train_state = create_train_state_DeLaNN(settings, lr_func,
-                                                        params=best_params)
+                train_state = create_train_state(settings, lr_func,
+                                                 params=best_params)
                 epoch = 0
                 continue
 

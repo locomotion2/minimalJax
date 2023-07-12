@@ -28,7 +28,7 @@ def plot_joint_speeds(dq, dq_sim=None, settings=None):
 def plot_friction_coeffs(tau_loss, dq):
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(-tau_loss / dq, linewidth=2, label='k_f')
-    plt.legend()
+    plt.ylim(0, 0.05)
     plt.title('Friction coeffs.')
     plt.ylabel('Something')
     plt.xlabel('sample (n)')
@@ -40,7 +40,6 @@ def plot_accelerations(ddq_target, ddq_pred):
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(ddq_target[:, 4:8], linewidth=3, label="target")
     plt.plot(ddq_pred[:, 4:8], linewidth=3, linestyle="--", label="pred")
-    plt.legend()
     plt.title("Accelerations")
     plt.ylabel("rad/s^2")
     plt.xlabel("sample (n)")
@@ -118,13 +117,15 @@ def plot_lagrangians(L_ana, L_cal, L_f):
     plt.show()
 
 
-def plot_energies(V_ana, T_cal, V_cal, T_f, V_f):
+def plot_energies(V_ana, T_cal, V_cal, T_f, V_f, T, V):
     plt.figure(figsize=(8, 4.5), dpi=120)
     plt.plot(V_ana, linewidth=2, label="Pot. Ana")
     plt.plot(T_cal, linewidth=2, label="Kin. Cal")
     plt.plot(V_cal, linewidth=2, label="Pot. Cal")
-    plt.plot(T_f, linewidth=2, label="Kin. Final")
-    plt.plot(V_f, linewidth=2, label="Pot. Final")
+    # plt.plot(T_f, linewidth=2, label="Kin. Final")
+    # plt.plot(V_f, linewidth=2, label="Pot. Final")
+    # plt.plot(T, linewidth=2, label="Kin. Test")
+    # plt.plot(V, linewidth=2, label="Pot. Test")
     plt.title("Energies from the Snake")
     plt.ylabel("Energy Level (J)")
     plt.xlabel("Time (s)")
@@ -132,7 +133,7 @@ def plot_energies(V_ana, T_cal, V_cal, T_f, V_f):
     plt.show()
 
 
-def display_results(losses: tuple):
+def plot_training_results(losses: tuple):
     train_losses, test_losses = losses
     plt.figure(figsize=(8, 3.5), dpi=120)
     plt.plot(train_losses, label='Train loss')

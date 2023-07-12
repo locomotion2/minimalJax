@@ -4,43 +4,115 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
-from systems import snake_utils
+from identification.systems import snake_utils
 
-import energiex as ex
-import motionx as mx
-
-
-def energy_wrapper(
-    state: jnp.array, split_tool: Callable, kinetic: Callable, potential: Callable
-):
-    q, q_buff, dq, dq_buff, _ = split_tool(state)
-
-    T = kinetic(q, q_buff, dq, dq_buff)
-    V = potential(q, q_buff, dq, dq_buff)
-
-    # scale the energies
-    coef_V = [1, 0]
-    coef_T = [0.1795465350151062, -0.06468642503023148]
-    # diff_beta = coef_T[1] - coef_V[1]
-
-    V_f = V * coef_V[0] + coef_V[1]
-    T_f = T * coef_T[0]
-
-    return T_f, V_f
+import identification.src.dynamix.energiex as ex
+import identification.src.dynamix.motionx as mx
 
 
-def build_dynamics(settings, params, train_state):
-    # Create basic building blocks
-    kinetic = ex.energy_func_model(
+def build_energy_call(settings, params, train_state):
+    # build the energy functions
+    kinetic = ex.build_energy_func(
         params, train_state, settings=settings, output="kinetic"
     )
-    potential = ex.energy_func_model(
+    potential = ex.build_energy_func(
         params, train_state, settings=settings, output="potential"
     )
-    friction = ex.energy_func_model(
+
+    # choose a splitting tool
+    split_tool = settings["system_settings"]["sys_utils"].build_split_tool(
+        settings["model_settings"]["buffer_length"])
+
+    # Load the calibration coeffs
+    coeff_data = jnp.array(settings["system_settings"]["calib_coeffs"])
+    coef_V, coef_T = jnp.split(coeff_data, 2)
+
+    @jax.jit
+    def energy_call(state: jnp.array):
+        # unpack the state
+        q, q_buff, dq, dq_buff, _ = split_tool(state)
+
+        # calculate raw energies
+        T = kinetic(q, q_buff, dq, dq_buff)
+        V = potential(q, q_buff, dq, dq_buff)
+
+        # scale up the energies
+        V_f = V * coef_V[0] + coef_V[1]
+        T_f = T * coef_T[0]
+
+        return T_f, V_f
+
+    return energy_call
+
+
+def build_dynamics(goal, settings, params, train_state):
+
+    # build energy function
+    kinetic = None
+    potential = None
+    friction = None
+    inertia = None
+    if goal == "energy":
+        kinetic = ex.build_energy_func(
+            params, train_state, settings=settings, output="kinetic"
+        )
+        potential = ex.build_energy_func(
+            params, train_state, settings=settings, output="potential"
+        )
+        friction = ex.build_energy_func(
+            params, train_state, settings=settings, output="friction"
+        )
+        inertia = ex.build_energy_func(
+            params, train_state, settings=settings, output="inertia"
+        )
+    elif goal == "model":
+        kinetic = ex.build_energy_func_model(
+            params, train_state, settings=settings, output="kinetic"
+        )
+        potential = ex.build_energy_func_model(
+            params, train_state, settings=settings, output="potential"
+        )
+        friction = ex.build_energy_func_model(
+            params, train_state, settings=settings, output="friction"
+        )
+        inertia = ex.build_energy_func_model(
+            params, train_state, settings=settings, output="inertia"
+        )
+
+    # choose a splitting tool
+    split_tool = settings["system_settings"]["sys_utils"].build_split_tool(
+        settings["model_settings"]["buffer_length"])
+
+    # Create compiled dynamics
+    dyn_builder = partial(
+        mx.inertia_dyn_builder,
+        split_tool=split_tool,
+        kinetic=kinetic,
+        potential=potential,
+        inertia=inertia,
+        friction=friction,
+    )
+    # dyn_builder = partial(lx.energy_dyn_builder,
+    #                       split_tool=split_tool,
+    #                       potential=potential,
+    #                       kinetic=kinetic,
+    #                       friction=friction)
+    dyn_builder_compiled = jax.jit(dyn_builder)
+
+    return dyn_builder_compiled
+
+def build_test_funcs(settings, params, train_state):
+    # Create basic building blocks
+    kinetic = ex.build_energy_func(
+        params, train_state, settings=settings, output="kinetic"
+    )
+    potential = ex.build_energy_func(
+        params, train_state, settings=settings, output="potential"
+    )
+    friction = ex.build_energy_func(
         params, train_state, settings=settings, output="friction"
     )
-    inertia = ex.energy_func_model(
+    inertia = ex.build_energy_func(
         params, train_state, settings=settings, output="inertia"
     )
 

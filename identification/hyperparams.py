@@ -4,10 +4,22 @@ k = 1
 m = 4.0
 
 # snake parameters
-system_settings = {
-    "calib_coeffs": [1, 0, 0.1795465350151062, -0.06468642503023148],
+snake_system_settings = {
+    # "calib_coeffs": [1, 0, 0.1795465350151062, -0.06468642503023148],
+    "calib_coeffs": [0.7252218723297119, 6.979795932769775,
+                     0.19171033799648285, -0.05231717973947525],
     "system": "snake",  # current system name being identified
     "num_dof": 4,  # number of DOFs of system
+    "starting_point": [0, 0, 0, 0, 0, 0, 0, 0],  # staring point in trajectory generation
+    "time_step": 0.01,  # time_step for data generation (dpendulum)
+}
+
+dpend_system_settings = {
+    # "calib_coeffs": [1, 0, 0.1795465350151062, -0.06468642503023148],
+    "calib_coeffs": [0.7252218723297119, 6.979795932769775,
+                     0.19171033799648285, -0.05231717973947525],
+    "system": "snake",  # current system name being identified
+    "num_dof": 2,  # number of DOFs of system
     "starting_point": [0, 0, 0, 0],  # staring point in trajectory generation
     "time_step": 0.01,  # time_step for data generation (dpendulum)
 }
@@ -20,7 +32,7 @@ training_settings = {
     "num_batches": 1,  # how many times to repeat the epoch (unused)
     "num_epochs": 1000000,  # number of epochs
     "test_every": 10,  # after how many times to print the test data
-    "loss_weights": [1, 10, 10],  # weights for the loss function (forw, inv, energies)
+    "loss_weights": [1, 100, 10],  # weights for the loss function (forw, inv, energies)
     "loss_weights_model": [1, 0, 0],  # weights for the loss function (forw, inv,
     # energies)
     "loss_weights_red": [0, 0, 0, 10000000],  # weights for the loss
@@ -40,9 +52,10 @@ model_settings = {
     "model_pot_model": False,  # use the model of potential function
     "buffer_length": 20,  # training buffer length
     "buffer_length_max": 20,  # maximal buffer length in database
-    "ckpt_dir": "tmp/current",  # directory of the current weights
-    "ckpt_dir_model": "tmp/model",  # directory of the current weights
-    "ckpt_dir_red": "tmp/reduced",  # directory of the current weights
+    "base_dir": "std_models",
+    "ckpt_dir": "current",  # directory of the current weights
+    "ckpt_dir_model": "model",  # directory of the current weights
+    "ckpt_dir_red": "reduced",  # directory of the current weights
     "h_dim": 64 * 4,  # size of the hidden layer
     "h_dim_model": 64 * 10,
 }
@@ -52,6 +65,8 @@ data_settings = {
     "database_name": "/home/gonz_jm/Documents/thesis_workspace/databases"
                      "/database_250pts_20buff_command_standard",  # location of
     # the training database
+    "database_name_test": "/home/gonz_jm/Documents/thesis_workspace/databases"
+                          "/database_points_20buff_command_standard",
     "table_name": "data_scrambled",  # name of the table in the database
     "data_dir": "tmp/data",  # dpend database locations (will be changed to have
     # unified dir)
@@ -60,11 +75,11 @@ data_settings = {
 }
 
 settings = {
-    "system_settings": system_settings,
+    "system_settings": snake_system_settings,
     "training_settings": training_settings,
     "model_settings": model_settings,
     "data_settings": data_settings,
     "simulate": False,  # simulate in the test_script
-    "reload": False,  # whether to reload params from file or keep train new NN
+    "reload": True,  # whether to reload params from file or keep train new NN
     "save": True,  # save currently trained model or not
 }

@@ -4,8 +4,8 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
-import energiex as ex
-import motionx as mx
+import identification.src.dynamix.energiex as ex
+import identification.src.dynamix.motionx as mx
 
 
 def build_loss(settings: dict) -> (Callable, Callable):
@@ -22,13 +22,13 @@ def build_loss(settings: dict) -> (Callable, Callable):
         params: dict, train_state, batch: (jnp.array, jnp.array)
     ) -> jnp.array:
         # Build dynamics
-        potential_func = ex.energy_func(
+        potential_func = ex.build_energy_func(
             params, train_state, settings=settings, output="potential"
         )
-        friction_func = ex.energy_func(
+        friction_func = ex.build_energy_func(
             params, train_state, settings=settings, output="friction"
         )
-        inertia_func = ex.energy_func(
+        inertia_func = ex.build_energy_func(
             params, train_state, settings=settings, output="inertia"
         )
         dyn_builder = partial(
@@ -54,13 +54,13 @@ def build_loss(settings: dict) -> (Callable, Callable):
         params: dict, train_state, batch: (jnp.array, jnp.array)
     ) -> jnp.array:
         # Build dynamics
-        potential_func = ex.energy_func_model(
+        potential_func = ex.build_energy_func_model(
             params, train_state, settings=settings, output="potential"
         )
-        inertia_func = ex.energy_func_model(
+        inertia_func = ex.build_energy_func_model(
             params, train_state, settings=settings, output="inertia"
         )
-        friction_func = ex.energy_func_model(
+        friction_func = ex.build_energy_func_model(
             params, train_state, settings=settings, output="friction"
         )
         dyn_builder = partial(
@@ -86,16 +86,16 @@ def build_loss(settings: dict) -> (Callable, Callable):
         params: dict, train_state, train_state_red, batch: (jnp.array, jnp.array)
     ) -> jnp.array:
         # Build dynamics
-        potential_func = ex.energy_func_red(
+        potential_func = ex.build_energy_func_red(
             params, train_state_red, settings=settings, output="potential"
         )
-        friction_func = ex.energy_func_red(
+        friction_func = ex.build_energy_func_red(
             params, train_state_red, settings=settings, output="friction"
         )
-        inertia_func = ex.energy_func_red(
+        inertia_func = ex.build_energy_func_red(
             params, train_state_red, settings=settings, output="inertia"
         )
-        inertia_func_boot = ex.energy_func(
+        inertia_func_boot = ex.build_energy_func(
             train_state.params, train_state, settings=settings, output="inertia"
         )
         dyn_builder = partial(
@@ -133,8 +133,10 @@ def loss_sample(
 ) -> jnp.array:
     # Unpack training data
     state, ddq_target = batch
-    _, _, dq, _, _ = split_tool(state)
+    # _, _, dq, _, _ = split_tool(state)
     dyn_terms = dyn_builder(state)
+    (q, dq, _), (M, C, dV_q), k_d = dyn_terms
+
 
     # Calculate the inverse and forward dynamics
     ddq_pred = mx.forward_dynamics(dyn_terms)
@@ -149,10 +151,13 @@ def loss_sample(
     L_acc_tau = jnp.mean((tau_pred - tau_target) ** 2)
 
     # Calculate temporal energy error
-    pow_pred = jnp.transpose(dq) @ tau_pred
-    pow_target = jnp.transpose(dq) @ tau_target
+    dq_T = jnp.transpose(dq)
+    # pow_pred = dq_T @ tau_pred
+    pow_target = dq_T @ tau_target
+    pow_kin = dq_T @ M @ ddq_target[:-4] + dq_T @ C @ q
+    pow_pot = dq_T @ dV_q
     # L_energy = jnp.mean(((pow_pred - pow_target) / jnp.abs(pow_target)) ** 2)
-    L_energy = jnp.mean((pow_pred - pow_target) ** 2)
+    L_energy = jnp.mean((pow_kin + pow_pot - pow_target) ** 2)
 
     return jnp.array([L_acc_ddq, L_acc_tau, L_energy])
 

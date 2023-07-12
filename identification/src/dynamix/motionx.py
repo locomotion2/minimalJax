@@ -140,7 +140,7 @@ def inverse_dynamics(ddq, terms):
     tau_eff = M @ ddq + C @ dq + dV_q
 
     # account for frictions
-    tau_f = -k_dq * dq
+    tau_f = - k_dq * dq
     tau = tau_eff - tau_f
 
     return tau, tau_target, tau_f

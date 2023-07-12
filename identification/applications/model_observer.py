@@ -85,7 +85,7 @@ if __name__ == '__main__':
     # load the trained model
     settings['sys_utils'] = snake_utils
     params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
-    train_state = trainer.create_train_state_DeLaNN(settings, 0, params=params)
+    train_state = trainer.create_train_state(settings, 0, params=params)
 
     # build dynamics
     kinetic = lx.energy_func(params, train_state, settings=settings,

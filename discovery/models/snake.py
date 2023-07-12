@@ -27,20 +27,20 @@ class SnakeBackend:
 
         settings['sys_utils'] = snake_utils
         params = loader.load_from_pkl(path=settings['ckpt_dir'], verbose=1)
-        train_state = trainer.create_train_state_DeLaNN(settings, 0,
-                                                        params=params)
+        train_state = trainer.create_train_state(settings, 0,
+                                                 params=params)
 
         num_dof = settings['num_dof']
         buffer_length = settings['buffer_length']
 
-        kinetic = lx.energy_func(params, train_state, settings=settings,
-                                 output='kinetic')
-        potential = lx.energy_func(params, train_state, settings=settings,
-                                   output='potential')
-        friction = lx.energy_func(params, train_state, settings=settings,
-                                  output='friction')
-        inertia = lx.energy_func(params, train_state, settings=settings,
-                                 output='inertia')
+        kinetic = lx.build_energy_func(params, train_state, settings=settings,
+                                       output='kinetic')
+        potential = lx.build_energy_func(params, train_state, settings=settings,
+                                         output='potential')
+        friction = lx.build_energy_func(params, train_state, settings=settings,
+                                        output='friction')
+        inertia = lx.build_energy_func(params, train_state, settings=settings,
+                                       output='inertia')
         split_tool = snake_utils.build_split_tool(buffer_length)
         dyn_builder = partial(lx.inertia_dyn_builder,
                               split_tool=split_tool,

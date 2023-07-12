@@ -24,19 +24,18 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 if __name__ == "__main__":
     # load model
-    settings["sys_utils"] = snake_utils
-    params = loader.load_from_pkl(path=settings["ckpt_dir_model"], verbose=1)
-    train_state = trainer.create_train_state_PowNN(settings, 0, params=params)
+    settings["system_settings"]["sys_utils"] = snake_utils
+    params = loader.load_from_pkl(path=settings["model_settings"]["ckpt_dir"],
+                                  verbose=1)
+    train_state = trainer.create_train_state(settings["model_settings"][
+                                                 "goal"],
+                                             settings, 0, params=params)
 
     # load data
-    # TODO: Add this to settings
-    database = sqlite3.connect(
-        "/home/gonz_jm/Documents/thesis_workspace/databases"
-        "/database_points_20buff_command_standard"
-    )
-    table_name = "point_2"
-    samples_num = 10
-    offset_num = 150 + 450
+    database = sqlite3.connect(settings["data_settings"]["database_name_test"])
+    table_name = "point_24"
+    samples_num = 600
+    offset_num = 150
     cursor = database.cursor()
 
     # build dynamics
@@ -45,7 +44,7 @@ if __name__ == "__main__":
         energy_calcs,
         eom_prepared,
         split_tool,
-    ) = wrappings.build_dynamics(settings, params, train_state)
+    ) = wrappings.build_test_funcs(settings, params, train_state)
     calc_V_ana_vec = jax.vmap(snake_utils.calc_V_ana)
 
     # format and break up data
@@ -59,6 +58,12 @@ if __name__ == "__main__":
     tau_pred, tau_target, tau_loss = jax.vmap(mx.inverse_dynamics)(
         ddq=ddq_target, terms=dyn_terms
     )
+
+    # test application function
+    energy_call_compiled = wrappings.build_energy_call(settings,
+                                                       params,
+                                                       train_state)
+    T, V = jax.vmap(energy_call_compiled)(state)
 
     # simulate the trajectory
     q_sim = jnp.array([0, 0, 0, 0] * samples_num)
@@ -89,7 +94,7 @@ if __name__ == "__main__":
     )
 
     loss_func = jax.vmap(loss_split)
-    (L_acc_qdd, L_acc_tau, L_pot) = loss_func((state, ddq_target))
+    (L_acc_qdd, L_acc_tau, L_energy) = loss_func((state, ddq_target))
 
     # calculate energies and
     res_ana, res_lnn, (H_mec, H_loss) = ex.calculate_energies(
@@ -107,13 +112,13 @@ if __name__ == "__main__":
 
     # plot results
     sns.set(style="darkgrid")
-    plotting.plot_joint_positions(q, q_sim, settings)
-    plotting.plot_joint_speeds(dq, dq_sim, settings)
-    plotting.plot_friction_coeffs(tau_loss, dq)
+    # plotting.plot_joint_positions(q, q_sim, settings)
+    # plotting.plot_joint_speeds(dq, dq_sim, settings)
+    # plotting.plot_friction_coeffs(tau_loss, dq)
     plotting.plot_accelerations(ddq_target, ddq_pred)
     plotting.plot_motor_torques(tau_target, tau_pred, tau_loss)
-    plotting.plot_losses(L_acc_qdd, L_acc_tau, L_pot)
-    plotting.plot_powers(pow_input)
-    plotting.plot_hamiltonians(H_ana, H_mec, H_loss, H_cal, H_f)
-    plotting.plot_lagrangians(L_ana, L_cal, L_f)
-    plotting.plot_energies(V_ana, T_cal, V_cal, T_f, V_f)
+    plotting.plot_losses(L_acc_qdd, L_acc_tau, L_energy)
+    # plotting.plot_powers(pow_input)
+    # plotting.plot_hamiltonians(H_ana, H_mec, H_loss, H_cal, H_f)
+    # plotting.plot_lagrangians(L_ana, L_cal, L_f)
+    plotting.plot_energies(V_ana, T_cal, V_cal, T_f, V_f, T, V)

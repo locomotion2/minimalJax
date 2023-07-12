@@ -44,7 +44,7 @@ if __name__ == "__main__":
     print("Simulating the analytic and learned systems.")
     t_sim = np.arange(N) / N * t_f
     x_sim = jax.device_get(lx.solve_analytical(x_0_sim, t_sim))
-    lagrangian = lx.energy_func(params, train_state, output="lagrangian")
+    lagrangian = lx.build_energy_func(params, train_state, output="lagrangian")
     x_model = jax.device_get(lx.solve_lagrangian(x_0_sim, lagrangian, t=t_sim))
 
     # Making videos

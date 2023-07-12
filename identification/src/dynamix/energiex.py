@@ -9,11 +9,11 @@ from flax.training import train_state as ts
 
 from scipy.integrate import cumtrapz
 
-import identification_utils as utils
+import identification.identification_utils as utils
 
 
 # TODO: run the matrix computations only when M or T are wanted
-def energy_func(
+def build_energy_func(
     params: dict,
     train_state: ts.TrainState,
     settings: dict = None,
@@ -88,7 +88,7 @@ def energy_func(
 
 
 # TODO: run the matrix computations only when M or T are wanted
-def energy_func_model(
+def build_energy_func_model(
     params: dict,
     train_state: ts.TrainState,
     settings: dict = None,
@@ -162,7 +162,7 @@ def energy_func_model(
     return compiled_func
 
 
-def energy_func_red(
+def build_energy_func_red(
     params: dict,
     train_state: ts.TrainState,
     settings: dict = None,
@@ -262,14 +262,15 @@ def calibrate_energies(settings, V_ana, V_lnn, T_ana, T_lnn, H_loss):
     res_cal = (T_cal, V_cal, H_cal, L_cal)
 
     # saved coefficients after calibration
-    coef_V, coef_T = jnp.split(settings["system_settings"]["calib_coefs"], 2)
+    coeff_data = jnp.array(settings["system_settings"]["calib_coeffs"])
+    coef_V, coef_T = jnp.split(coeff_data, 2)
 
     # calculate final calibrated energies
     V_f = V_lnn * coef_V[0] + coef_V[1]
     T_f = T_lnn * coef_T[0]
     H_f = T_f + V_f - H_loss
     L_f = T_f - V_f
-    res_final = (T_f, V_cal, H_f, L_f)
+    res_final = (T_f, V_f, H_f, L_f)
 
     return res_cal, res_final
 
