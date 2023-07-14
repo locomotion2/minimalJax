@@ -1,8 +1,14 @@
 from typing import Callable
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+from tqdm import tqdm
+
+import pandas as pd
 
 from identification.systems import dpend_model_arne as model
 
@@ -14,99 +20,148 @@ def generate_data(settings: dict) -> ((jnp.array, jnp.array), (jnp.array, jnp.ar
     training_settings = settings["training_settings"]
     batch_size = training_settings["batch_size"]
     num_minibatches = training_settings["num_minibatches"]
-    section_num = training_settings['sections_num']
     key = jax.random.PRNGKey(training_settings['seed'])
 
     # unpack system settings
     system_settings = settings["system_settings"]
+    num_dof = system_settings["num_dof"]
     x0 = np.asarray(system_settings['starting_point'], dtype=np.float32)
     time_step = system_settings['time_step']
+
+    # unpack data settings
+    data_settings = settings["data_settings"]
+    section_num = data_settings['num_sections']
 
     # create help variables
     data_size = batch_size * num_minibatches
     t_window = np.arange(data_size / section_num, dtype=np.float32) * time_step
 
     # create training data
-    print('Generating train data:')
-    train_data, x0_test = generate_trajectory_data(x0, t_window, section_num, key)
+    print('Generating data!')
+    train_data, _ = gen_trajectory_data(x0, t_window, section_num, num_dof, key)
 
     # create test data
-    print('Generated test data:')
-    # noise = np.random.RandomState(0).randn(x0.size)
-    # x0_test = x0 + noise * 1e-3
-    test_data, _ = generate_trajectory_data(x0_test, t_window, section_num, key)
+    # print('Generated test data:')
+    # # noise = np.random.RandomState(0).randn(x0.size)
+    # # x0_test = x0 + noise * 1e-3
+    # test_data, _ = gen_trajectory_data(x0_test, t_window, section_num, num_dof, key)
 
-    return train_data, test_data
+    return train_data
 
 
-def generate_random_traj_data(settings: dict) -> (
+@partial(jax.jit, static_argnums=0)
+def gen_section_data(eom_compiled: Callable,
+                     key,
+                     x_start: jnp.array,
+                     t_window: jnp.array):
+    # Simulate the section from the starting point and update starting point
+    x_traj_sec = simulate.solve_analytical(eom_compiled,
+                                           x_start,
+                                           t_window)
+    x_start = x_traj_sec[-1]
+
+    # Randomize the order of the data and calculate labels
+    x_traj_sec = jax.random.permutation(key, x_traj_sec)
+    xt_traj_sec = jax.vmap(eom_compiled)(x_traj_sec)
+    x_traj_sec = jax.vmap(model.wrap_angle)(x_traj_sec)
+
+    return x_start, (x_traj_sec, xt_traj_sec)
+
+
+# @jax.jit
+def gen_trajectory_data(x0: jnp.array,
+                        t_window: jnp.array,
+                        section_num: int,
+                        num_dof: int,
+                        key) -> (jnp.array, jnp.array, jnp.array):
+    x_traj_df = None
+    x_start = x0
+    columns_q = [f"q{column}" for column in range(num_dof)]
+    columns_dq = [f"dq{column}" for column in range(num_dof)]
+    columns_ddq = [f"ddq{column}" for column in range(num_dof)]
+    eom_compiled = jax.jit(model.f_analytical)
+    for section in tqdm(range(section_num),
+                        desc='Number of sections',
+                        unit='section',
+                        dynamic_ncols=True,
+                        leave=False,
+                        disable=True):
+        # print(f"Progress: {section/section_num*100}%")
+        x_start, (x_traj_sec, xt_traj_sec) = gen_section_data(eom_compiled,
+                                                              key,
+                                                              x_start,
+                                                              t_window)
+
+        # Check that the simulation ran correctly
+        if jnp.any(jnp.isnan(x_traj_sec)) or jnp.any(jnp.isnan(xt_traj_sec)):
+            raise ValueError(f'One of the sections contained "nan": {x_traj_sec}')
+
+        # Add section to array
+        xt_traj_sec = xt_traj_sec[:, :-num_dof]
+        state_df = pd.DataFrame(x_traj_sec, columns=columns_q + columns_dq)
+        dstate_df = pd.DataFrame(xt_traj_sec, columns=columns_ddq)
+        section_df = pd.concat([state_df, dstate_df], axis=1)
+        x_traj_df = update_df(x_traj_df, section_df)
+
+    return x_traj_df, x_start
+
+
+# @jax.jit
+def update_df(traj, traj_sec):
+    if traj is None:
+        traj = traj_sec
+    else:
+        traj = pd.concat([traj, traj_sec], axis=0)
+
+    return traj
+
+
+def generate_random_data(settings: dict) -> (
         (jnp.array, jnp.array), (jnp.array, jnp.array)):
     # unpack training settings
     training_settings = settings["training_settings"]
     batch_size = training_settings["batch_size"]
     num_minibatches = training_settings["num_minibatches"]
-    num_sections = training_settings['num_sections']
-    num_generators = training_settings['num_generators']
     key = jax.random.PRNGKey(training_settings['seed'])
 
     # unpack system settings
     system_settings = settings["system_settings"]
-    x0 = np.asarray(system_settings['starting_point'], dtype=np.float32)
+    num_dof = system_settings["num_dof"]
     time_step = system_settings['time_step']
+
+    # unpack data settings
+    data_settings = settings['data_settings']
+    num_sections = data_settings['num_sections']
+    num_generators = data_settings['num_generators']
 
     # create help variables
     data_size = batch_size * num_minibatches
     t_window = np.arange(data_size / (num_sections * num_generators),
                          dtype=np.float32) * time_step
 
-    @jax.jit
-    def update_list(traj, traj_target, traj_sec, traj_target_sec):
-        if traj is None:
-            traj = traj_sec
-            traj_target = traj_target_sec
-        else:
-            traj = jnp.append(traj, traj_sec, axis=0)
-            traj_target = jnp.append(traj_target, traj_target_sec, axis=0)
-
-        return traj, traj_target
-
     # create starting points
     starting_points = random_points(key, num_generators)
 
-    # simulate a trajectory starting from each point
+    # create an empty DataFrame to store the trajectory data
     x_traj_train = None
-    xt_traj_train = None
-    x_traj_test = None
-    xt_traj_test = None
-    for point in starting_points:
+    for point in tqdm(starting_points,
+                      desc='Number of points',
+                      unit='point',
+                      dynamic_ncols=True,
+                      leave=True):
         # create training data
-        print('Generating train data.')
-        (x_traj_point, xt_traj_point), x0_test = generate_trajectory_data(point,
-                                                                          t_window,
-                                                                          num_sections,
-                                                                          key)
-        x_traj_train, xt_traj_train = update_list(x_traj_train,
-                                                  xt_traj_train,
-                                                  x_traj_point,
-                                                  xt_traj_point)
+        x_traj_point_df, _ = gen_trajectory_data(point,
+                                                 t_window,
+                                                 num_sections,
+                                                 num_dof,
+                                                 key)
+        print(f"Samples: {x_traj_point_df.shape[0]}")
+        x_traj_train = update_df(x_traj_train, x_traj_point_df)
 
-        # create test data
-        print('Generated test data.')
-        # noise = np.random.RandomState(0).randn(x0.size)
-        # x0_test = x0 + noise * 1e-3
-        (x_traj_point, xt_traj_point), _ = generate_trajectory_data(x0_test,
-                                                                    t_window,
-                                                                    num_sections,
-                                                                    key)
-        x_traj_test, xt_traj_test = update_list(x_traj_test,
-                                                xt_traj_test,
-                                                x_traj_point,
-                                                xt_traj_point)
-
-    return (x_traj_train, xt_traj_train), (x_traj_test, xt_traj_test)
+    return x_traj_train
 
 
-@jax.jit
+# @jax.jit
 def random_points(key, num_points):
     jru = jax.random.uniform
     y0 = jnp.concatenate([jru(key, (num_points, 2)) * 2.0 * np.pi,
@@ -181,40 +236,3 @@ def build_split_tool(buffer_length):
         return q, q_buff, dq, dq_buff, tau
 
     return _split_tool
-
-
-@jax.jit
-def generate_trajectory_data(x0: jnp.array,
-                             t_window: jnp.array,
-                             section_num: int,
-                             key) -> (jnp.array, jnp.array, jnp.array):
-    x_traj = None
-    xt_traj = None
-    x_start = x0
-    for section in range(section_num):
-        # Simulate the section from the starting point and update starting point
-        x_traj_sec = simulate.solve_analytical(x_start, t_window)
-        x_start = x_traj_sec[-1]
-
-        # Randomize the order of the data and calculate labels
-        x_traj_sec = jax.random.permutation(key, x_traj_sec)
-        xt_traj_sec = jax.vmap(model.f_analytical)(x_traj_sec)
-        x_traj_sec = jax.vmap(model.wrap_angle)(x_traj_sec)
-
-        # Check that the simulation ran correctly
-        if jnp.any(jnp.isnan(x_traj_sec)) or jnp.any(jnp.isnan(xt_traj_sec)):
-            raise ValueError(f'One of the sections contained "nan": {x_traj_sec}')
-
-        # Add section to array
-        if x_traj is None:
-            x_traj = x_traj_sec
-            xt_traj = xt_traj_sec
-        else:
-            x_traj = jnp.append(x_traj, x_traj_sec, axis=0)
-            xt_traj = jnp.append(xt_traj, xt_traj_sec, axis=0)
-
-    print(
-        f"Generation successful! Ranges: "
-        f"{jnp.amax(x_traj, axis=0)}, "
-        f"{jnp.amin(x_traj, axis=0)}")
-    return (x_traj, xt_traj), x_start

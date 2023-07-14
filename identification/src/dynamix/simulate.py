@@ -87,7 +87,7 @@ def simulate(
     return q_sim, dq_sim
 
 
-@partial(jax.jit, backend='cpu', static_argnums=1)
+@partial(jax.jit, backend='cpu', static_argnums=0)
 def solve_analytical(analytical_eom: Callable,
                      initial_state: jnp.array,
                      times: jnp.array):

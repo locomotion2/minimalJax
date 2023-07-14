@@ -1,7 +1,7 @@
 import numpy as np
 
 k = 1
-m = 4.0
+m = 0.1
 
 # snake parameters
 snake_system_settings = {
@@ -73,12 +73,12 @@ data_settings = {
     # unified dir)
     "data_source": "database",  # whether to load date from a database or generate it
     "eff_datasampling": 1,  # number of batches to load in memory at the time (unused)
-    "num_sections": 100,
-    "num_generators": 100
+    "num_sections": 10,
+    "num_generators": 10
 }
 
 settings = {
-    "system_settings": snake_system_settings,
+    "system_settings": dpend_system_settings,
     "training_settings": training_settings,
     "model_settings": model_settings,
     "data_settings": data_settings,
