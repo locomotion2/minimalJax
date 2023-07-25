@@ -1,8 +1,8 @@
 from discovery.CONSTANTS import *
 
 from discovery.controllers.controllers import PID_pos_vel_tracking_modeled
-from models.CPG import SPG
-from models.base_models import DummyOutput
+from discovery.models.CPG import SPG
+from discovery.models.base_models import DummyOutput
 
 import matplotlib.pyplot as plt
 import pandas as pd

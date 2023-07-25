@@ -8,8 +8,8 @@ from identification.src.dynamix import wrappings, optim
 from identification.src.dynamix import motionx as mx
 from identification.src.dynamix import energiex as ex
 from identification.src.dynamix import simulate
-from identification.src.learning import trainer
-from identification.src.learning import plotting
+from identification.src.training import trainer
+from identification.src.training import plotting
 from identification.systems import snake_utils
 
 from identification.hyperparams import settings

@@ -20,7 +20,7 @@ setup(
     author="Andres Gonzalez",
     url="",
     author_email="j.andregon15@gmail.com",
-    keywords="reinforcement-learning-algorithms reinforcement-learning machine-learning ",
+    keywords="reinforcement-training-algorithms reinforcement-training machine-training ",
     license="MIT",
     long_description="",
     long_description_content_type="text/markdown",

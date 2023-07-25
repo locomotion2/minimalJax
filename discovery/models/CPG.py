@@ -1,9 +1,9 @@
 from abc import ABC
 
 import numpy as np
-from base_models import BaseModel
-from base_models import JointsGenerator
-from base_models import PolarGenerator
+from discovery.models.base_models import BaseModel
+from discovery.models.base_models import JointsGenerator
+from discovery.models.base_models import PolarGenerator
 
 
 class CPG(BaseModel, ABC):

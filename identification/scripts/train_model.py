@@ -2,14 +2,16 @@ import optax
 import stable_baselines3.common.save_util as loader
 from aim import Run
 
-from identification.src.learning import trainer
-from identification.src.learning import plotting
+from identification.src.training import trainer
+from identification.src.training import plotting
 from identification.src.dynamix import optim as optim
 
 from identification.systems import dpendulum_utils, snake_utils
 
 from identification.hyperparams import settings
 import warnings
+
+import os
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -36,16 +38,19 @@ def setup_training(settings):
     params = None
     params_red = None
     params_model = None
-    model_dir = f"{settings_model['base_dir']}/{settings_system['snake']}"
+    model_dir = f"{settings_model['base_dir']}/{settings_system['system']}"
     path_energy = f"{model_dir}/{settings_model['ckpt_dir']}"
     path_model = f"{model_dir}/{settings_model['ckpt_dir_model']}"
     path_red = f"{model_dir}/{settings_model['ckpt_dir_red']}"
     if settings["reload"]:
-        params = loader.load_from_pkl(path=path_energy, verbose=1)
-        params_model = loader.load_from_pkl(path=path_model,
-                                            verbose=1)
-        params_red = loader.load_from_pkl(path=path_red,
-                                          verbose=1)
+        if os.path.exists(f"{path_energy}.pkl"):
+            params = loader.load_from_pkl(path=path_energy, verbose=1)
+        if os.path.exists(f"{path_model}.pkl"):
+            params_model = loader.load_from_pkl(path=path_model,
+                                                verbose=1)
+        if os.path.exists(f"{path_red}.pkl"):
+            params_red = loader.load_from_pkl(path=path_red,
+                                              verbose=1)
         print(f"Params loaded from file.")
 
     # Define sys_utils (functions that depend on the particular system)
@@ -87,7 +92,7 @@ def save_model(settings):
     settings_model = settings['model_settings']
     settings_system = settings['system_settings']
 
-    model_dir = f"{settings_model['base_dir']}/{settings_system['snake']}"
+    model_dir = f"{settings_model['base_dir']}/{settings_system['system']}"
     path_energy = f"{model_dir}/{settings_model['ckpt_dir']}"
     path_model = f"{model_dir}/{settings_model['ckpt_dir_model']}"
     path_red = f"{model_dir}/{settings_model['ckpt_dir_red']}"

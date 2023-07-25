@@ -1,7 +1,7 @@
 import numpy as np
 
-k = 1
-m = 0.1
+k = 1/8
+m = 0.7
 
 # snake parameters
 snake_system_settings = {
@@ -19,7 +19,7 @@ dpend_system_settings = {
     # "calib_coeffs": [1, 0, 0.1795465350151062, -0.06468642503023148],
     "calib_coeffs": [0.7252218723297119, 6.979795932769775,
                      0.19171033799648285, -0.05231717973947525],
-    "system": "dpendulum",  # current system name being identified
+    "system": "dpend",  # current system name being identified
     "num_dof": 2,  # number of DOFs of system
     "starting_point": [0, 0, 0, 0],  # staring point in trajectory generation
     "time_step": 0.01,  # time_step for data generation (dpendulum)
@@ -33,16 +33,16 @@ training_settings = {
     "num_batches": 1,  # how many times to repeat the epoch (unused)
     "num_epochs": 1000000,  # number of epochs
     "test_every": 10,  # after how many times to print the test data
-    "loss_weights": [1, 100, 10],  # weights for the loss function (forw, inv, energies)
+    "loss_weights": [1, 100, 0],  # weights for the loss function (forw, inv, energies)
     "loss_weights_model": [1, 0, 0],  # weights for the loss function (forw, inv,
     # energies)
     "loss_weights_red": [0, 0, 0, 10000000],  # weights for the loss
     # function (forw, inv, energies, boot)
-    "stage": 1,  # minus power 10 to reduce the learning rate
-    "lr_start": 1e-4 * np.sqrt(k),  # starting learning rate
-    "lr_end": 1e-4 * np.sqrt(k),  # ending learning rate
+    "stage": 1,  # minus power 10 to reduce the training rate
+    "lr_start": 1e-3 * np.sqrt(k),  # starting training rate
+    "lr_end": 1e-4 * np.sqrt(k),  # ending training rate
     "weight_decay": 1e-5,  # weight for weight decay regularization
-    "es_gain": 1000,  # gain for early stopping
+    "es_gain": 100,  # gain for early stopping
 }
 
 model_settings = {
@@ -56,15 +56,17 @@ model_settings = {
     "base_dir": "std_models",
     "ckpt_dir": "current",  # directory of the current weights
     "ckpt_dir_model": "model",  # directory of the current weights
-    "ckpt_dir_red": "reduced",  # directory of the current weights
-    "h_dim": 64 * 4,  # size of the hidden layer
+    "ckpt_dir_red": "reduced.pkl",  # directory of the current weights
+    "h_dim": 64 * 2,  # size of the hidden layer
     "h_dim_model": 64 * 10,
 }
 
 data_settings = {
-    "data_partition": [0.1 * m, 0.05, 0.05],  # train, val, test data partition
-    "database_name": "/home/gonz_jm/Documents/thesis_workspace/databases"
-                     "/database_250pts_20buff_command_standard",  # location of
+    "data_partition": [0.9, 0.1, 0.1],  # train, val, test data partition
+    # "database_name": "/home/gonz_jm/Documents/thesis_workspace/databases"
+    #                  "/database_250pts_20buff_command_standard",  # location of
+    # the training database
+    "database_name": "/home/andres/Documents/Thesis Workspace/EigenHunt/tmp/data_scrambled",  # location of
     # the training database
     "database_name_test": "/home/gonz_jm/Documents/thesis_workspace/databases"
                           "/database_points_20buff_command_standard",
@@ -74,7 +76,7 @@ data_settings = {
     "data_source": "database",  # whether to load date from a database or generate it
     "eff_datasampling": 1,  # number of batches to load in memory at the time (unused)
     "num_sections": 10,
-    "num_generators": 10
+    "num_generators": 100
 }
 
 settings = {
@@ -83,6 +85,6 @@ settings = {
     "model_settings": model_settings,
     "data_settings": data_settings,
     "simulate": False,  # simulate in the test_script
-    "reload": True,  # whether to reload params from file or keep train new NN
+    "reload": False,  # whether to reload params from file or keep train new NN
     "save": True,  # save currently trained model or not
 }

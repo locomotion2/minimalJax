@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from src.dynamix import simulate as lx
-from src.learning import trainer
+from src.training import trainer
 from systems import snake_utils
 import identification_utils as utils
 

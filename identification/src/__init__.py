@@ -1,1 +1,1 @@
-__all__ = ["dynamix", "extra", "learning"]
+__all__ = ["dynamix", "extra", "training"]

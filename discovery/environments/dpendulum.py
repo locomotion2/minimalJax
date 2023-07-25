@@ -1,4 +1,4 @@
-from base_environments import CPGEnv, DirectEnv
+from discovery.environments.base_environments import CPGEnv, DirectEnv
 from discovery.models.dpendulum import DoublePendulum
 
 

@@ -4,12 +4,18 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
+import numpy as np
+
 from flax.training import train_state as ts
 
 from scipy.integrate import cumtrapz
 
 import identification.identification_utils as utils
 
+
+@jax.jit
+def smooth(l_diag):
+    return nn.softplus(l_diag + 2)
 
 # TODO: run the matrix computations only when M or T are wanted
 def build_energy_func(
@@ -22,6 +28,47 @@ def build_energy_func(
     num_dof = settings["system_settings"]["num_dof"]
     friction = settings["model_settings"]["friction"]
     model = settings["model_settings"]["model_pot"]
+
+    dim = int(num_dof * (num_dof + 1) / 2)
+
+    @jax.jit
+    def build_lower_triangular_matrix_kin(l):
+        # resize array
+        indices_x, indices_y = jnp.tril_indices(num_dof)
+        indices = indices_x * num_dof + indices_y
+        l_compound = jnp.zeros(num_dof*num_dof)
+        l_compound = l_compound.at[indices].set(l)
+
+        # build mask
+        mask = jnp.eye(num_dof, num_dof).flatten()
+
+        # build new vector with smooth diagonals
+        l_smooth = l_compound * (1 - mask) + smooth(l_compound) * mask
+
+        # build final lower triangular matrix
+        L = l_smooth.reshape(num_dof, num_dof)
+
+        return L
+
+    @jax.jit
+    def build_lower_triangular_matrix_pot(l):
+        # resize array
+        indices_x, indices_y = jnp.tril_indices(num_dof)
+        indices = indices_x * num_dof + indices_y
+        l_compound = jnp.zeros(num_dof*num_dof)
+        l_compound = l_compound.at[indices].set(l)
+
+        # build mask
+        # mask = jnp.eye(num_dof, num_dof).flatten()
+
+        # build new vector with smooth diagonals
+        # l_smooth = l_compound * (1 - mask) + smooth(l_compound) * mask
+
+        # build final lower triangular matrix
+        L = l_compound.reshape(num_dof, num_dof)
+
+        return L
+
 
     @jax.jit
     def compiled_func(
@@ -40,20 +87,9 @@ def build_energy_func(
         )
 
         # build M
-        @jax.jit
-        def smooth(l_diag):
-            return nn.softplus(l_diag + 2)
-
-        l = out[:10]
-        L = jnp.array(
-            [
-                [smooth(l[0]), 0, 0, 0],
-                [l[1], smooth(l[2]), 0, 0],
-                [l[3], l[4], smooth(l[5]), 0],
-                [l[6], l[7], l[8], smooth(l[9])],
-            ]
-        )
-        M = L @ jnp.transpose(L) + jnp.eye(num_dof, num_dof) * 0.001
+        l = out[:dim]
+        L = build_lower_triangular_matrix_kin(l)
+        M = L @ jnp.transpose(L) + jnp.eye(num_dof, num_dof) * 0.01
 
         # calculate T
         T = 1 / 2 * jnp.transpose(dq) @ M @ dq
@@ -63,10 +99,18 @@ def build_energy_func(
             q_rob, theta = jnp.split(q, 2)
             V = 1.75 / 2 * jnp.sum((theta - q_rob) ** 2)
         else:
-            V = out[10]
+            # V = out[dim]
+            l_pot = out[dim:2*dim]
+            L_pot = build_lower_triangular_matrix_pot(l_pot)
+            K = L_pot @ jnp.transpose(L_pot) + jnp.eye(num_dof, num_dof) * 0.01
+            signs = jnp.sign(jnp.diag(L))
+            indices = jnp.diag_indices(num_dof)
+            values = jnp.diag(K) * signs
+            K = K.at[indices].set(values)
+            V = 1/2 * jnp.transpose(q) @ K @ q
 
         # get the friction
-        k_dq = out[-4:]
+        k_dq = out[-num_dof:]
         # k_dq = jnp.array([0.0205] * 4)
 
         # choose the output

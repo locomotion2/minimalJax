@@ -14,15 +14,11 @@ import seaborn as sns
 import cv2
 from PIL import ImageGrab
 
-from environments.base_environments import DoublePendulumCPGEnv, DoublePendulumDirectEnv, \
-    PendulumCPGEnv, PendulumDirectEnv
-from learning.curricula import UniformGrowthCurriculum
-from learning.reward_functions import default_func
-from learning.energy_observer import EnergyObserver
-
-
-# from identification.src import lagranx as lx
-# import stable_baselines3.common.save_util as loader
+from discovery.environments.dpendulum import DoublePendulumCPGEnv, DoublePendulumDirectEnv
+from discovery.environments.pendulum import PendulumCPGEnv, PendulumDirectEnv
+from discovery.learning.curricula import UniformGrowthCurriculum
+from discovery.learning.reward_functions import default_func
+from discovery.learning.energy_observer import EnergyObserver
 
 
 def p_norm(x, p):
@@ -207,7 +203,7 @@ class BaseGymEnvironment(gym.Env):
             self.sim.step(
                 {'action': action, 'E_d': self.E_d, 'inference': self.inference})
 
-            # Extract data for learning
+            # Extract data for training
             state, obs = self.gather_data()
             reward, costs = self.reward_func(state)
             terminated = self.sim.is_done()

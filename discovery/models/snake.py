@@ -5,21 +5,15 @@ import jax
 import jax.numpy as jnp
 from functools import partial
 
-from scipy.integrate import odeint, solve_ivp
-
-import discovery.discovery_utils as sutils
-import identification.src.utils as iutils
-
 from base_models import BaseModel
 
 from identification.systems import snake_utils
-from identification.src import trainer
-from identification.src import lagranx as lx
+from identification.src.training import trainer
+from identification.src.dynamix import wrappings
 
 import stable_baselines3.common.save_util as loader
 
-
-class SnakeBackend:
+class SnakeBaseBackend:
 
     def __init__(self, settings):
         # kin amounts
@@ -30,59 +24,20 @@ class SnakeBackend:
         train_state = trainer.create_train_state(settings, 0,
                                                  params=params)
 
-        num_dof = settings['num_dof']
-        buffer_length = settings['buffer_length']
+        # set up help variables
+        self.num_dof = settings['num_dof']
+        self.buffer_length = settings['buffer_length']
 
-        kinetic = lx.build_energy_func(params, train_state, settings=settings,
-                                       output='kinetic')
-        potential = lx.build_energy_func(params, train_state, settings=settings,
-                                         output='potential')
-        friction = lx.build_energy_func(params, train_state, settings=settings,
-                                        output='friction')
-        inertia = lx.build_energy_func(params, train_state, settings=settings,
-                                       output='inertia')
-        split_tool = snake_utils.build_split_tool(buffer_length)
-        dyn_builder = partial(lx.inertia_dyn_builder,
-                              split_tool=split_tool,
-                              kinetic=kinetic,
-                              potential=potential,
-                              inertia=inertia,
-                              friction=friction)
-        self.dyns = jax.jit(dyn_builder)
-        self.energies = jax.jit(partial(lx.energy_wrapper,
-                                        split_tool=split_tool,
-                                        potential=potential,
-                                        kinetic=kinetic))
+        # set up energy function
+        self.energies = wrappings.build_energy_call(settings,
+                                                    params,
+                                                    train_state)
 
-        # initialize vars
-        self.q_buff = jnp.zeros((num_dof, buffer_length))
-        self.dq_buff = jnp.zeros((num_dof, buffer_length))
-
-    def build_eoms(self):
-        dyns = self.dyns
-
-        def eom(q, q_buff, dq, dq_buff, tau):
-            state, _, _ = iutils.format_state(q,
-                                              q_buff,
-                                              dq,
-                                              dq_buff,
-                                              tau)
-            dyn_terms = dyns(state)
-            ddq = lx.forward_dynamics(dyn_terms)
-
-            return jnp.concatenate([dq, ddq])
-
-        return eom
-
-    # def update_buffers(self, q, dq, tau):
-    #     self.state, self.q_buff, self.dq_buff = iutils.format_state(q,
-    #                                                                 self.q_buff,
-    #                                                                 dq,
-    #                                                                 self.dq_buff,
-    #                                                                 tau)
+        # set up state var
+        self.state = None
 
     def kinetic_energy(self):
-        T, _ = self.energies(self.state)
+        T, _ = self.energies(jnp.concat(self.state))
         return T
 
     def potential_energy(self):
@@ -115,6 +70,8 @@ class SnakeBackend:
                                       [0, -jnp.sin(q2)])
 
         return [J_p1, J_p2]
+
+# class SnakeRealBackend(SnakeBaseBackend):
 
 
 class Snake(BaseModel):

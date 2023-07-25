@@ -10,7 +10,7 @@ import stable_baselines3.common.save_util as loader
 import identification.identification_utils as utils
 from identification.hyperparams import settings
 from identification.src.dynamix import energiex as ex, motionx as mx, wrappings
-from identification.src.learning import trainer
+from identification.src.training import trainer
 from identification.systems import snake_utils
 
 

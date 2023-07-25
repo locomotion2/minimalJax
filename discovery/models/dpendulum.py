@@ -1,4 +1,4 @@
-from CONSTANTS import *
+from discovery.CONSTANTS import *
 
 import numpy as np
 

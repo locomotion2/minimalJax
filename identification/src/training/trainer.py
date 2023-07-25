@@ -36,6 +36,8 @@ def choose_data_loader(settings: dict):
             dataloader = dpendulum_utils.build_random_data_dataloader(batch_train,
                                                                       batch_test,
                                                                       settings)
+        elif data_source == 'database':
+            dataloader = dpendulum_utils.build_database_dataloader_eff(settings)
 
     return dataloader
 
@@ -83,6 +85,7 @@ def create_train_state(goal: str,
     # Set up the optimizer and bundle everything into a train state
     adam_opt = optax.adamw(learning_rate=learning_rate_fn, weight_decay=we_param)
     return ts.TrainState.create(apply_fn=network.apply, params=params, tx=adam_opt)
+
 
 # def create_train_state_PowNN(settings: dict,
 #                               learning_rate_fn: Callable,
@@ -195,7 +198,6 @@ def train_step(bootstrapping: bool,
 def eval_step(train_state: ts.TrainState,
               test_batch: (jnp.array, jnp.array),
               loss_func: Callable) -> dict:
-
     loss_value = loss_func(train_state.params, train_state, test_batch)
     loss_value_red = 0
     # if bootstrapping:
@@ -311,10 +313,12 @@ def run_training(train_state: ts.TrainState,
                         best_loss_red = epoch_loss_red
                         best_params_red = copy(train_state_red.params)
 
-            if epoch_loss > epoch_loss_last * early_stopping_gain and False:
+            if epoch_loss > epoch_loss_last * early_stopping_gain:
                 print(f'Early stopping! Epoch loss: {epoch_loss}. Now resetting.')
                 settings_training['seed'] += 10
-                train_state = create_train_state(settings, lr_func,
+                train_state = create_train_state(settings['model_settings']['goal'],
+                                                 settings,
+                                                 lr_func,
                                                  params=best_params)
                 epoch = 0
                 continue
@@ -354,7 +358,7 @@ def run_training(train_state: ts.TrainState,
             epoch_loss_last_red = epoch_loss_red
 
     except KeyboardInterrupt:
-        print('Terminating learning!')
+        print('Terminating training!')
 
     return best_params, best_params_red, (train_losses, test_losses), \
         (train_losses_red, test_losses_red)
@@ -395,6 +399,3 @@ def handle_data(settings, cursor, table_name, samples_num, offset_num):
     q, _, dq, _, _ = jax.vmap(split_tool)(state)
 
     return (q, dq, ddq_target), state, data_formatted
-
-
-

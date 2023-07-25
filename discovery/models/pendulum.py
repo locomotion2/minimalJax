@@ -1,8 +1,8 @@
-from CONSTANTS import *
+from discovery.CONSTANTS import *
 
 import numpy as np
 
-from base_models import BaseModel
+from discovery.models.base_models import BaseModel
 
 import discovery.discovery_utils as sutils
 

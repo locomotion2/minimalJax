@@ -44,9 +44,9 @@ identification/src/dynamix/motionx.py
 identification/src/dynamix/optim.py
 identification/src/dynamix/simulate.py
 identification/src/dynamix/wrappings.py
-identification/src/learning/__init__.py
-identification/src/learning/plotting.py
-identification/src/learning/trainer.py
+identification/src/training/__init__.py
+identification/src/training/plotting.py
+identification/src/training/trainer.py
 identification/systems/__init__.py
 identification/systems/dpend_model_arne.py
 identification/systems/dpend_model_cramer.py

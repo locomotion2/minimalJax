@@ -137,7 +137,6 @@ def loss_sample(
     dyn_terms = dyn_builder(state)
     (q, dq, _), (M, C, dV_q), k_d = dyn_terms
 
-
     # Calculate the inverse and forward dynamics
     ddq_pred = mx.forward_dynamics(dyn_terms)
     tau_pred, tau_target, tau_fric = mx.inverse_dynamics(
@@ -154,7 +153,7 @@ def loss_sample(
     dq_T = jnp.transpose(dq)
     # pow_pred = dq_T @ tau_pred
     pow_target = dq_T @ tau_target
-    pow_kin = dq_T @ M @ ddq_target[:-4] + dq_T @ C @ q
+    pow_kin = dq_T @ M @ ddq_target[:-q.shape[0]] + dq_T @ C @ q
     pow_pot = dq_T @ dV_q
     # L_energy = jnp.mean(((pow_pred - pow_target) / jnp.abs(pow_target)) ** 2)
     L_energy = jnp.mean((pow_kin + pow_pot - pow_target) ** 2)
