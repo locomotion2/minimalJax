@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="EigenHunt",
-    packages=[package for package in find_packages() if (package.startswith("discovery") or package.startswith("identification"))],
+    packages=[package for package in find_packages() if (package.startswith("src") or package.startswith("identification"))],
     install_requires=["gym", "numpy"],
     extras_require={
         "tests": [
