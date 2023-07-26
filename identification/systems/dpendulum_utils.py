@@ -160,7 +160,7 @@ def extract_state(trajectory_buffered, num_dof, buffer_length):
     return jnp.array([trajectory_buffered[:, coord * buffer_length] for coord in range(num_dof * 2)]).T
 
 
-@partial(jax.jit, static_argnums=0)
+@partial(jax.jit, static_argnums=0, backend='cpu')
 def gen_section_data(eom_compiled: Callable,
                      x_start: jnp.array,
                      t_window: jnp.array):
@@ -283,7 +283,7 @@ def generate_random_data(settings: dict,
     buffer_generator = build_state_buffer_gen(t_size, buffer_length_max)
     try:
         filepath = f"{settings['data_settings']['data_dir']}"
-        with open(filepath, 'r'):
+        with open(filepath, 'w'):
             # setup new database
             database = sqlite3.connect(f"{filepath}")
             for num in tqdm(range(num_points),
