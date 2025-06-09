@@ -10,6 +10,12 @@ which has the controllers connecting the generated trajectories and the simulate
 wrappers that contain the utilities to simulate, track and plot the results. `learning` has the additions to rlzoo3 
 to get everything running and `models` has the mathematical definitions of dynamic systems being used.
 
+## Installation
+```
+pip install rl_zoo3
+pip install sbx-rl
+```
+
 ## Eigenmode discovery
 
 How to train the model:
