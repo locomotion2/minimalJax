@@ -9,7 +9,7 @@
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
     <data-source source="LOCAL" name="dpend_data" uuid="6893c4f3-3297-4cd2-913f-c68f18670659">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/tmp/saved_databases/dpend_data</jdbc-url>
@@ -24,7 +24,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="data_scrambled" uuid="304d6a4e-df36-48bd-b808-80b5073ac1f9">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/tmp/data_scrambled</jdbc-url>
@@ -39,7 +39,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_dpendulum" uuid="eb60c66a-06d9-4cf9-8efe-4246ee9dea78">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/minimal/exports/db_dpendulum</jdbc-url>
@@ -51,7 +51,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_pendulum" uuid="3b4f5f32-7614-4061-8ce3-8bef9a31b320">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/minimal/exports/db_pendulum</jdbc-url>
@@ -63,7 +63,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_snake" uuid="b00359b8-3eb6-4036-920a-4bc8e03103f5">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/minimal/imports/db_snake</jdbc-url>
@@ -75,7 +75,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_dpendulum [2]" uuid="8112da84-0753-476c-a27a-1a37509b019f">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/imports/db_dpendulum</jdbc-url>
@@ -87,7 +87,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_hoppy" uuid="8557454f-0fe2-49a4-9c87-edcb101172fb">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/imports/db_hoppy</jdbc-url>
@@ -99,7 +99,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_hoppy_test" uuid="f02d1afa-fe99-4803-bd65-95152c3fc9f0">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Identification/imports/db_hoppy_test</jdbc-url>
@@ -111,7 +111,7 @@
       </libraries>
     </data-source>
     <data-source source="LOCAL" name="db_hoppy0" uuid="b558682b-fbc0-4f36-a318-c18595a0c7ad">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>ad8a0fbd-eb80-4ab7-b4fa-a9f2a8c37653</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../eigenCharter/exports/db_hoppy0</jdbc-url>

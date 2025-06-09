@@ -83,7 +83,7 @@ class BaseModel(ABC):
     # @profile
     def step(self, params: dict = None):
         # Define the integration interval # Todo: clean up, define the ability to have more points
-        t_final = np.asarray([params.get('t_final', self.t_cur + self.delta_t)])
+        t_final = np.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
         # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
         # ts = np.linspace(self.t_cur, t_final, num_points)
         ts = np.asarray([self.t_cur, t_final]).flatten()

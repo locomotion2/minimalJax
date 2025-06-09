@@ -415,7 +415,7 @@
     <content url="file://$MODULE_DIR$/../system_safari">
       <sourceFolder url="file://$MODULE_DIR$/../system_safari" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="myjax" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="sim" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">

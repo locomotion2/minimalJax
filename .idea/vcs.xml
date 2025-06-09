@@ -3,5 +3,8 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/../.." vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../Identification" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../eigenCharter" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../system_safari" vcs="Git" />
   </component>
 </project>

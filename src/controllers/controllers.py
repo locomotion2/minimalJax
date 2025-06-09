@@ -2,6 +2,7 @@ from src.CONSTANTS import *
 
 import numpy as np
 from abc import ABC, abstractmethod
+from src.discovery_utils import gaus
 
 
 class BaseController(ABC):

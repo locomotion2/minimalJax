@@ -108,8 +108,8 @@ class BaseEnvironment(ABC):
         q_traj_CPG = q_traj_CPG[:, 0] if self.num_dof == 1 else q_traj_CPG
         p_CPG = self.model.forward_kins({'joints': q_traj_CPG[step]})
         px_CPG, py_CPG = p_CPG
-        lines[1].set_xdata(px_CPG)
-        lines[1].set_ydata(py_CPG)
+        lines[1].set_xdata(np.atleast_1d(px_CPG))
+        lines[1].set_ydata(np.atleast_1d(py_CPG))
 
         # Update positions in joint coords
         q_traj_model_rad = np.rad2deg(self.model.get_joint_traj())
@@ -118,8 +118,8 @@ class BaseEnvironment(ABC):
         else:
             qx_model = q_traj_model_rad[step]
             qy_model = 0
-        lines[2].set_xdata(qx_model)
-        lines[2].set_ydata(qy_model)
+        lines[2].set_xdata(np.atleast_1d(qx_model))
+        lines[2].set_ydata(np.atleast_1d(qy_model))
 
         q_traj_CPG = np.rad2deg(q_traj_CPG)
         if self.num_dof > 1:
@@ -127,8 +127,8 @@ class BaseEnvironment(ABC):
         else:
             qx_CPG = q_traj_CPG[step]
             qy_CPG = 0
-        lines[3].set_xdata(qx_CPG)
-        lines[3].set_ydata(qy_CPG)
+        lines[3].set_xdata(np.atleast_1d(qx_CPG))
+        lines[3].set_ydata(np.atleast_1d(qy_CPG))
 
         # Update param position
         param_traj = self.generator.get_parametric_traj()
@@ -138,8 +138,8 @@ class BaseEnvironment(ABC):
             param_y_traj = param_traj[:, -2] ** 2
         param_x = param_x_traj[step]
         param_y = param_y_traj[step]
-        lines[4].set_xdata(param_x)
-        lines[4].set_ydata(param_y)
+        lines[4].set_xdata(np.atleast_1d(param_x))
+        lines[4].set_ydata(np.atleast_1d(param_y))
 
     def prepare_plot(self):  # TODO: Implement easy closing, transfer methods to underlying classes
         try:
@@ -148,10 +148,6 @@ class BaseEnvironment(ABC):
             time_data = pd.DataFrame({'time': t_traj})
 
             # Config. pos against time
-            # x_traj_model = self.model.get_state_traj()
-            # q_traj_model = (((x_traj_model[:, 0:self.num_dof] + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
-            # q_d_traj = (((self.controller.get_desired_traj() + np.pi) % (2 * np.pi)) - np.pi) * 180 / np.pi
-            # q_traj_model = x_traj_model[:, 0:self.num_dof] * 180 / np.pi
             q_traj_model = self.model.get_joint_traj() * 180 / np.pi
             q_d_traj = self.controller.get_desired_traj() * 180 / np.pi
             system_data = pd.DataFrame({})
@@ -270,19 +266,12 @@ class CPGEnv(BaseEnvironment):
         if not self.solve:
             # Generate next point in path
             generator_input = {'omega': omega, 'mu': mu}
-            # debug_print('gen', generator_input)
             self.generator.step(generator_input)
             self.generator.update_trajectories(generator_input)
-            # coils = self.generator.detect_coiling()  # This needs the trajectories to be up-to-date
-            # [p, v] = self.generator.get_cartesian_state()
             [q_d, dq_d] = self.generator.get_joint_state()
-
-            # Run through inverse kins
-            # [q_d, dq_d] = self.model.inverse_kins({'pos': p, 'speed': v, 'coils': coils})
-            # [q_d, dq_d] = [[0, 0], [0, 0]]
         else:
             # Obtain solution from model to compare results
-            [q_d, dq_d] = self.model.solve(self.t_elapsed)  # TODO: Plot next to current traj
+            [q_d, dq_d] = self.model.solve(self.t_elapsed)
 
         # New step for model
         params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()

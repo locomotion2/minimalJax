@@ -6,10 +6,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib
 import seaborn as sns
-# import pandas as pd
-# import pyautogui as pg
 
 import cv2
 from PIL import ImageGrab
@@ -18,7 +15,6 @@ from src.environments.dpendulum import DoublePendulumCPGEnv, DoublePendulumDirec
 from src.environments.pendulum import PendulumCPGEnv, PendulumDirectEnv
 from src.learning.curricula import UniformGrowthCurriculum
 from src.learning.reward_functions import default_func
-from src.learning.energy_observer import EnergyObserver
 
 
 def p_norm(x, p):
@@ -27,15 +23,22 @@ def p_norm(x, p):
 
 def move_figure(f, x, y):
     """Move figure's upper left corner to pixel (x, y)"""
+    import matplotlib
     backend = matplotlib.get_backend()
+    window = f.canvas.manager.window
     if backend == 'TkAgg':
-        f.canvas.manager.window.wm_geometry("+%d+%d" % (x, y))
+        window.wm_geometry(f"+{x}+{y}")
     elif backend == 'WXAgg':
-        f.canvas.manager.window.SetPosition((x, y))
+        window.SetPosition((x, y))
     else:
-        # This works for QT and GTK
-        # You can also use window.setGeometry
-        f.canvas.manager.window.move(x, y)
+        # Qt backends: Try move() if available, else setGeometry
+        if hasattr(window, "move"):
+            window.move(x, y)
+        elif hasattr(window, "setGeometry"):
+            # width and height in pixels
+            width, height = int(f.get_figwidth() * f.dpi), int(f.get_figheight() * f.dpi)
+            window.setGeometry(x, y, width, height)
+
 
 
 class BaseGymEnvironment(gym.Env):
@@ -84,8 +87,6 @@ class BaseGymEnvironment(gym.Env):
         energy_observer = kwargs.get('energy_observer', None)
         if energy_observer is None or energy_observer == 'model':
             self.energy_observer = None
-        elif energy_observer is 'learned':
-            self.energy_observer = EnergyObserver()
 
         generator = kwargs.get('generator', None)
         self.system = kwargs.get('system', None)
@@ -169,7 +170,6 @@ class BaseGymEnvironment(gym.Env):
             E_model = self.sim.get_energies()
 
         # CPG data
-        # p_gen = self.src.get_cartesian_state_generator()
         q_gen, dq_gen = self.sim.get_joint_state_generator()
         params_gen = self.sim.get_params_generator()
 
@@ -185,9 +185,6 @@ class BaseGymEnvironment(gym.Env):
                  'Joint_vel': dq_model,
                  'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
                  'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        # debug_print('array', [q_model / self.action_scale[-1], dq_model / MAX_SPEED,
-        #                       q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
-        #                       np.asarray([self.E_d / MAX_ENERGY])])
         # TODO: maybe add a constant MAX_POSTITION
         obs = np.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
                               q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
@@ -226,12 +223,10 @@ class BaseGymEnvironment(gym.Env):
             return obs.astype(np.float32), reward, terminated, truncated, info
 
         except KeyboardInterrupt:
-            # del self.src
-            # self.close()
             print("Closing the program due to Keyboard interrupt.")
             raise KeyboardInterrupt
 
-    def reset(self, seed=None, otions=None):
+    def reset(self, seed=None, options=None):
 
         # Reset system
         self.new_target_energy()
@@ -270,9 +265,8 @@ class BaseGymEnvironment(gym.Env):
              sim_CPG_traj_data_joints] = sim_data_joints
 
             omega_traj = rl_traj_data['omega_traj'].to_numpy()
-            # omega_avg = p_norm(omega_traj, 50)
             omega_avg = np.abs(
-                omega_traj).mean()  # Todo: Find a better approximation, ask Antonin
+                omega_traj).mean()
             omega_var = np.abs(omega_traj).var()
             print(f'Omega: {omega_avg}')
             print(f'Omega Variance: {omega_var}')
@@ -285,9 +279,6 @@ class BaseGymEnvironment(gym.Env):
             y_0 = [-LINE_DIST, LINE_DIST]
 
             param_gen_traj = rl_traj_data['gen'].to_numpy()
-            # time_points = system_data['time'].to_numpy()
-            # time_points = np.multiply(time_points, param_gen_traj)
-            # time_points = time_points[time_points != 0]
             cpg_traj_x = sim_CPG_traj_data['x_traj_CPG'].to_numpy()
             cpg_traj_y = sim_CPG_traj_data['y_traj_CPG'].to_numpy()
             temp = np.multiply(cpg_traj_x, param_gen_traj)
@@ -377,7 +368,6 @@ class BaseGymEnvironment(gym.Env):
             plt.ylabel(r'$\mu^2\,(m^2)$')
             h_window = self.action_scale[0]
             v_window = self.action_scale[-1]
-            # v_window = v_window ** 2
             plt.axis([-h_window, h_window, -v_window * 0.5, v_window * 1.5])
             index += 1
 

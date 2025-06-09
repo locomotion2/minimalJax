@@ -1,8 +1,0 @@
-gym
-numpy
-
-[tests]
-pytype
-flake8>=3.8
-isort>=5.0
-black
