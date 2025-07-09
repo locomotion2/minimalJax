@@ -189,6 +189,25 @@ class BaseGymEnvironment(gym.Env):
         ])
         return np.asarray(obs)
 
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        # Step the simulation
+        state = self.sim.step(action)
+
+        # Compute the reward
+        reward, costs = self.reward_func(state)
+
+        # Check for termination
+        self.t += 1
+        terminated = self.t >= self.final_time
+
+        # The 'truncated' flag is not used in this environment
+        truncated = False
+
+        # Additional info
+        info = {'costs': np.concatenate(([reward], costs))}
+
+        return self._state_to_obs(state), reward, terminated, truncated, info
+
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
@@ -215,25 +234,6 @@ class BaseGymEnvironment(gym.Env):
         self.t = 0
 
         return self._state_to_obs(state), info
-
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
-        # Step the simulation
-        state = self.sim.step(action)
-        
-        # Compute the reward
-        reward, costs = self.reward_func(state)
-        
-        # Check for termination
-        self.t += 1
-        terminated = self.t >= self.final_time
-        
-        # The 'truncated' flag is not used in this environment
-        truncated = False
-
-        # Additional info
-        info = {'costs': np.concatenate(([reward], costs))}
-
-        return self._state_to_obs(state), reward, terminated, truncated, info
 
     def render(self):
         if self.render_mode == 'human':

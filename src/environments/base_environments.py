@@ -31,6 +31,9 @@ class BaseEnvironment(ABC):
         self.controller = None
         self.generator = None
 
+        # Desired energy
+        self.E_d = 0.0
+
         # Define parameters
         model_params = {'delta_t': self.delta_t_system,
                         'state_size': self.state_size,
@@ -65,6 +68,33 @@ class BaseEnvironment(ABC):
     def get_joint_state_generator(self):
         [q, dq] = self.generator.get_joint_state()
         return q, dq
+
+    def get_state_and_update(self):
+        # Model data
+        p_model, v_model = self.get_cartesian_state_model()
+        q_model, dq_model = self.get_joint_state_model()
+        if hasattr(self, 'energy_observer') and self.energy_observer is not None:
+            E_model = self.energy_observer.get_energies(q_model, dq_model)
+        else:
+            E_model = self.get_energies()
+
+        # CPG data
+        q_gen, dq_gen = self.get_joint_state_generator()
+        params_gen = self.get_params_generator()
+
+        # Controller data
+        tau = self.controller.get_force()
+
+        # Check if energy step desired
+        if self.is_time_energy_step() and hasattr(self, 'energy_step') and self.energy_step:
+            self.E_d /= 2
+
+        # Build data packages
+        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model,
+                 'Joint_vel': dq_model,
+                 'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
+                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
+        return state
 
     def get_cartesian_state_generator(self):
         [q, _] = self.generator.get_joint_state()
