@@ -1,5 +1,4 @@
 import src.discovery_utils as sutils
-
 import numpy as np
 
 
@@ -20,7 +19,8 @@ def default_func(state: dict):
 
     # Energy rewards
     E_t = E_k + E_p
-    cost_E_t = sutils.gaus(E_t - E_d, weights_gaussians[0])
+    # Take the norm of the energy difference to get a scalar
+    cost_E_t = sutils.gaus(np.linalg.norm(E_t - E_d), weights_gaussians[0])
 
     # Force punishment
     cost_torque = sutils.gaus(np.linalg.norm(tau), weights_gaussians[1])

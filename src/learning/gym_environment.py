@@ -47,6 +47,25 @@ class BaseGymEnvironment(gym.Env):
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 30}
 
     def __init__(self, **kwargs):
+        """
+        Initializes the environment.
+
+        Args:
+            **kwargs: Keyword arguments for configuration.
+                - mode (str): The initial condition mode.
+                - final_time (float): The final time for each episode.
+                - starting_range (list): The range for curriculum learning.
+                - render_mode (str): The rendering mode.
+                - reward_func (callable): The function to compute rewards.
+                - curriculum (Curriculum): A curriculum learning object.
+                - energy_command (float): A fixed desired energy level.
+                - energy_step (bool): Whether to include energy in the observation.
+                - generator (str): The type of action generator ('CPG' or 'direct').
+                - system (str): The physical system to simulate ('DoublePendulum' or 'Pendulum').
+                - action_scale (list): Scaling factors for the actions.
+                - render (bool): Whether to render the simulation.
+                - record (bool): Whether to record the simulation.
+        """
         super().__init__()
 
         # Handle inputs
@@ -61,6 +80,14 @@ class BaseGymEnvironment(gym.Env):
         if mode not in valid_modes:
             raise ValueError(
                 f"Selected initial condition mode {mode} is unknown. Valid modes: {valid_modes}")
+        
+        # --- FIX ---
+        # The 'mode' was not being stored as a class attribute, causing an
+        # AttributeError in the reset() method. Storing it in 'self.mode'
+        # makes it accessible throughout the class instance.
+        self.mode = mode
+        # -----------
+        
         params['mode'] = mode
 
         self.final_time = kwargs.get('final_time', FINAL_TIME)
@@ -105,13 +132,9 @@ class BaseGymEnvironment(gym.Env):
                 raise NotImplementedError(f"System {self.system} not implemented")
             self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
             
-            # --- CORRECTED SECTION ---
-            # The original code attempted to modify a JAX array in-place, which is not allowed.
-            # It now correctly uses the .at[].set() method to update the array immutably.
             omega_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
             omega_scale = omega_scale.at[-1].set(self.action_scale[-1])
             self.action_scale = omega_scale
-            # --- END OF CORRECTION ---
             
             output_size = params['num_dof']
         elif generator == 'direct':
@@ -144,7 +167,7 @@ class BaseGymEnvironment(gym.Env):
 
         # Build environment
         self.action_space = Box(low=-1, high=1, shape=(output_size,))
-        self.observation_space = Box(low=-1, high=1, shape=(input_size,))
+        self.observation_space = Box(low=-jnp.inf, high=jnp.inf, shape=(input_size,))
         self.sim = self.system(params=params)
 
         # Tracking / help variables
@@ -154,6 +177,77 @@ class BaseGymEnvironment(gym.Env):
         self.r_num = 3
         self.r_traj = jnp.asarray([jnp.asarray([self.r_epi] * (self.r_num + 1))])
         self.E_l_traj = jnp.asarray([jnp.asarray([0])])
+    
+    def _state_to_obs(self, state: dict) -> np.ndarray:
+        """Converts the state dictionary to a NumPy observation array."""
+        obs = jnp.concatenate([
+            state['Joint_pos'],
+            state['Joint_vel'],
+            state['Pos_gen'],
+            state['Vel_gen'],
+            jnp.asarray([state['Energy_des']])
+        ])
+        return np.asarray(obs)
+
+    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
+
+        # Choose the next desired energy
+        if self.mode == "random_E":
+            self.E_d = self.np_random.uniform(low=self.E_d_range[0], high=self.E_d_range[1])
+
+        # Restart the simulation
+        self.sim.restart({'E_d': self.E_d})
+
+        # Get the state from the simulation
+        state = self.sim.get_state_and_update()
+
+        # Compute the reward and costs
+        reward, costs = self.reward_func(state)
+
+        # Concatenate all costs
+        info = {
+            'costs': np.concatenate(([reward], costs))
+        }
+
+        # Reset the step counter
+        self.t = 0
+
+        return self._state_to_obs(state), info
+
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        # Step the simulation
+        state = self.sim.step(action)
+        
+        # Compute the reward
+        reward, costs = self.reward_func(state)
+        
+        # Check for termination
+        self.t += 1
+        terminated = self.t >= self.final_time
+        
+        # The 'truncated' flag is not used in this environment
+        truncated = False
+
+        # Additional info
+        info = {'costs': np.concatenate(([reward], costs))}
+
+        return self._state_to_obs(state), reward, terminated, truncated, info
+
+    def render(self):
+        if self.render_mode == 'human':
+            # This environment uses an external visualization tool
+            pass
+        elif self.render_mode == 'rgb_array':
+            # This would require rendering to an offscreen buffer
+            raise NotImplementedError("RGB array rendering is not implemented.")
+
+    def close(self):
+        if self.visualize:
+            plt.close('all')
+
+
 
     def tracking(self, reward: float, costs: list, energies: tuple):
         # Tracking data
@@ -239,26 +333,32 @@ class BaseGymEnvironment(gym.Env):
             print("Closing the program due to Keyboard interrupt.")
             raise KeyboardInterrupt
 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
 
-        # Reset system
-        self.new_target_energy()
+        # Choose the next desired energy
+        if self.mode == "random_E":
+            self.E_d = self.np_random.uniform(low=self.E_d_range[0], high=self.E_d_range[1])
+
+        # Restart the simulation
         self.sim.restart({'E_d': self.E_d})
 
-        # Gather data from the new episode
-        state, obs = self.gather_data()
+        # Get the state from the simulation
+        state = self.sim.get_state_and_update()
+
+        # Compute the reward and costs
         reward, costs = self.reward_func(state)
 
-        # Reset tracking
-        self.r_traj = jnp.append(self.r_traj,
-                                [jnp.concatenate([[reward], costs], axis=0)],
-                                axis=0)  # TODO: The plotting looks off, the starting value is weird
+        # Concatenate all costs
+        info = {
+            'costs': jnp.concatenate((jnp.array([reward]), costs))
+        }
 
-        # Reset help variables
-        self.r_epi = reward
-        self.cur_step = 0
+        # Reset the step counter
+        self.t = 0
 
-        return obs.astype(jnp.float32), {}
+        return self._state_to_obs(state), info
 
     def plot(self):
         try:

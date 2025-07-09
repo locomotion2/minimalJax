@@ -440,7 +440,7 @@ class DoublePendulum(Pendulum):
             Calculates the inverse potential energy to find the initial positions.
             """
             key, subkey = jax.random.split(key)
-            
+
             # Use a default starting position if none is provided
             if q0 is None:
                 q0 = jnp.zeros(2)
@@ -453,7 +453,7 @@ class DoublePendulum(Pendulum):
 
             # Call the new, specialized function
             q = sutils.find_by_grad_desc(subkey, E, q0, value_func, grad_func)
-            
+
             return jnp.arctan2(jnp.sin(q), jnp.cos(q)), key
 
         # --- Main function logic ---
@@ -566,14 +566,14 @@ class DoublePendulum(Pendulum):
 
     def get_cartesian_state(self):
         # Get joint positions and speeds
-        q = jnp.asarray(self.x_cur[:self.num_dof]) # Use jnp.asarray
-        dq = jnp.asarray(self.x_cur[self.num_dof:]) # Use jnp.asarray
+        q = jnp.asarray(self.x_cur[:self.num_dof]) 
+        dq = jnp.asarray(self.x_cur[self.num_dof:]) 
 
         # Calculate the cart. positions and speeds
-        p = jnp.asarray(self.backend.forward_kinematics(q)[0:-1]) # Use jnp.asarray
-        v = jnp.asarray((self.backend.jacobian(q) @ dq)[0:-1]) # Use jnp.asarray
+        p = jnp.asarray(self.backend.forward_kinematics(q)[0:-1]) 
+        v = jnp.asarray((self.backend.jacobian(q) @ dq)[0:-1]) 
 
-        return jnp.asarray([p, v]) # Use jnp.asarray
+        return jnp.asarray([p, v]) #
 
     def get_link_cartesian_positions(self):
         # Get joint positions
