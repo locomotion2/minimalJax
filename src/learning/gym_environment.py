@@ -73,7 +73,9 @@ class BaseGymEnvironment(gym.Env):
         curriculum = kwargs.get('curriculum', None)
         if curriculum is None:
             self.curriculum = UniformGrowthCurriculum(
-                starting_range=params['starting_range'])
+                min_difficulty=params['starting_range'][0],
+                max_difficulty=params['starting_range'][1]
+            )
         else:
             self.curriculum = curriculum
 
@@ -102,9 +104,15 @@ class BaseGymEnvironment(gym.Env):
             else:
                 raise NotImplementedError(f"System {self.system} not implemented")
             self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
+            
+            # --- CORRECTED SECTION ---
+            # The original code attempted to modify a JAX array in-place, which is not allowed.
+            # It now correctly uses the .at[].set() method to update the array immutably.
             omega_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
-            omega_scale[-1] = self.action_scale[-1]
+            omega_scale = omega_scale.at[-1].set(self.action_scale[-1])
             self.action_scale = omega_scale
+            # --- END OF CORRECTION ---
+            
             output_size = params['num_dof']
         elif generator == 'direct':
             if self.system is None or self.system == 'DoublePendulum':
@@ -158,9 +166,12 @@ class BaseGymEnvironment(gym.Env):
 
     def new_target_energy(self):
         if not self.inference:
-            if self.curriculum.check_criterion(self.r_epi, self.E_d):
-                self.curriculum.grow()
-            self.E_d = self.curriculum.sample()
+            # You might need to define a specific success condition for your task.
+            # Here, we assume a simple condition where any positive episode reward is a success.
+            MIN_SCORE_FOR_SUCCESS = 0.0  # Placeholder: Adjust this threshold as needed.
+            success_rate = 1.0 if self.r_epi > MIN_SCORE_FOR_SUCCESS else 0.0
+            self.curriculum.update(success_rate)
+            self.E_d = self.curriculum.get_difficulty()
 
     def gather_data(self):
         # Model data

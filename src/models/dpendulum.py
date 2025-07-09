@@ -1,9 +1,8 @@
 from src.CONSTANTS import *
 
+import numpy as np # Keep for solve_ivp for now
 import jax
 import jax.numpy as jnp
-from jax import jit
-
 from scipy.integrate import odeint, solve_ivp
 
 import src.discovery_utils as sutils
@@ -23,6 +22,10 @@ class ArnesDoublePendulum:
         self._has_inverse_dynamics = True
         self._eq = None
         self._U0 = None
+        # Initialize a JAX PRNG key for potential future use or if any jax.random operations are added.
+        # For minimal changes, a fixed key is used here. For proper randomness, this key should be managed externally.
+        self._jax_key = jax.random.PRNGKey(0)
+
 
     @property
     def params(self):
@@ -51,10 +54,11 @@ class ArnesDoublePendulum:
             **kwargs
             ):
 
+        # Use jnp.concatenate for initial state
         sol = solve_ivp(
             fun=self.create_dynamics(controllers),
             t_span=(0, t_max),
-            y0=jnp.r_[q0, dq0],
+            y0=jnp.concatenate([q0, dq0]),
             method='LSODA',
             dense_output=dense,
             t_eval=jnp.arange(0, t_max, dt) if dt and dense else None,
@@ -69,6 +73,7 @@ class ArnesDoublePendulum:
 
         traj = sol.y.T
         n = self.dof
+        # Use jnp.arctan2, jnp.sin, jnp.cos
         q = jnp.arctan2(jnp.sin(traj[:, 0:n]), jnp.cos(traj[:, 0:n])) if wrap else traj[:,
                                                                                 0:n]
         if return_sol:
@@ -78,14 +83,14 @@ class ArnesDoublePendulum:
 
     def compute_equilibrium(self, q0=None):
         if q0 is None:
-            q0 = jnp.zeros(self.dof)
+            q0 = jnp.zeros(self.dof) # Use jnp.zeros
 
         def viscous_damping(t, q, dq):
             return -2 * self.mass_matrix(q) @ dq
 
         _, q, _, sol = self.sim(
             q0=q0,
-            dq0=jnp.zeros(self.dof),
+            dq0=jnp.zeros(self.dof), # Use jnp.zeros
             dt=1e-2,
             controllers=[viscous_damping],
             events=self.create_convergence_check(),
@@ -104,69 +109,85 @@ class ArnesDoublePendulum:
         def convergence_check(t, y):
             q, dq = y[0:n], y[n:]
             if t < 1:
-                return jnp.inf
+                return jnp.inf # Use jnp.inf
             else:
-                return jnp.linalg.norm(dq) - eps
+                return jnp.linalg.norm(dq) - eps # Use jnp.linalg.norm
 
         convergence_check.terminal = terminal
         return convergence_check
 
+    @jax.jit
     def mass_matrix(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array and jnp.cos
         return jnp.array([[l[0] ** 2 * m[0] + m[1] * (
                     l[0] ** 2 + 2 * l[0] * l[1] * jnp.cos(q[1]) + l[1] ** 2),
                           1.0 * l[1] * m[1] * (l[0] * jnp.cos(q[1]) + l[1])],
                          [1.0 * l[1] * m[1] * (l[0] * jnp.cos(q[1]) + l[1]),
                           1.0 * l[1] ** 2 * m[1]]])
 
+    @jax.jit
     def gravity(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array and jnp.cos
         return jnp.array(
             [[g * (l[0] * m[0] * jnp.cos(q[0]) + m[1] * (
                         l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])))],
              [g * l[1] * m[1] * jnp.cos(q[0] + q[1])]]).flatten()
 
+    @jax.jit
     def coriolis_centrifugal_forces(self, q, dq):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array and jnp.sin
         return jnp.array([[-2.0 * dq[0] * dq[1] * l[0] * l[1] * m[1] * jnp.sin(
-            q[1]) - 1.0 * dq[1] ** 2 * l[0] * l[
+            q[1]) - 1.0 * dq[1] ** 2 * l[0] * l_[
                               1] * m[1] * jnp.sin(q[1]) + 1.0 * k[0] * q[0] - 1.0 * k[
                               0] * qr[0]], [
                              1.0 * dq[0] ** 2 * l[0] * l[1] * m[1] * jnp.sin(
                                  q[1]) + 1.0 * k[1] * q[1] - 1.0 * k[
                                  1] * qr[1]]]).flatten()
 
+    @jax.jit
     def kinetic_energy(self, q, dq):
-        if q.ndim == dq.ndim == 1:
+        # Use jnp.ndim instead of q.ndim
+        if jnp.ndim(q) == jnp.ndim(dq) == 1:
             return self._kinetic_energy(q, dq)
-        elif q.ndim == dq.ndim == 2:
+        elif jnp.ndim(q) == jnp.ndim(dq) == 2:
             return self._kinetic_energy(q.T, dq.T)
         else:
             raise ValueError
 
+    @jax.jit
     def potential_energy(self, q, absolute=False):
-        if q.ndim == 1:
+        # Use jnp.ndim instead of q.ndim
+        if jnp.ndim(q) == 1:
             return self._potential(q) - (0 if absolute else self.U0)
-        elif q.ndim == 2:
+        elif jnp.ndim(q) == 2:
             return self._potential(q.T) - (0 if absolute else self.U0)
         else:
             raise ValueError
 
+    @jax.jit
     def forward_kinematics(self, q):
-        if q.ndim == 1:
-            return self._fkin(q).flatten()  # Warning recently added .flatten() here
-        elif q.ndim == 2:
+        # Use jnp.ndim instead of q.ndim
+        if jnp.ndim(q) == 1:
+            return self._fkin(q).flatten()
+        elif jnp.ndim(q) == 2:
             return self._fkin(q.T).T.squeeze()
+        else:
+            raise ValueError
 
+    @jax.jit
     def forward_kinematics_for_each_link(self, q):
-        if q.ndim == 1:
+        # Use jnp.ndim instead of q.ndim
+        if jnp.ndim(q) == 1:
             return sutils.hom2xyphi(self._link_positions(q).reshape((-1, 3, 3)))
-        elif q.ndim == 2:
-            out = jnp.empty((q.shape[0], self.dof, 3))
+        elif jnp.ndim(q) == 2:
+            out = jnp.empty((q.shape[0], self.dof, 3)) # Use jnp.empty
             for i in range(q.shape[0]):
-                out[i, :, :] = sutils.hom2xyphi(self._link_positions(q[i]).reshape((-1,
+                out = out.at[i, :, :].set(sutils.hom2xyphi(self._link_positions(q[i]).reshape((-1,
                                                                                     3,
-                                                                                    3)))
+                                                                                    3))))
             return out
         else:
             raise ValueError
@@ -175,20 +196,21 @@ class ArnesDoublePendulum:
         if q0 is not None:
             q = q0
         else:
-            q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
+            self._jax_key, subkey = jax.random.split(self._jax_key) # Split key for randomness
+            q = jax.random.uniform(subkey, shape=(self.dof,), minval=-jnp.pi, maxval=jnp.pi) # Use jax.random.uniform
 
         if cart.size == 3:
             f = lambda x: self.forward_kinematics(x)
             if self.dof == 3:
-                A = lambda x: jnp.linalg.inv(self.jacobian(x))
+                A = lambda x: jnp.linalg.inv(self.jacobian(x)) # Use jnp.linalg.inv
             else:
-                A = lambda x: jnp.linalg.pinv(self.jacobian(x))
+                A = lambda x: jnp.linalg.pinv(self.jacobian(x)) # Use jnp.linalg.pinv
         elif cart.size == 2:
             f = lambda x: self.forward_kinematics(x)[0:2]
-            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:2, :])
+            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:2, :]) # Use jnp.linalg.pinv
         elif cart.size == 1:
             f = lambda x: self.forward_kinematics(x)[0:1]
-            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:1, :])
+            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:1, :]) # Use jnp.linalg.pinv
         else:
             raise ValueError("Illegal length of desired task-space pose")
 
@@ -196,47 +218,38 @@ class ArnesDoublePendulum:
         while True:
             if step > max_steps:
                 print(f"No invkin solution found for {cart}, trying again")
-                q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
+                self._jax_key, subkey = jax.random.split(self._jax_key) # Split key
+                q = jax.random.uniform(subkey, shape=(self.dof,), minval=-jnp.pi, maxval=jnp.pi) # Use jax.random.uniform
                 step = 0
 
             e = cart - f(q)
-            if jnp.linalg.norm(e) < tol:
+            if jnp.linalg.norm(e) < tol: # Use jnp.linalg.norm
                 break
             try:
-                inc = A(q) @ jnp.squeeze(K * e)
+                inc = A(q) @ jnp.squeeze(K * e) # Use jnp.squeeze
             except ValueError:
-                inc = (A(q) * jnp.squeeze(K * e))[:, 0]
+                inc = (A(q) * jnp.squeeze(K * e))[:, 0] # Use jnp.squeeze
             q += inc
             step += 1
 
-        # for _ in range(max_steps):
-        #     e = cart - f(q)
-        #     if jnp.linalg.norm(e) < tol:
-        #         break
-        #     try:
-        #         inc = A(q) @ jnp.squeeze(K * e)
-        #     except ValueError:
-        #         inc = (A(q) * jnp.squeeze(K * e))[:, 0]
-        #     q += inc
-        # else:
-        #     print(f"No invkin solution found for {cart}, trying again")
-        #     q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
-        #     # raise AssertionError(f"No invkin solution found for {cart}.")
+        return jnp.arctan2(jnp.sin(q), jnp.cos(q)) # Use jnp.arctan2, jnp.sin, jnp.cos
 
-        return jnp.arctan2(jnp.sin(q), jnp.cos(q))
-
+    @jax.jit
     def _potential(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.sin
         return g * l[0] * m[0] * jnp.sin(q[0]) + g * m[1] * (
                 l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
                     -q[0] + qr[0]) ** 2 + 0.5 * \
             k[1] * (-q[1] + qr[1]) ** 2
 
+    @jax.jit
     def _ddq(self, q, dq, tau_in):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array, jnp.sin, jnp.cos, jnp.asarray
         ddq_cons = jnp.array([[1.0 * (
                 0.5 * dq[0] ** 2 * l[0] ** 2 * l[1] * m[1] * jnp.sin(2 * q[1]) + 1.0 *
-                dq[0] ** 2 * l[0] * l[
+                dq[0] ** 2 * l[0] * l_[
                     1] ** 2 * m[1] * jnp.sin(q[1]) + 2.0 * dq[0] * dq[1] * l[0] * l[
                     1] ** 2 * m[1] * jnp.sin(
             q[1]) + 1.0 * dq[1] ** 2 * l[0] * l[1] ** 2 * m[1] * jnp.sin(
@@ -265,7 +278,7 @@ class ArnesDoublePendulum:
                                         l[0] * l[1] ** 3 * m[1] ** 2 * jnp.sin(
                                              q[1]) - 0.5 * dq[1] ** 2 * l[0] ** 2 *
                                         l[1] ** 2 * m[1] ** 2 * jnp.sin(2 * q[1]) - 1.0 *
-                                        dq[1] ** 2 * l[0] * l[
+                                        dq[1] ** 2 * l[0] * l_[
                                             1] ** 3 * m[1] ** 2 * jnp.sin(
                                              q[1]) + 0.5 * g * l[0] ** 2 * l[1] * m[0] *
                                         m[1] * jnp.cos(q[0] - q[1]) - 0.5 * g * l[
@@ -304,33 +317,39 @@ class ArnesDoublePendulum:
                                             0] + 1.0 * l[1] ** 2 * m[1] *
                                         tau_in[1]) / (l[0] ** 2 * l[1] ** 2 * m[1] * (
                                          2 * m[0] - m[1] * jnp.cos(2 * q[1]) + m[1]))]])
-        ddq = ddq_cons - kf * jnp.asarray([[dq[0]], [dq[1]]])
+        ddq = ddq_cons - kf * jnp.asarray([[dq[0]], [dq[1]]]) # Use jnp.asarray
         return ddq
 
+    @jax.jit
     def _kinetic_energy(self, q, dq):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.cos
         return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + 0.5 * m[1] * (
                 dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(q[1]) +
-                dq[0] ** 2 * l[
+                dq[0] ** 2 * l_[
                     1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 * dq[
                     0] * dq[1] * l[1] ** 2 + dq[
                     1] ** 2 * l[1] ** 2)
 
+    @jax.jit
     def _energy(self, q, dq):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.sin and jnp.cos
         return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + g * l[0] * m[0] * jnp.sin(
             q[0]) + g * m[1] * (
                 l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
                     -q[0] + qr[0]) ** 2 + 0.5 * \
             k[1] * (-q[1] + qr[1]) ** 2 + 0.5 * m[1] * (
                     dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(
-                q[1]) + dq[0] ** 2 * l[
+                q[1]) + dq[0] ** 2 * l_[
                         1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 *
                     dq[0] * dq[1] * l[1] ** 2 + dq[
                         1] ** 2 * l[1] ** 2)
 
+    @jax.jit
     def _link_positions(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array, jnp.cos, jnp.sin
         return jnp.array([[jnp.cos(q[0]), -jnp.sin(q[0]), l[0] * jnp.cos(q[0])],
                          [jnp.sin(q[0]), jnp.cos(q[0]), l[0] * jnp.sin(q[0])], [0, 0, 1],
                          [jnp.cos(q[0] + q[1]), -jnp.sin(q[0] + q[1]),
@@ -339,14 +358,18 @@ class ArnesDoublePendulum:
                           l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
                          [0, 0, 1]]).reshape((2, 3, 3))
 
+    @jax.jit
     def _fkin(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array, jnp.cos, jnp.sin, jnp.arctan2
         return jnp.array([[l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])],
                          [l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
                          [jnp.arctan2(jnp.sin(q[0] + q[1]), jnp.cos(q[0] + q[1]))]])
 
+    @jax.jit
     def endeffector_pose(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array, jnp.sin, jnp.cos
         return jnp.array(
             [[jnp.cos(q[0] + q[1]), -jnp.sin(q[0] + q[1]),
               l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])],
@@ -354,8 +377,10 @@ class ArnesDoublePendulum:
               l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
              [0, 0, 1]])
 
+    @jax.jit
     def jacobian(self, q):
         l, m, g, k, qr, kf = self.params
+        # Use jnp.array, jnp.sin, jnp.cos
         return jnp.array([[-l[0] * jnp.sin(q[0]) - l[1] * jnp.sin(q[0] + q[1]),
                           -l[1] * jnp.sin(q[0] + q[1])],
                          [l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1]),
@@ -367,11 +392,14 @@ class ArnesDoublePendulum:
         if controllers is None:
             controllers = []
 
+        # JIT this inner function if possible, but it captures `self` and `controllers`
+        # which might require a more advanced JAX transformation (e.g., functools.partial)
         def ode_precomputed(t, y):
             q, dq = y[0:n], y[n:]
-            tau = sum((c(t, q, dq) for c in controllers), jnp.zeros(self.dof))
+            # Ensure sum works with jax.numpy for accumulation
+            tau = sum((c(t, q, dq) for c in controllers), jnp.zeros(self.dof)) # Use jnp.zeros
             ddq = self._ddq(q, dq, tau).flatten()
-            return jnp.r_[dq, ddq]
+            return jnp.concatenate([dq, ddq]) # Use jnp.concatenate
 
         return ode_precomputed
 
@@ -381,7 +409,7 @@ class DoublePendulum(Pendulum):
         self.l = params.get('l', (0.5, 0.5))
         self.m = params.get('m', (0.05, 0.05))
         self.k_f = params.get('k_f', 0.0)
-        self.transition = jnp.asarray([0, 0])
+        self.transition = jnp.asarray([0, 0]) # Use jnp.asarray
         self.q_des_prev = None
         self.backend = ArnesDoublePendulum(
             l=self.l,
@@ -393,6 +421,9 @@ class DoublePendulum(Pendulum):
         )
         params['not_inherited'] = False
         super().__init__(params)
+        # Initialize a JAX PRNG key for random operations
+        self._jax_key = jax.random.PRNGKey(0)
+
 
     def make_eqs_motion(self, params: dict = None):
         def eqs_motion(t, x, params):
@@ -404,61 +435,73 @@ class DoublePendulum(Pendulum):
         return eqs_motion
 
     def select_initial(self, params: dict = None):
+        """
+        Selects the initial state of the pendulum based on a given energy `E`.
+        This version is corrected to use JAX's automatic differentiation and consistent
+        random number generation.
+        """
 
-        def inverse_kinetic(q, E: float = 0):
-            # Randomize vector direction
-            dq0 = self.rng.uniform(-1, 1, 2)
+        def inverse_kinetic(key, q, E: float = 0):
+            """
+            Calculates the inverse kinetic energy to find the initial velocities.
+            """
+            key, subkey = jax.random.split(key)
+            # Generate a random initial guess for the velocities
+            dq0 = jax.random.uniform(subkey, shape=(2,), minval=-1, maxval=1)
 
-            # Scale up so that it produces the desired energy
+            # Scale the initial guess to have the desired energy
             E_norm = self.backend.kinetic_energy(q, dq0)
-            dq0 = dq0 / E_norm * E
+            # Avoid division by zero
+            dq0 = jnp.where(E_norm > 0, dq0 / E_norm * E, dq0)
 
-            def dEk(q, dq):
-                l = self.l
-                m = self.m
-                dE = jnp.asarray([[m[0] * dq[0] * l[0] ** 2 + m[1] * dq[0] * l[0] ** 2
-                                  + m[1] * 2 * dq[0] * l[0] * l[1] * jnp.cos(q[1]) + m[
-                                      1] * dq[0] * l[1] ** 2
-                                  + m[1] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + m[1] *
-                                  dq[1] * l[1] ** 2,
-                                  m[1] * dq[0] * l[0] * l[1] * jnp.cos(q[1])
-                                  + m[1] * dq[0] * l[1] ** 2 + m[1] * dq[1] * l[
-                                      1] ** 2]])
-
-                return dE
-
-            error_func = lambda x: self.backend.kinetic_energy(q, x)
-            jacobian_func = lambda x: dEk(q, x)
-
-            return sutils.inverse_grad_desc(E, error_func, jacobian_func,
-                                            name='inv. in. energy',
+            # The error is the difference between the current and desired kinetic energy
+            error_func = lambda dq: jnp.abs(self.backend.kinetic_energy(q, dq) - E)
+            
+            # Use jax.grad to automatically compute the gradient of the kinetic energy
+            # with respect to the velocities (dq). This is more robust than manual calculation.
+            jacobian_func = jax.grad(self.backend.kinetic_energy, argnums=1)
+            
+            key, subkey_grad_desc = jax.random.split(key)
+            # Pass the subkey to the gradient descent function
+            dq = sutils.inverse_grad_desc(subkey_grad_desc, E, error_func, lambda dq: jacobian_func(q, dq),
+                                            name='inv. kin. energy',
                                             q0=dq0, max_steps=1000, max_tries=10)
+            return dq, key
 
-        def inverse_potential(E: float = 0, q0=None):
-            def dEp(q):
-                l = self.l
-                m = self.m
-                dE = jnp.asarray([[-g * m[0] * l[0] * jnp.cos(q[0]) - g * m[1] * l[
-                    0] * jnp.cos(q[0]) - g * m[1] * l[1] *
-                                  jnp.cos(q[0] + q[1]),
-                                  - g * m[1] * l[1] * jnp.cos(q[0] + q[1])]])
-                return dE
+        def inverse_potential(key, E: float = 0, q0=None):
+            """
+            Calculates the inverse potential energy to find the initial positions.
+            """
+            # The error is the difference between the current and desired potential energy
+            error_func = lambda q: jnp.abs(self.backend.potential_energy(q) - E)
 
-            q = sutils.inverse_grad_desc(E, self.backend.potential_energy, dEp,
-                                         name='inv. pot. energy',
-                                         q0=q0, max_steps=1000, max_tries=10)
+            # Use jax.grad to automatically compute the gradient of the potential energy.
+            jacobian_func = jax.grad(self.backend.potential_energy)
 
-            return jnp.arctan2(jnp.sin(q), jnp.cos(q))
+            key, subkey_grad_desc = jax.random.split(key)
+            # Pass the subkey to the gradient descent function
+            q = sutils.inverse_grad_desc(subkey_grad_desc, E, error_func, jacobian_func,
+                                        name='inv. pot. energy',
+                                        q0=q0, max_steps=1000, max_tries=10)
+
+            # Ensure the angle is within -pi to pi
+            return jnp.arctan2(jnp.sin(q), jnp.cos(q)), key
+
+        # --- Main function logic ---
 
         # Handle inputs
+        params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0)
 
+        # Split the key for all random operations in this function
+        self._jax_key, key_alpha, key_beta = jax.random.split(self._jax_key, 3)
+        
+        # Use jax.random for all random numbers for consistency
+        alpha = jax.random.uniform(key_alpha)
+        beta = jax.random.uniform(key_beta)
+
         # Choose energies based on mode
-        alpha = self.rng.uniform(0, 1)
-        beta = self.rng.uniform(0, 1)
-        E_k = 0
-        E_p = 0
         if mode == 'speed':
             E_k = E_d
             E_p = 0
@@ -469,15 +512,20 @@ class DoublePendulum(Pendulum):
             E_k = alpha * E_d
             E_p = (1 - alpha) * E_d
         elif mode == 'random':
-            E_rand = beta * MAX_ENERGY / 20  # TODO: Change into it's own constant
+            E_rand = beta * MAX_ENERGY / 20
             E_k = alpha * E_rand
             E_p = (1 - alpha) * E_rand
+        else: # 'equilibrium'
+            E_k = 0
+            E_p = 0
+            
+        # Calculate starting positions and velocities
+        q_0, self._jax_key = inverse_potential(self._jax_key, E=E_p)
+        dq_0, self._jax_key = inverse_kinetic(self._jax_key, q=q_0, E=E_k)
 
-        # Calculate starting positions
-        q_0 = inverse_potential(E=E_p)
-        dq_0 = inverse_kinetic(E=E_k, q=q_0)
-
-        # Initialize current positional values
+        # Initialize current state
+        # Note: jnp.append can be inefficient in JIT-compiled functions.
+        # For better performance, consider pre-allocating arrays.
         self.x_0 = jnp.append(q_0, dq_0)
         self.x_cur = self.x_0
 
@@ -487,7 +535,7 @@ class DoublePendulum(Pendulum):
         self.p_0 = self.get_link_cartesian_positions()
         self.p_cur = self.p_0
 
-        # Returns the initial position in joint coordinates
+        # Return the initial position in joint coordinates
         return q_0
 
     def solve(self, t: float):
@@ -501,13 +549,16 @@ class DoublePendulum(Pendulum):
         self.q_des_prev = q_des
 
         def is_II(angle):
+            # Use jnp.asarray
             return jnp.asarray([int(jnp.pi / 2 < angle[0] < jnp.pi),
                                int(jnp.pi / 2 < angle[1] < jnp.pi)])
 
         def is_III(angle):
+            # Use jnp.asarray
             return jnp.asarray([int(-jnp.pi / 2 > angle[0] > -jnp.pi),
                                int(-jnp.pi / 2 > angle[1] > -jnp.pi)])
 
+        # Use jnp.asarray
         self.transition += is_III(old_angle) * is_II(new_angle) * jnp.asarray([-1, -1]) \
                            + is_II(old_angle) * is_III(new_angle) * jnp.asarray([1, 1])
 
@@ -519,22 +570,24 @@ class DoublePendulum(Pendulum):
         # coils = params['coils']
 
         # Check reachability
-        r_0 = jnp.linalg.norm(p)
-        if r_0 > jnp.sum(self.l):
-            p = p / r_0 * jnp.sum(self.l)
+        r_0 = jnp.linalg.norm(p) # Use jnp.linalg.norm
+        if r_0 > jnp.sum(self.l): # Use jnp.sum
+            p = p / r_0 * jnp.sum(self.l) # Use jnp.sum
 
         # Calculate joint position
         q0 = self.x_cur[0:self.num_dof]
+        # Pass the JAX key to bad_invkin
         q = self.backend.bad_invkin(p, q0=q0, K=1.0, tol=1e-2, max_steps=100)
 
         #  Correct angle based on transitions between quadrants
         trans = self.detect_transition(q)
-        q = q + trans * 2 * jnp.pi  # This accounts for the non-uniqueness of the inv-kinematics
+        q = q + trans * 2 * jnp.pi # Use jnp.pi
 
         # Calculate the joint speed
+        # Use jnp.linalg.pinv
         dq = jnp.linalg.pinv(self.backend.jacobian(q))[:, 0:-1] @ v
 
-        return jnp.asarray([q, dq])
+        return jnp.asarray([q, dq]) # Use jnp.asarray
 
     # TODO: Expand this in the future to calculate the speeds as wel
     def forward_kins(self,
@@ -544,32 +597,32 @@ class DoublePendulum(Pendulum):
 
     def get_cartesian_state(self):
         # Get joint positions and speeds
-        q = jnp.asarray(self.x_cur[:self.num_dof])
-        dq = jnp.asarray(self.x_cur[self.num_dof:])
+        q = jnp.asarray(self.x_cur[:self.num_dof]) # Use jnp.asarray
+        dq = jnp.asarray(self.x_cur[self.num_dof:]) # Use jnp.asarray
 
         # Calculate the cart. positions and speeds
-        p = jnp.asarray(self.backend.forward_kinematics(q)[0:-1])
-        v = jnp.asarray((self.backend.jacobian(q) @ dq)[0:-1])
+        p = jnp.asarray(self.backend.forward_kinematics(q)[0:-1]) # Use jnp.asarray
+        v = jnp.asarray((self.backend.jacobian(q) @ dq)[0:-1]) # Use jnp.asarray
 
-        return jnp.asarray([p, v])
+        return jnp.asarray([p, v]) # Use jnp.asarray
 
     def get_link_cartesian_positions(self):
         # Get joint positions
-        q = jnp.asarray(self.x_cur[0:self.num_dof])
+        q = jnp.asarray(self.x_cur[0:self.num_dof]) # Use jnp.asarray
 
         # Calculate the link positions
         p = self.backend.forward_kinematics_for_each_link(q)
-        p = jnp.asarray(p[:, 0:-1])
+        p = jnp.asarray(p[:, 0:-1]) # Use jnp.asarray
 
         return p
 
     def get_energies(self):
         # Get joint positions and speeds
-        q = jnp.asarray(self.x_cur[0:self.num_dof])
-        dq = jnp.asarray(self.x_cur[self.num_dof:])
+        q = jnp.asarray(self.x_cur[0:self.num_dof]) # Use jnp.asarray
+        dq = jnp.asarray(self.x_cur[self.num_dof:]) # Use jnp.asarray
 
         # Calculate energies
-        E_pot = jnp.asarray([self.backend.potential_energy(q, absolute=False)])
-        E_kin = jnp.asarray([self.backend.kinetic_energy(q, dq)])
+        E_pot = jnp.asarray([self.backend.potential_energy(q, absolute=False)]) # Use jnp.asarray
+        E_kin = jnp.asarray([self.backend.kinetic_energy(q, dq)]) # Use jnp.asarray
 
-        return jnp.asarray([E_pot, E_kin])
+        return jnp.asarray([E_pot, E_kin]) # Use jnp.asarray

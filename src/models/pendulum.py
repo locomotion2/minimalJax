@@ -35,38 +35,46 @@ class Pendulum(BaseModel):
 
         return eqs_motion
 
-    def select_initial(self, params: dict = None):
+  ## In class Pendulum:
 
+    def select_initial(self, params: dict = None):
+        """
+        Corrected method to select the initial state based on energy.
+        """
         def inverse_kinetic(E: float = 0):
-            # Use jnp.asarray
+            # This function is correct.
             return jnp.asarray([(1 / self.l) * jnp.sqrt(2 * E / self.m)])
 
         def inverse_potential(E: float = 0):
-            # Use jnp.asarray and jnp.arcsin
-            return jnp.asarray([jnp.arcsin(- E / (self.m * self.l * g) - 1)])
+            # Correctly inverts E_p = -m*g*l*(1 + sin(q))
+            # E_p / (-m*g*l) = 1 + sin(q)
+            # sin(q) = -E_p / (m*g*l) - 1
+            val = -E / (self.m * self.l * g) - 1
+            # Clamp the value to the valid [-1, 1] range for arcsin to avoid NaN errors.
+            return jnp.asarray([jnp.arcsin(jnp.clip(val, -1.0, 1.0))])
 
-        # Handle inputs
+        # --- The rest of the function remains the same ---
+        params = params or {}
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0)
 
         # Choose energies based on mode
-        self.rng, subkey = jax.random.split(self.rng) # Split key for randomness
-        alpha = jax.random.uniform(subkey, minval=0, maxval=1) # Use jax.random.uniform
-        self.rng, subkey = jax.random.split(self.rng) # Split key for randomness
-        beta = jax.random.uniform(subkey, minval=0, maxval=1) # Use jax.random.uniform
+        key, subkey1, subkey2 = jax.random.split(self.rng, 3)
+        alpha = jax.random.uniform(subkey1)
+        beta = jax.random.uniform(subkey2)
+        self.rng = key # Update the main key
+
         E_k = 0
         E_p = 0
         if mode == 'speed':
             E_k = E_d
-            E_p = 0
         elif mode == 'position':
-            E_k = 0
             E_p = E_d
         elif mode == 'random_des':
             E_k = alpha * E_d
             E_p = (1 - alpha) * E_d
         elif mode == 'random':
-            E_rand = beta * MAX_ENERGY / 20  # TODO: Change into it's own constant
+            E_rand = beta * MAX_ENERGY / 20
             E_k = alpha * E_rand
             E_p = (1 - alpha) * E_rand
 
@@ -75,12 +83,10 @@ class Pendulum(BaseModel):
         dq_0 = inverse_kinetic(E_k)
 
         # Initialize tracking arrays
-        self.x_0 = jnp.asarray([q_0, dq_0]).flatten() # Use jnp.asarray
+        self.x_0 = jnp.asarray([q_0, dq_0]).flatten()
         self.x_cur = self.x_0
-
-        self.q_0 = q_0
-        self.q_cur = q_0
-
+        self.q_0 = q_0.flatten()
+        self.q_cur = self.q_0
         self.p_0 = self.get_link_cartesian_positions()
         self.p_cur = self.p_0
 
@@ -94,27 +100,33 @@ class Pendulum(BaseModel):
 
         return jnp.asarray([q, dq]) # Use jnp.asarray
 
-    def inverse_kins(self, params: dict = None):  # Todo: this is not up to date
+    def inverse_kins(self, key, params: dict = None):
+        """
+        Corrected method for inverse kinematics. It is now stateless and safer.
+        `key` is a jax.random.PRNGKey.
+        """
         # Load params
         p = params['pos']
         v = params['speed']
         coils = params['coils']
 
         # Calculate angular position
-        theta = jnp.arctan2(p[1], p[0])  # Finds angle in range [-pi, pi] # Use jnp.arctan2
-        theta_corrected = theta + jnp.pi / 2 + coils * 2 * jnp.pi  # This offsets the origin and accounts for the coiling of the CPG # Use jnp.pi
+        theta = jnp.arctan2(p[1], p[0])
+        theta_corrected = theta + jnp.pi / 2 + coils * 2 * jnp.pi
 
         # Calculate angular speed
-        circular_tangential = jnp.asarray( # Use jnp.asarray
-            [jnp.cos(theta_corrected), jnp.sin(theta_corrected)]) # Use jnp.cos, jnp.sin
-        # Pass the JAX key to sutils.project
-        v_proj = sutils.project(self.rng, v, circular_tangential)  # This finds the speed in the
-        # pendulum circle
-        omega_abs = jnp.sqrt(jnp.sum(v_proj ** 2)) / self.l # Use jnp.sqrt, jnp.sum
-        omega_sign = jnp.sign(v_proj[1] / jnp.sin(theta_corrected)) # Use jnp.sign, jnp.sin
+        circular_tangential = jnp.asarray([jnp.cos(theta_corrected), jnp.sin(theta_corrected)])
+
+        # Pass the provided JAX key to sutils.project
+        v_proj = sutils.project(key, v, circular_tangential)
+        omega_abs = jnp.linalg.norm(v_proj) / self.l
+
+        # Robustly determine the sign of the angular velocity using a dot product.
+        # A positive sign means v_proj and the tangential vector point in the same direction.
+        omega_sign = jnp.sign(jnp.dot(v_proj, circular_tangential))
         omega = omega_sign * omega_abs
 
-        return jnp.asarray([theta_corrected, omega]).flatten() # Use jnp.asarray
+        return jnp.asarray([theta_corrected, omega]).flatten()
 
     def forward_kins(self,
                      params: dict = None):  # TODO: Expand this in the future to calculate the speeds as well
