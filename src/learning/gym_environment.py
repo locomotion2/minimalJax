@@ -4,7 +4,9 @@ from src.CONSTANTS import *
 
 import gymnasium as gym
 from gymnasium.spaces import Box
-import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -18,7 +20,7 @@ from src.learning.reward_functions import default_func
 
 
 def p_norm(x, p):
-    return np.power(np.sum(np.power(x, p)), 1 / p)
+    return jnp.power(jnp.sum(jnp.power(x, p)), 1 / p)
 
 
 def move_figure(f, x, y):
@@ -99,8 +101,8 @@ class BaseGymEnvironment(gym.Env):
                 params['num_dof'] = 1
             else:
                 raise NotImplementedError(f"System {self.system} not implemented")
-            self.action_scale = np.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
-            omega_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
+            self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
+            omega_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
             omega_scale[-1] = self.action_scale[-1]
             self.action_scale = omega_scale
             output_size = params['num_dof']
@@ -113,11 +115,11 @@ class BaseGymEnvironment(gym.Env):
                 params['num_dof'] = 1
             else:
                 raise NotImplementedError(f"System {self.system} not implemented")
-            self.action_scale = np.asarray(
+            self.action_scale = jnp.asarray(
                 kwargs.get('action_scale', ACTION_SCALE_DIRECT))
-            q_scale = np.asarray([self.action_scale[0]] * params['num_dof'])
-            q_d_scale = np.asarray([self.action_scale[1]] * params['num_dof'])
-            self.action_scale = np.concatenate([q_scale, q_d_scale])
+            q_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
+            q_d_scale = jnp.asarray([self.action_scale[1]] * params['num_dof'])
+            self.action_scale = jnp.concatenate([q_scale, q_d_scale])
             output_size = params['num_dof'] * 2
         else:
             raise NotImplementedError(f"Generator {generator} not implemented")
@@ -142,14 +144,14 @@ class BaseGymEnvironment(gym.Env):
         self.num_dof = params['num_dof']
         self.r_epi = 0
         self.r_num = 3
-        self.r_traj = np.asarray([np.asarray([self.r_epi] * (self.r_num + 1))])
-        self.E_l_traj = np.asarray([np.asarray([0])])
+        self.r_traj = jnp.asarray([jnp.asarray([self.r_epi] * (self.r_num + 1))])
+        self.E_l_traj = jnp.asarray([jnp.asarray([0])])
 
     def tracking(self, reward: float, costs: list, energies: tuple):
         # Tracking data
-        self.r_traj = np.append(self.r_traj,
-                                [np.concatenate([[reward], costs], axis=0)], axis=0)
-        self.E_l_traj = np.append(self.E_l_traj, [energies[0] + energies[1]])
+        self.r_traj = jnp.append(self.r_traj,
+                                [jnp.concatenate([[reward], costs], axis=0)], axis=0)
+        self.E_l_traj = jnp.append(self.E_l_traj, [energies[0] + energies[1]])
 
         # Tracking the episode
         self.r_epi += reward
@@ -186,9 +188,9 @@ class BaseGymEnvironment(gym.Env):
                  'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
                  'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
         # TODO: maybe add a constant MAX_POSTITION
-        obs = np.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
+        obs = jnp.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
                               q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
-                              np.asarray([self.E_d / MAX_ENERGY])])
+                              jnp.asarray([self.E_d / MAX_ENERGY])])
 
         return state, obs
 
@@ -196,7 +198,7 @@ class BaseGymEnvironment(gym.Env):
         try:
             # Format and take action
             # action[0] += 1  # Enable this for tuning
-            action = np.multiply(self.action_scale, action)  # Scale up the action
+            action = jnp.multiply(self.action_scale, action)  # Scale up the action
             self.sim.step(
                 {'action': action, 'E_d': self.E_d, 'inference': self.inference})
 
@@ -220,7 +222,7 @@ class BaseGymEnvironment(gym.Env):
 
             truncated = terminated
 
-            return obs.astype(np.float32), reward, terminated, truncated, info
+            return obs.astype(jnp.float32), reward, terminated, truncated, info
 
         except KeyboardInterrupt:
             print("Closing the program due to Keyboard interrupt.")
@@ -237,15 +239,15 @@ class BaseGymEnvironment(gym.Env):
         reward, costs = self.reward_func(state)
 
         # Reset tracking
-        self.r_traj = np.append(self.r_traj,
-                                [np.concatenate([[reward], costs], axis=0)],
+        self.r_traj = jnp.append(self.r_traj,
+                                [jnp.concatenate([[reward], costs], axis=0)],
                                 axis=0)  # TODO: The plotting looks off, the starting value is weird
 
         # Reset help variables
         self.r_epi = reward
         self.cur_step = 0
 
-        return obs.astype(np.float32), {}
+        return obs.astype(jnp.float32), {}
 
     def plot(self):
         try:
@@ -265,29 +267,29 @@ class BaseGymEnvironment(gym.Env):
              sim_CPG_traj_data_joints] = sim_data_joints
 
             omega_traj = rl_traj_data['omega_traj'].to_numpy()
-            omega_avg = np.abs(
+            omega_avg = jnp.abs(
                 omega_traj).mean()
-            omega_var = np.abs(omega_traj).var()
+            omega_var = jnp.abs(omega_traj).var()
             print(f'Omega: {omega_avg}')
             print(f'Omega Variance: {omega_var}')
             omega_avg = omega_avg + omega_var
-            period = 2 * np.pi / omega_avg
+            period = 2 * jnp.pi / omega_avg
             print(f'Period: {period}')
-            x_omega = np.asarray([omega_avg, omega_avg])
-            x_period = np.asarray([period, period])
-            n_lines = int(np.ceil(self.sim.t_final / period))
+            x_omega = jnp.asarray([omega_avg, omega_avg])
+            x_period = jnp.asarray([period, period])
+            n_lines = int(jnp.ceil(self.sim.t_final / period))
             y_0 = [-LINE_DIST, LINE_DIST]
 
             param_gen_traj = rl_traj_data['gen'].to_numpy()
             cpg_traj_x = sim_CPG_traj_data['x_traj_CPG'].to_numpy()
             cpg_traj_y = sim_CPG_traj_data['y_traj_CPG'].to_numpy()
-            temp = np.multiply(cpg_traj_x, param_gen_traj)
+            temp = jnp.multiply(cpg_traj_x, param_gen_traj)
             cpg_traj_x = cpg_traj_x[temp != 0]
             cpg_traj_y = cpg_traj_y[temp != 0]
 
             cpg_joint_traj_x = sim_CPG_traj_data_joints['x_traj_CPG'].to_numpy()
             cpg_joint_traj_y = sim_CPG_traj_data_joints['y_traj_CPG'].to_numpy()
-            temp = np.multiply(cpg_joint_traj_x, param_gen_traj)
+            temp = jnp.multiply(cpg_joint_traj_x, param_gen_traj)
             cpg_joint_traj_x = cpg_joint_traj_x[temp != 0]
             cpg_joint_traj_y = cpg_joint_traj_y[temp != 0]
 
@@ -410,9 +412,9 @@ class BaseGymEnvironment(gym.Env):
 
             # Energies vs time
             samples = len(time_data)
-            E_d_traj = np.ones(samples) * self.E_d
+            E_d_traj = jnp.ones(samples) * self.E_d
             if self.energy_step:
-                E_d_traj[0:int(np.floor(samples / 2))] *= 2
+                E_d_traj[0:int(jnp.floor(samples / 2))] *= 2
 
             energy_data = pd.concat([time_data,
                                      pd.DataFrame({'energy_des': E_d_traj,
@@ -502,7 +504,7 @@ class BaseGymEnvironment(gym.Env):
                 img = ImageGrab.grab(bbox=(0, 0, screen_size[0], screen_size[1]))
 
                 # Convert the screenshot to a numpy array
-                img_np = np.array(img)
+                img_np = jnp.array(img)
 
                 # Convert the color space from RGB to BGR
                 frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -519,7 +521,7 @@ class BaseGymEnvironment(gym.Env):
         if mode == 'rgb_array':
             return
             # width, height = pg.size()
-            # return np.asarray(pg.screenshot(region=(0, 0, width, height)))
+            # return jnp.asarray(pg.screenshot(region=(0, 0, width, height)))
         elif mode == 'human':
             pass
         else:

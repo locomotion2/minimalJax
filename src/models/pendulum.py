@@ -1,6 +1,8 @@
 from src.CONSTANTS import *
 
-import numpy as np
+import numpy as np # Keep for potential numpy operations if not fully converted
+import jax
+import jax.numpy as jnp
 
 from src.models.base_models import BaseModel
 
@@ -13,7 +15,7 @@ class Pendulum(BaseModel):
             self.m = params.get('m', 0.1)
             self.k_f = params.get('k_f', 0.0)
 
-        self.rng = np.random.default_rng()
+        self.rng = jax.random.PRNGKey(0) # Use JAX PRNG key
         super().__init__(params)
 
     def make_eqs_motion(self, params: dict = None):
@@ -24,30 +26,34 @@ class Pendulum(BaseModel):
             x2 = x[1]
             tau = controller(t, x1, x2)
 
-            dx1 = np.asarray([x2])
-            dx2 = g / np.linalg.norm(self.l) * np.cos(x1) - \
+            dx1 = jnp.asarray([x2]) # Use jnp.asarray
+            dx2 = g / jnp.linalg.norm(self.l) * jnp.cos(x1) - \
                   self.k_f * x2 + \
-                  tau / (np.linalg.norm(self.m) * np.linalg.norm(self.l) ** 2)
+                  tau / (jnp.linalg.norm(self.m) * jnp.linalg.norm(self.l) ** 2) # Use jnp.linalg.norm and jnp.cos
 
-            return np.asarray([dx1, dx2]).flatten()
+            return jnp.asarray([dx1, dx2]).flatten() # Use jnp.asarray
 
         return eqs_motion
 
     def select_initial(self, params: dict = None):
 
         def inverse_kinetic(E: float = 0):
-            return np.asarray([(1 / self.l) * np.sqrt(2 * E / self.m)])
+            # Use jnp.asarray
+            return jnp.asarray([(1 / self.l) * jnp.sqrt(2 * E / self.m)])
 
         def inverse_potential(E: float = 0):
-            return np.asarray([np.arcsin(- E / (self.m * self.l * g) - 1)])
+            # Use jnp.asarray and jnp.arcsin
+            return jnp.asarray([jnp.arcsin(- E / (self.m * self.l * g) - 1)])
 
         # Handle inputs
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0)
 
         # Choose energies based on mode
-        alpha = self.rng.uniform(0, 1)
-        beta = self.rng.uniform(0, 1)
+        self.rng, subkey = jax.random.split(self.rng) # Split key for randomness
+        alpha = jax.random.uniform(subkey, minval=0, maxval=1) # Use jax.random.uniform
+        self.rng, subkey = jax.random.split(self.rng) # Split key for randomness
+        beta = jax.random.uniform(subkey, minval=0, maxval=1) # Use jax.random.uniform
         E_k = 0
         E_p = 0
         if mode == 'speed':
@@ -69,11 +75,11 @@ class Pendulum(BaseModel):
         dq_0 = inverse_kinetic(E_k)
 
         # Initialize tracking arrays
-        self.x_0 = np.asarray([q_0, dq_0]).flatten()
+        self.x_0 = jnp.asarray([q_0, dq_0]).flatten() # Use jnp.asarray
         self.x_cur = self.x_0
 
         self.q_0 = q_0
-        self.q_cur = self.q_0
+        self.q_cur = q_0
 
         self.p_0 = self.get_link_cartesian_positions()
         self.p_cur = self.p_0
@@ -82,11 +88,11 @@ class Pendulum(BaseModel):
 
     def solve(self, t: float):  # Todo: This is not up to date
         [q0, _] = self.x_0
-        omega_star = np.sqrt(np.abs(g) / self.l)
-        q = q0 * np.cos(omega_star * t)
-        dq = - omega_star * q0 * np.sin(omega_star * t)
+        omega_star = jnp.sqrt(jnp.abs(g) / self.l) # Use jnp.sqrt, jnp.abs
+        q = q0 * jnp.cos(omega_star * t) # Use jnp.cos
+        dq = - omega_star * q0 * jnp.sin(omega_star * t) # Use jnp.sin
 
-        return np.asarray([q, dq])
+        return jnp.asarray([q, dq]) # Use jnp.asarray
 
     def inverse_kins(self, params: dict = None):  # Todo: this is not up to date
         # Load params
@@ -95,29 +101,30 @@ class Pendulum(BaseModel):
         coils = params['coils']
 
         # Calculate angular position
-        theta = np.arctan2(p[1], p[0])  # Finds angle in range [-pi, pi]
-        theta_corrected = theta + np.pi / 2 + coils * 2 * np.pi  # This offsets the origin and accounts for the coiling of the CPG
+        theta = jnp.arctan2(p[1], p[0])  # Finds angle in range [-pi, pi] # Use jnp.arctan2
+        theta_corrected = theta + jnp.pi / 2 + coils * 2 * jnp.pi  # This offsets the origin and accounts for the coiling of the CPG # Use jnp.pi
 
         # Calculate angular speed
-        circular_tangential = np.asarray(
-            [np.cos(theta_corrected), np.sin(theta_corrected)])
-        v_proj = sutils.project(v, circular_tangential)  # This finds the speed in the
+        circular_tangential = jnp.asarray( # Use jnp.asarray
+            [jnp.cos(theta_corrected), jnp.sin(theta_corrected)]) # Use jnp.cos, jnp.sin
+        # Pass the JAX key to sutils.project
+        v_proj = sutils.project(self.rng, v, circular_tangential)  # This finds the speed in the
         # pendulum circle
-        omega_abs = np.sqrt(sum(v_proj ** 2)) / self.l
-        omega_sign = np.sign(v_proj[1] / np.sin(theta_corrected))
+        omega_abs = jnp.sqrt(jnp.sum(v_proj ** 2)) / self.l # Use jnp.sqrt, jnp.sum
+        omega_sign = jnp.sign(v_proj[1] / jnp.sin(theta_corrected)) # Use jnp.sign, jnp.sin
         omega = omega_sign * omega_abs
 
-        return np.asarray([theta_corrected, omega]).flatten()
+        return jnp.asarray([theta_corrected, omega]).flatten() # Use jnp.asarray
 
     def forward_kins(self,
                      params: dict = None):  # TODO: Expand this in the future to calculate the speeds as well
         q = params['joints']
-        p = np.asarray([self.l * np.cos(q), self.l * np.sin(q)])
+        p = jnp.asarray([self.l * jnp.cos(q), self.l * jnp.sin(q)]) # Use jnp.asarray, jnp.cos, jnp.sin
         return p.flatten()
 
     def get_joint_state(self):
-        q = np.asarray(self.x_cur[0:self.num_dof]).flatten()
-        dq = np.asarray(self.x_cur[self.num_dof:]).flatten()
+        q = jnp.asarray(self.x_cur[0:self.num_dof]).flatten() # Use jnp.asarray
+        dq = jnp.asarray(self.x_cur[self.num_dof:]).flatten() # Use jnp.asarray
         return [q, dq]
 
     def get_cartesian_state(self):
@@ -125,13 +132,13 @@ class Pendulum(BaseModel):
         dq = self.x_cur[1]
 
         # Todo: This needs to be replaced by forward kins
-        p = np.asarray([self.l * np.cos(q), self.l * np.sin(q)]).flatten()
-        v = np.asarray([- self.l * dq * np.sin(q), self.l * dq * np.cos(q)]).flatten()
+        p = jnp.asarray([self.l * jnp.cos(q), self.l * jnp.sin(q)]).flatten() # Use jnp.asarray, jnp.cos, jnp.sin
+        v = jnp.asarray([- self.l * dq * jnp.sin(q), self.l * dq * jnp.cos(q)]).flatten() # Use jnp.asarray, jnp.sin, jnp.cos
         return [p, v]
 
     def get_link_cartesian_positions(self):
         # Get joint positions
-        q = np.asarray(self.x_cur[0:self.num_dof])
+        q = jnp.asarray(self.x_cur[0:self.num_dof]) # Use jnp.asarray
 
         # Calculate the link positions
         p = self.forward_kins({'joints': q})
@@ -139,5 +146,6 @@ class Pendulum(BaseModel):
         return p
 
     def get_energies(self):
-        return np.asarray([1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
-                           - self.m * g * self.l * (1 + np.sin(self.x_cur[0]))])
+        # Use jnp.asarray, jnp.sin
+        return jnp.asarray([1 / 2 * self.m * (self.l * self.x_cur[1]) ** 2,
+                           - self.m * g * self.l * (1 + jnp.sin(self.x_cur[0]))])

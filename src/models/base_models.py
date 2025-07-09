@@ -1,7 +1,9 @@
 from src.CONSTANTS import *
 
 # import sys
-import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
 from abc import ABC, abstractmethod
 
 from scipy.integrate import odeint, solve_ivp
@@ -18,9 +20,9 @@ class BaseModel(ABC):
         self.eqs_motion = self.make_eqs_motion()
 
         # Starting values
-        self.t_0 = np.asarray([params.get('t_0', 0)]).flatten()
-        self.x_0 = np.asarray([0] * self.state_size)
-        self.q_0 = np.asarray([0] * self.num_dof)
+        self.t_0 = jnp.asarray([params.get('t_0', 0)]).flatten()
+        self.x_0 = jnp.asarray([0] * self.state_size)
+        self.q_0 = jnp.asarray([0] * self.num_dof)
 
         # Current variables
         self.t_cur = self.t_0
@@ -29,15 +31,15 @@ class BaseModel(ABC):
 
         # Derived variables
         self.p_0 = self.get_link_cartesian_positions()
-        self.E_0 = np.asarray([sum(self.get_energies())]).flatten()
+        self.E_0 = jnp.asarray([sum(self.get_energies())]).flatten()
         self.p_cur = self.p_0
         self.E_cur = self.E_0
 
         # Tracking variables # Todo: add conditional if eval
         self.t_traj = self.t_cur
-        self.x_traj = np.asarray([self.x_cur])
-        self.q_traj = np.asarray([self.q_cur])
-        self.p_traj = np.asarray([self.p_cur])
+        self.x_traj = jnp.asarray([self.x_cur])
+        self.q_traj = jnp.asarray([self.q_cur])
+        self.p_traj = jnp.asarray([self.p_cur])
         self.E_traj = self.E_cur
 
     @abstractmethod
@@ -49,7 +51,7 @@ class BaseModel(ABC):
         raise NotImplementedError
 
     def state_to_joints(self):
-        return np.asarray(self.x_cur[0:self.num_dof])
+        return jnp.asarray(self.x_cur[0:self.num_dof])
 
     def restart(self, params: dict = None):
         # Handle inputs
@@ -60,14 +62,14 @@ class BaseModel(ABC):
 
         # Restart current values (positional values restarted in select_initial)
         self.t_cur = self.t_0
-        self.E_0 = np.asarray([sum(self.get_energies())]).flatten()
+        self.E_0 = jnp.asarray([sum(self.get_energies())]).flatten()
         self.E_cur = self.E_0
 
         # Restart tracking
         self.t_traj = self.t_cur
-        self.x_traj = np.asarray([self.x_cur])
-        self.q_traj = np.asarray([self.q_cur])
-        self.p_traj = np.asarray([self.p_cur])
+        self.x_traj = jnp.asarray([self.x_cur])
+        self.q_traj = jnp.asarray([self.q_cur])
+        self.p_traj = jnp.asarray([self.p_cur])
         self.E_traj = self.E_cur
 
         return p_0
@@ -83,10 +85,10 @@ class BaseModel(ABC):
     # @profile
     def step(self, params: dict = None):
         # Define the integration interval # Todo: clean up, define the ability to have more points
-        t_final = np.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
-        # num_points = int(np.rint((t_final - self.t_cur) / self.delta_t)) + 1
-        # ts = np.linspace(self.t_cur, t_final, num_points)
-        ts = np.asarray([self.t_cur, t_final]).flatten()
+        t_final = jnp.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
+        # num_points = int(jnp.rint((t_final - self.t_cur) / self.delta_t)) + 1
+        # ts = jnp.linspace(self.t_cur, t_final, num_points)
+        ts = jnp.asarray([self.t_cur, t_final]).flatten()
         # debug_print('ts', ts)
 
         # Simulate the system until t_final
@@ -98,7 +100,7 @@ class BaseModel(ABC):
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
         self.q_cur = self.state_to_joints()
-        self.E_cur = np.asarray([sum(self.get_energies())]).flatten()
+        self.E_cur = jnp.asarray([sum(self.get_energies())]).flatten()
         self.t_cur = t_final
 
     # @profile
@@ -111,27 +113,27 @@ class BaseModel(ABC):
 
         # Default working well (default tolerances: rtol=1e-3, atol=1e-6)
         output = solve_ivp(eqs, t_span=ts, y0=x_0, method='RK23', args=(eqs_params,), rtol=5e-2, atol=1e-5)
-        x_final = np.asarray(output.y[:, -1])
+        x_final = jnp.asarray(output.y[:, -1])
 
         # Todo: compare with the current system
         # old_reference
         # xs = odeint(self.eqs_motion, y0=self.x_cur, t=ts, args=(params,), rtol=1.49012e-8, atol=1.49012e-8)  # default tolerances: 1.49012e-8.
-        # x_cur = np.asarray(xs[-1])
+        # x_cur = jnp.asarray(xs[-1])
 
         # Todo: look into getting this to work
         # New tests
         # solver = nbkode.ForwardEuler(eqs_motion, t0=self.t_cur, y0=self.x_cur, params=params)
         # _, xs = solver.run(ts)
-        # x_cur = np.asarray(xs[:, -1])
+        # x_cur = jnp.asarray(xs[:, -1])
 
         return x_final
 
     def update_trajectories(self, params: dict = None):
-        self.x_traj = np.append(self.x_traj, [self.x_cur], axis=0)
-        self.q_traj = np.append(self.q_traj, [self.q_cur], axis=0)
-        self.p_traj = np.append(self.p_traj, [self.p_cur], axis=0)
-        self.E_traj = np.append(self.E_traj, self.E_cur)
-        self.t_traj = np.append(self.t_traj, self.t_cur)
+        self.x_traj = jnp.append(self.x_traj, [self.x_cur], axis=0)
+        self.q_traj = jnp.append(self.q_traj, [self.q_cur], axis=0)
+        self.p_traj = jnp.append(self.p_traj, [self.p_cur], axis=0)
+        self.E_traj = jnp.append(self.E_traj, self.E_cur)
+        self.t_traj = jnp.append(self.t_traj, self.t_cur)
 
     @abstractmethod
     def solve(self, t):
@@ -177,19 +179,19 @@ class JointsGenerator(BaseModel):
         super().__init__(params)
 
         # Define the tracking Todo: add conditional when training
-        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
 
     def restart(self, params: dict = None):
         super().restart(params)
 
         # Restart tracking
-        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
 
     def update_trajectories(self, params: dict = None):
         super().update_trajectories(params=params)
 
         # Update trajectories
-        self.params_traj = np.append(self.params_traj, [params.get('input')], axis=0)
+        self.params_traj = jnp.append(self.params_traj, [params.get('input')], axis=0)
 
     def select_initial(self, params: dict = None):
         self.x_0 = params.get('x_0', self.x_0)
@@ -198,14 +200,14 @@ class JointsGenerator(BaseModel):
         self.q_0 = self.x_0
         self.q_cur = self.q_0
 
-        self.p_0 = np.asarray([0] * self.num_dof)
+        self.p_0 = jnp.asarray([0] * self.num_dof)
         self.p_cur = self.p_0
 
     def get_cartesian_state(self):
         raise NotImplementedError
 
     def get_link_cartesian_positions(self):
-        return np.asarray([0] * self.num_dof)
+        return jnp.asarray([0] * self.num_dof)
 
     @abstractmethod
     def get_params(self):
@@ -228,7 +230,7 @@ class JointsGenerator(BaseModel):
         return NotImplementedError
 
     def get_energies(self):
-        return np.asarray([0, 0])
+        return jnp.asarray([0, 0])
 
 
 class PolarGenerator(BaseModel):
@@ -236,19 +238,19 @@ class PolarGenerator(BaseModel):
         super().__init__(params)
 
         # Define the tracking Todo: add conditional when training
-        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
 
     def restart(self, params: dict = None):
         super().restart(params)
 
         # Restart tracking
-        self.params_traj = np.asarray([np.asarray([0] * (self.num_dof + 1))])
+        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
 
     def update_trajectories(self, params: dict = None):
         super().update_trajectories(params=params)
 
         # Update trajectories
-        self.params_traj = np.append(self.params_traj, [params.get('input')], axis=0)
+        self.params_traj = jnp.append(self.params_traj, [params.get('input')], axis=0)
 
     def select_initial(self, params: dict = None):
         self.x_0 = self.joints_to_polar(params.get('x_0', self.x_0))
@@ -257,25 +259,25 @@ class PolarGenerator(BaseModel):
         self.q_0 = self.polar_to_joints(self.x_0)[0]
         self.q_cur = self.polar_to_joints(self.x_cur)[0]
 
-        self.p_0 = np.asarray([0] * self.num_dof)
+        self.p_0 = jnp.asarray([0] * self.num_dof)
         self.p_cur = self.p_0
 
     def state_to_joints(self):
         return self.polar_to_joints(self.x_cur[0:self.num_dof])[0]
 
     @abstractmethod
-    def polar_to_joints(self, state: np.ndarray = None):
+    def polar_to_joints(self, state: jnp.ndarray = None):
         raise NotImplementedError
 
     @abstractmethod
-    def joints_to_polar(self, joints: np.ndarray = None):
+    def joints_to_polar(self, joints: jnp.ndarray = None):
         raise NotImplementedError
 
     def get_cartesian_state(self):
         raise NotImplementedError
 
     def get_link_cartesian_positions(self):
-        return np.asarray([0] * self.num_dof)
+        return jnp.asarray([0] * self.num_dof)
 
     @abstractmethod
     def get_params(self):
@@ -298,7 +300,7 @@ class PolarGenerator(BaseModel):
         return NotImplementedError
 
     def get_energies(self):
-        return np.asarray([0, 0])
+        return jnp.asarray([0, 0])
 
 
 class DummyOutput(JointsGenerator):
@@ -306,7 +308,7 @@ class DummyOutput(JointsGenerator):
         super().__init__(params)
 
         # Define the vel vars
-        self.dq_cur = np.asarray([0] * self.num_dof)
+        self.dq_cur = jnp.asarray([0] * self.num_dof)
 
     def step(self, params: dict = None):
         # Define the integration interval
@@ -317,9 +319,9 @@ class DummyOutput(JointsGenerator):
 
         # Update the current variables
         self.p_cur = self.get_link_cartesian_positions()
-        self.q_cur = np.asarray(self.x_cur[0:self.num_dof])
+        self.q_cur = jnp.asarray(self.x_cur[0:self.num_dof])
         self.dq_cur = params.get('dq_d')
-        self.E_cur = np.asarray([sum(self.get_energies())])
+        self.E_cur = jnp.asarray([sum(self.get_energies())])
         self.t_cur = t_final
 
     def make_eqs_motion(self, params: dict = None):
@@ -329,11 +331,11 @@ class DummyOutput(JointsGenerator):
         return dummy_func
 
     def update_trajectories(self, params: dict = None):
-        params['input'] = np.asarray([0] * (self.num_dof + 1))
+        params['input'] = jnp.asarray([0] * (self.num_dof + 1))
         super().update_trajectories(params=params)
 
     def get_joint_state(self):
-        return np.asarray([self.q_cur, self.dq_cur])
+        return jnp.asarray([self.q_cur, self.dq_cur])
 
     def get_params(self):
-        return np.asarray([0, 0])
+        return jnp.asarray([0, 0])

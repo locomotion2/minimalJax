@@ -1,13 +1,17 @@
 from src.CONSTANTS import *
 
-import numpy as np
+# import numpy as np  <- Replaced with jax.numpy
+import jax
+import jax.numpy as jnp
+from jax import jit
 from abc import ABC, abstractmethod
 from src.discovery_utils import gaus
+from functools import partial
 
 
 class BaseController(ABC):
     def __init__(self, params: dict = None):
-        delta_t = params['delta_t']
+        delta_t = params.get('delta_t') # Use .get for safety
         if delta_t is None:
             self.delta_t = MIN_TIMESTEP
         else:
@@ -35,15 +39,17 @@ class ConstantOutput(BaseController):
 class basePIDController(BaseController):
     def __init__(self, params: dict = None):
         super().__init__(params)
-        gains_outer = params['gains_outer']
-        gains_eigen = params['gains_eigen']
-        gains_mode = params['mode']
+        gains_outer = params.get('gains_outer') # Use .get for safety
+        gains_eigen = params.get('gains_eigen') # Use .get for safety
+        gains_mode = params.get('mode')
+
         if gains_outer is None:
-            self.gains_outer = np.asarray([1, 0, 0])
-            self.gains_eigen = np.asarray([1, 0, 0])
+            self.gains_outer = jnp.asarray([1.0, 0.0, 0.0])
+            self.gains_eigen = jnp.asarray([1.0, 0.0, 0.0])
         else:
-            self.gains_outer = np.asarray(gains_outer)
-            self.gains_eigen = np.asarray(gains_eigen)
+            # Ensure data types are JAX-compatible (e.g., float32)
+            self.gains_outer = jnp.asarray(gains_outer, dtype=jnp.float32)
+            self.gains_eigen = jnp.asarray(gains_eigen, dtype=jnp.float32)
         if gains_mode is None:
             self.mode = True
         elif gains_mode == 'maximal':
@@ -54,35 +60,31 @@ class basePIDController(BaseController):
             raise NotImplementedError
         self.gains_cur = self.gains_eigen
 
-        # Target variables
-        self.q_d = [0] * self.n_dof
-        self.dq_d = [0] * self.n_dof
-
-        # D and I variables
-        self.q_d_prev = [0] * self.n_dof
-        self.e_P_accum = [0] * self.n_dof
-
-        # Storage and help variables
-        self.e_cur = [0] * self.n_dof
-        self.tau_last = [0] * self.n_dof
-        self.tau_traj = np.asarray([0] * self.n_dof)
-        self.q_d_traj = np.asarray([np.asarray([0] * self.n_dof)])
-        self.e_traj = np.asarray([np.asarray([0, 0, 0])])
+        # Initialize with JAX arrays
+        self.q_d = jnp.zeros(self.n_dof)
+        self.dq_d = jnp.zeros(self.n_dof)
+        self.q_d_prev = jnp.zeros(self.n_dof)
+        self.e_P_accum = jnp.zeros(self.n_dof)
+        self.e_cur = jnp.zeros(self.n_dof)
+        self.tau_last = jnp.zeros(self.n_dof)
+        self.tau_traj = jnp.asarray([jnp.zeros(self.n_dof)])
+        self.q_d_traj = jnp.asarray([jnp.zeros(self.n_dof)])
+        self.e_traj = jnp.asarray([jnp.zeros(3)])
 
     def restart(self):
         # Target variables
-        self.q_d = [0] * self.n_dof
-        self.dq_d = [0] * self.n_dof
+        self.q_d = jnp.zeros(self.n_dof)
+        self.dq_d = jnp.zeros(self.n_dof)
 
         # D and I variables
-        self.q_d_prev = [0] * self.n_dof
-        self.e_P_accum = [0] * self.n_dof
+        self.q_d_prev = jnp.zeros(self.n_dof)
+        self.e_P_accum = jnp.zeros(self.n_dof)
 
         # Storage and help variables
-        self.e_cur = [0] * self.n_dof
-        self.e_traj = np.asarray([np.asarray([0, 0, 0])])
-        self.tau_traj = np.asarray([np.asarray([0])])
-        self.q_d_traj = np.asarray([np.asarray(self.q_d)])
+        self.e_cur = jnp.zeros(self.n_dof)
+        self.e_traj = jnp.asarray([jnp.asarray([0, 0, 0])])
+        self.tau_traj = jnp.asarray([jnp.asarray([0])])
+        self.q_d_traj = jnp.asarray([jnp.asarray(self.q_d)])
 
     def get_force(self):
         return self.tau_last
@@ -101,52 +103,69 @@ class basePIDController(BaseController):
         pass
 
     def set_target(self, q_d: float, dq_d: float, params: dict = None):
-        self.q_d = q_d
-        self.dq_d = dq_d
+        self.q_d = jnp.asarray(q_d)
+        self.dq_d = jnp.asarray(dq_d)
 
         if not params.get('inference', False):
             cost_energy = gaus(params.get('E') - params.get('E_d'), 0.05)
             if self.mode:
-                self.gains_cur = np.maximum(cost_energy * self.gains_eigen, self.gains_outer)
+                self.gains_cur = jnp.maximum(cost_energy * self.gains_eigen, self.gains_outer)
             else:
-                self.gains_cur = np.minimum(1/np.maximum(0.001, cost_energy) * self.gains_eigen, self.gains_outer)
+                self.gains_cur = jnp.minimum(1/jnp.maximum(0.001, cost_energy) * self.gains_eigen, self.gains_outer)
 
     def update_trajectories(self, q_d):
         # Tracking vectors
-        error = np.linalg.norm(self.e_cur, axis=1)
+        # Note: jnp.append is less efficient than pre-allocation in JAX as it recreates arrays.
+        # For maximum performance, consider pre-allocating memory and updating slices.
+        error = jnp.linalg.norm(self.e_cur, axis=1)
         tau = self.tau_last
-        tau = np.linalg.norm(tau)
-        self.e_traj = np.append(self.e_traj, [error], axis=0)  # TODO: This needs to change for the larger dims
-        self.tau_traj = np.append(self.tau_traj, [np.asarray([tau])], axis=0)
-        self.q_d_traj = np.append(self.q_d_traj, [q_d], axis=0)
+        tau = jnp.linalg.norm(tau)
+        self.e_traj = jnp.append(self.e_traj, [error], axis=0)
+        self.tau_traj = jnp.append(self.tau_traj, [jnp.asarray([tau])], axis=0)
+        self.q_d_traj = jnp.append(self.q_d_traj, [q_d], axis=0)
 
 
 class PID_pos_vel_tracking_modeled(basePIDController):
     def __init__(self, params: dict = None):
         super().__init__(params)
 
-    def input(self, t, q, dq):
-        # Handle inputs
-        q_cur = q
-        dq_cur = dq
-
+    # The static, JIT-compiled core of the controller
+    @staticmethod
+    @jit
+    def _calculate_jit(q_cur, dq_cur, q_d, dq_d, e_P_accum, gains_cur):
         # Calc. P error
-        e_P = self.q_d - q_cur
+        e_P = q_d - q_cur
 
         # Calc. I error
-        self.e_P_accum += e_P
-        e_I = self.e_P_accum
+        new_e_P_accum = e_P_accum + e_P
+        e_I = new_e_P_accum
 
         # Calc. D error
-        self.q_d_prev = self.q_d
-        e_D = self.dq_d - dq_cur
-        e_D = e_D.flatten()
+        e_D = (dq_d - dq_cur).flatten()
 
         # Calc. Force
-        [P, I, D] = self.gains_cur
-        self.e_cur = np.asarray([P * e_P, I * e_I, D * e_D])
-        # self.e_cur = np.asarray([e_P, e_I, e_D]) @ self.gains
-        tau = self.e_cur.sum(axis=0).flatten()  # TODO: This can be an issue
-        self.tau_last = tau  # Update the variable to eventually get last
+        P, I, D = gains_cur
+        new_e_cur = jnp.asarray([P * e_P, I * e_I, D * e_D])
+        tau = new_e_cur.sum(axis=0).flatten()
+        
+        return tau, new_e_cur, new_e_P_accum
 
+    def input(self, t, q, dq):
+        # Ensure inputs are JAX arrays
+        q_cur = jnp.asarray(q)
+        dq_cur = jnp.asarray(dq)
+
+        # Call the pure, JIT-compiled function with the current state
+        tau, e_cur, e_P_accum = self._calculate_jit(
+            q_cur, dq_cur, self.q_d, self.dq_d, self.e_P_accum, self.gains_cur
+        )
+
+        # Update the controller's state based on the results from the JIT'd function
+        self.tau_last = tau
+        self.e_cur = e_cur
+        self.e_P_accum = e_P_accum
+        self.q_d_prev = self.q_d # q_d is not modified in the JIT part, so update prev state here
+
+        # print(jax.devices())
         return tau
+

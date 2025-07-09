@@ -1,6 +1,8 @@
 from src.CONSTANTS import *
 
-import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
 
 from scipy.integrate import odeint, solve_ivp
 
@@ -52,11 +54,11 @@ class ArnesDoublePendulum:
         sol = solve_ivp(
             fun=self.create_dynamics(controllers),
             t_span=(0, t_max),
-            y0=np.r_[q0, dq0],
+            y0=jnp.r_[q0, dq0],
             method='LSODA',
             dense_output=dense,
-            t_eval=np.arange(0, t_max, dt) if dt and dense else None,
-            max_step=dt if dt else np.inf,
+            t_eval=jnp.arange(0, t_max, dt) if dt and dense else None,
+            max_step=dt if dt else jnp.inf,
             **kwargs,
         )
 
@@ -67,7 +69,7 @@ class ArnesDoublePendulum:
 
         traj = sol.y.T
         n = self.dof
-        q = np.arctan2(np.sin(traj[:, 0:n]), np.cos(traj[:, 0:n])) if wrap else traj[:,
+        q = jnp.arctan2(jnp.sin(traj[:, 0:n]), jnp.cos(traj[:, 0:n])) if wrap else traj[:,
                                                                                 0:n]
         if return_sol:
             return sol.t, q, traj[:, n:], sol
@@ -76,14 +78,14 @@ class ArnesDoublePendulum:
 
     def compute_equilibrium(self, q0=None):
         if q0 is None:
-            q0 = np.zeros(self.dof)
+            q0 = jnp.zeros(self.dof)
 
         def viscous_damping(t, q, dq):
             return -2 * self.mass_matrix(q) @ dq
 
         _, q, _, sol = self.sim(
             q0=q0,
-            dq0=np.zeros(self.dof),
+            dq0=jnp.zeros(self.dof),
             dt=1e-2,
             controllers=[viscous_damping],
             events=self.create_convergence_check(),
@@ -102,35 +104,35 @@ class ArnesDoublePendulum:
         def convergence_check(t, y):
             q, dq = y[0:n], y[n:]
             if t < 1:
-                return np.inf
+                return jnp.inf
             else:
-                return np.linalg.norm(dq) - eps
+                return jnp.linalg.norm(dq) - eps
 
         convergence_check.terminal = terminal
         return convergence_check
 
     def mass_matrix(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array([[l[0] ** 2 * m[0] + m[1] * (
-                    l[0] ** 2 + 2 * l[0] * l[1] * np.cos(q[1]) + l[1] ** 2),
-                          1.0 * l[1] * m[1] * (l[0] * np.cos(q[1]) + l[1])],
-                         [1.0 * l[1] * m[1] * (l[0] * np.cos(q[1]) + l[1]),
+        return jnp.array([[l[0] ** 2 * m[0] + m[1] * (
+                    l[0] ** 2 + 2 * l[0] * l[1] * jnp.cos(q[1]) + l[1] ** 2),
+                          1.0 * l[1] * m[1] * (l[0] * jnp.cos(q[1]) + l[1])],
+                         [1.0 * l[1] * m[1] * (l[0] * jnp.cos(q[1]) + l[1]),
                           1.0 * l[1] ** 2 * m[1]]])
 
     def gravity(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array(
-            [[g * (l[0] * m[0] * np.cos(q[0]) + m[1] * (
-                        l[0] * np.cos(q[0]) + l[1] * np.cos(q[0] + q[1])))],
-             [g * l[1] * m[1] * np.cos(q[0] + q[1])]]).flatten()
+        return jnp.array(
+            [[g * (l[0] * m[0] * jnp.cos(q[0]) + m[1] * (
+                        l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])))],
+             [g * l[1] * m[1] * jnp.cos(q[0] + q[1])]]).flatten()
 
     def coriolis_centrifugal_forces(self, q, dq):
         l, m, g, k, qr, kf = self.params
-        return np.array([[-2.0 * dq[0] * dq[1] * l[0] * l[1] * m[1] * np.sin(
+        return jnp.array([[-2.0 * dq[0] * dq[1] * l[0] * l[1] * m[1] * jnp.sin(
             q[1]) - 1.0 * dq[1] ** 2 * l[0] * l[
-                              1] * m[1] * np.sin(q[1]) + 1.0 * k[0] * q[0] - 1.0 * k[
+                              1] * m[1] * jnp.sin(q[1]) + 1.0 * k[0] * q[0] - 1.0 * k[
                               0] * qr[0]], [
-                             1.0 * dq[0] ** 2 * l[0] * l[1] * m[1] * np.sin(
+                             1.0 * dq[0] ** 2 * l[0] * l[1] * m[1] * jnp.sin(
                                  q[1]) + 1.0 * k[1] * q[1] - 1.0 * k[
                                  1] * qr[1]]]).flatten()
 
@@ -160,7 +162,7 @@ class ArnesDoublePendulum:
         if q.ndim == 1:
             return sutils.hom2xyphi(self._link_positions(q).reshape((-1, 3, 3)))
         elif q.ndim == 2:
-            out = np.empty((q.shape[0], self.dof, 3))
+            out = jnp.empty((q.shape[0], self.dof, 3))
             for i in range(q.shape[0]):
                 out[i, :, :] = sutils.hom2xyphi(self._link_positions(q[i]).reshape((-1,
                                                                                     3,
@@ -173,20 +175,20 @@ class ArnesDoublePendulum:
         if q0 is not None:
             q = q0
         else:
-            q = np.random.uniform(-np.pi, np.pi, self.dof)
+            q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
 
         if cart.size == 3:
             f = lambda x: self.forward_kinematics(x)
             if self.dof == 3:
-                A = lambda x: np.linalg.inv(self.jacobian(x))
+                A = lambda x: jnp.linalg.inv(self.jacobian(x))
             else:
-                A = lambda x: np.linalg.pinv(self.jacobian(x))
+                A = lambda x: jnp.linalg.pinv(self.jacobian(x))
         elif cart.size == 2:
             f = lambda x: self.forward_kinematics(x)[0:2]
-            A = lambda x: np.linalg.pinv(self.jacobian(x)[0:2, :])
+            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:2, :])
         elif cart.size == 1:
             f = lambda x: self.forward_kinematics(x)[0:1]
-            A = lambda x: np.linalg.pinv(self.jacobian(x)[0:1, :])
+            A = lambda x: jnp.linalg.pinv(self.jacobian(x)[0:1, :])
         else:
             raise ValueError("Illegal length of desired task-space pose")
 
@@ -194,170 +196,170 @@ class ArnesDoublePendulum:
         while True:
             if step > max_steps:
                 print(f"No invkin solution found for {cart}, trying again")
-                q = np.random.uniform(-np.pi, np.pi, self.dof)
+                q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
                 step = 0
 
             e = cart - f(q)
-            if np.linalg.norm(e) < tol:
+            if jnp.linalg.norm(e) < tol:
                 break
             try:
-                inc = A(q) @ np.squeeze(K * e)
+                inc = A(q) @ jnp.squeeze(K * e)
             except ValueError:
-                inc = (A(q) * np.squeeze(K * e))[:, 0]
+                inc = (A(q) * jnp.squeeze(K * e))[:, 0]
             q += inc
             step += 1
 
         # for _ in range(max_steps):
         #     e = cart - f(q)
-        #     if np.linalg.norm(e) < tol:
+        #     if jnp.linalg.norm(e) < tol:
         #         break
         #     try:
-        #         inc = A(q) @ np.squeeze(K * e)
+        #         inc = A(q) @ jnp.squeeze(K * e)
         #     except ValueError:
-        #         inc = (A(q) * np.squeeze(K * e))[:, 0]
+        #         inc = (A(q) * jnp.squeeze(K * e))[:, 0]
         #     q += inc
         # else:
         #     print(f"No invkin solution found for {cart}, trying again")
-        #     q = np.random.uniform(-np.pi, np.pi, self.dof)
+        #     q = jnp.random.uniform(-jnp.pi, jnp.pi, self.dof)
         #     # raise AssertionError(f"No invkin solution found for {cart}.")
 
-        return np.arctan2(np.sin(q), np.cos(q))
+        return jnp.arctan2(jnp.sin(q), jnp.cos(q))
 
     def _potential(self, q):
         l, m, g, k, qr, kf = self.params
-        return g * l[0] * m[0] * np.sin(q[0]) + g * m[1] * (
-                l[0] * np.sin(q[0]) + l[1] * np.sin(q[0] + q[1])) + 0.5 * k[0] * (
+        return g * l[0] * m[0] * jnp.sin(q[0]) + g * m[1] * (
+                l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
                     -q[0] + qr[0]) ** 2 + 0.5 * \
             k[1] * (-q[1] + qr[1]) ** 2
 
     def _ddq(self, q, dq, tau_in):
         l, m, g, k, qr, kf = self.params
-        ddq_cons = np.array([[1.0 * (
-                0.5 * dq[0] ** 2 * l[0] ** 2 * l[1] * m[1] * np.sin(2 * q[1]) + 1.0 *
+        ddq_cons = jnp.array([[1.0 * (
+                0.5 * dq[0] ** 2 * l[0] ** 2 * l[1] * m[1] * jnp.sin(2 * q[1]) + 1.0 *
                 dq[0] ** 2 * l[0] * l[
-                    1] ** 2 * m[1] * np.sin(q[1]) + 2.0 * dq[0] * dq[1] * l[0] * l[
-                    1] ** 2 * m[1] * np.sin(
-            q[1]) + 1.0 * dq[1] ** 2 * l[0] * l[1] ** 2 * m[1] * np.sin(
+                    1] ** 2 * m[1] * jnp.sin(q[1]) + 2.0 * dq[0] * dq[1] * l[0] * l[
+                    1] ** 2 * m[1] * jnp.sin(
+            q[1]) + 1.0 * dq[1] ** 2 * l[0] * l[1] ** 2 * m[1] * jnp.sin(
             q[1]) - 1.0 * g * l[0] * l[1] * m[
-                    0] * np.cos(q[0]) - 0.5 * g * l[0] * l[1] * m[1] * np.cos(
+                    0] * jnp.cos(q[0]) - 0.5 * g * l[0] * l[1] * m[1] * jnp.cos(
             q[0]) + 0.5 * g * l[0] * l[1] *
-                m[1] * np.cos(q[0] + 2 * q[1]) - 1.0 * k[0] * l[1] * q[0] + 1.0 * k[0] *
+                m[1] * jnp.cos(q[0] + 2 * q[1]) - 1.0 * k[0] * l[1] * q[0] + 1.0 * k[0] *
                 l[1] * qr[0] + 1.0 * k[
-                    1] * l[0] * q[1] * np.cos(q[1]) - 1.0 * k[1] * l[0] * qr[
-                    1] * np.cos(q[1]) + 1.0 * k[1] *
+                    1] * l[0] * q[1] * jnp.cos(q[1]) - 1.0 * k[1] * l[0] * qr[
+                    1] * jnp.cos(q[1]) + 1.0 * k[1] *
                 l[1] * q[1] - 1.0 * k[1] * l[1] * qr[1] - 1.0 * l[0] * tau_in[
-                    1] * np.cos(q[1]) + 1.0 * l[1] *
+                    1] * jnp.cos(q[1]) + 1.0 * l[1] *
                 tau_in[0] - 1.0 * l[1] * tau_in[1]) / (l[0] ** 2 * l[1] * (
-                    m[0] + m[1] * np.sin(q[1]) ** 2))], [
+                    m[0] + m[1] * jnp.sin(q[1]) ** 2))], [
                                  2.0 * (-1.0 * dq[0] ** 2 * l[0] ** 3 * l[1] * m[0] * m[
-                                     1] * np.sin(q[1]) - 1.0 * dq[
+                                     1] * jnp.sin(q[1]) - 1.0 * dq[
                                             0] ** 2 * l[0] ** 3 * l[1] * m[
-                                            1] ** 2 * np.sin(q[1]) - 1.0 * dq[0] ** 2 *
+                                            1] ** 2 * jnp.sin(q[1]) - 1.0 * dq[0] ** 2 *
                                         l[
-                                            0] ** 2 * l[1] ** 2 * m[1] ** 2 * np.sin(
+                                            0] ** 2 * l[1] ** 2 * m[1] ** 2 * jnp.sin(
                                              2 * q[1]) - 1.0 * dq[0] ** 2 * l[
-                                            0] * l[1] ** 3 * m[1] ** 2 * np.sin(
+                                            0] * l[1] ** 3 * m[1] ** 2 * jnp.sin(
                                              q[1]) - 1.0 * dq[0] * dq[1] * l[
-                                            0] ** 2 * l[1] ** 2 * m[1] ** 2 * np.sin(
+                                            0] ** 2 * l[1] ** 2 * m[1] ** 2 * jnp.sin(
                                              2 * q[1]) - 2.0 * dq[0] * dq[1] *
-                                        l[0] * l[1] ** 3 * m[1] ** 2 * np.sin(
+                                        l[0] * l[1] ** 3 * m[1] ** 2 * jnp.sin(
                                              q[1]) - 0.5 * dq[1] ** 2 * l[0] ** 2 *
-                                        l[1] ** 2 * m[1] ** 2 * np.sin(2 * q[1]) - 1.0 *
+                                        l[1] ** 2 * m[1] ** 2 * jnp.sin(2 * q[1]) - 1.0 *
                                         dq[1] ** 2 * l[0] * l[
-                                            1] ** 3 * m[1] ** 2 * np.sin(
+                                            1] ** 3 * m[1] ** 2 * jnp.sin(
                                              q[1]) + 0.5 * g * l[0] ** 2 * l[1] * m[0] *
-                                        m[1] * np.cos(q[0] - q[1]) - 0.5 * g * l[
+                                        m[1] * jnp.cos(q[0] - q[1]) - 0.5 * g * l[
                                             0] ** 2 * l[1] * m[0] * m[
-                                            1] * np.cos(q[0] + q[1]) + 0.5 * g * l[
+                                            1] * jnp.cos(q[0] + q[1]) + 0.5 * g * l[
                                             0] ** 2 * l[1] * m[
-                                            1] ** 2 * np.cos(q[0] - q[1]) - 0.5 * g * l[
+                                            1] ** 2 * jnp.cos(q[0] - q[1]) - 0.5 * g * l[
                                             0] ** 2 * l[1] * m[
-                                            1] ** 2 * np.cos(q[0] + q[1]) + 1.0 * g * l[
+                                            1] ** 2 * jnp.cos(q[0] + q[1]) + 1.0 * g * l[
                                             0] * l[1] ** 2 * m[0] * m[
-                                            1] * np.cos(q[0]) + 0.5 * g * l[0] * l[
-                                            1] ** 2 * m[1] ** 2 * np.cos(
+                                            1] * jnp.cos(q[0]) + 0.5 * g * l[0] * l[
+                                            1] ** 2 * m[1] ** 2 * jnp.cos(
                                              q[0]) - 0.5 * g * l[0] * l[1] ** 2 * m[
-                                            1] ** 2 * np.cos(
+                                            1] ** 2 * jnp.cos(
                                              q[0] + 2 * q[1]) + 1.0 * k[0] * l[0] * l[
-                                            1] * m[1] * q[0] * np.cos(
+                                            1] * m[1] * q[0] * jnp.cos(
                                              q[1]) - 1.0 * k[0] * l[0] * l[1] * m[1] *
-                                        qr[0] * np.cos(q[1]) + 1.0 * k[
+                                        qr[0] * jnp.cos(q[1]) + 1.0 * k[
                                             0] * l[1] ** 2 * m[1] * q[0] - 1.0 * k[0] *
                                         l[1] ** 2 * m[1] * qr[0] - 1.0 *
                                         k[1] * l[0] ** 2 * m[0] * q[1] + 1.0 * k[1] * l[
                                             0] ** 2 * m[0] * qr[1] - 1.0 * k[
                                             1] * l[0] ** 2 * m[1] * q[1] + 1.0 * k[1] *
                                         l[0] ** 2 * m[1] * qr[1] - 2.0 *
-                                        k[1] * l[0] * l[1] * m[1] * q[1] * np.cos(
+                                        k[1] * l[0] * l[1] * m[1] * q[1] * jnp.cos(
                                              q[1]) + 2.0 * k[1] * l[0] * l[1] *
-                                        m[1] * qr[1] * np.cos(q[1]) - 1.0 * k[1] * l[
+                                        m[1] * qr[1] * jnp.cos(q[1]) - 1.0 * k[1] * l[
                                             1] ** 2 * m[1] * q[1] + 1.0 * k[
                                             1] * l[1] ** 2 * m[1] * qr[1] + 1.0 * l[
                                             0] ** 2 * m[0] * tau_in[1] + 1.0 * l[
                                             0] ** 2 * m[1] * tau_in[1] - 1.0 * l[0] * l[
                                             1] * m[1] * tau_in[
-                                            0] * np.cos(q[1]) + 2.0 * l[0] * l[1] * m[
-                                            1] * tau_in[1] * np.cos(
+                                            0] * jnp.cos(q[1]) + 2.0 * l[0] * l[1] * m[
+                                            1] * tau_in[1] * jnp.cos(
                                              q[1]) - 1.0 * l[1] ** 2 * m[1] * tau_in[
                                             0] + 1.0 * l[1] ** 2 * m[1] *
                                         tau_in[1]) / (l[0] ** 2 * l[1] ** 2 * m[1] * (
-                                         2 * m[0] - m[1] * np.cos(2 * q[1]) + m[1]))]])
-        ddq = ddq_cons - kf * np.asarray([[dq[0]], [dq[1]]])
+                                         2 * m[0] - m[1] * jnp.cos(2 * q[1]) + m[1]))]])
+        ddq = ddq_cons - kf * jnp.asarray([[dq[0]], [dq[1]]])
         return ddq
 
     def _kinetic_energy(self, q, dq):
         l, m, g, k, qr, kf = self.params
         return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + 0.5 * m[1] * (
-                dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * np.cos(q[1]) +
+                dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(q[1]) +
                 dq[0] ** 2 * l[
-                    1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * np.cos(q[1]) + 2 * dq[
+                    1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 * dq[
                     0] * dq[1] * l[1] ** 2 + dq[
                     1] ** 2 * l[1] ** 2)
 
     def _energy(self, q, dq):
         l, m, g, k, qr, kf = self.params
-        return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + g * l[0] * m[0] * np.sin(
+        return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + g * l[0] * m[0] * jnp.sin(
             q[0]) + g * m[1] * (
-                l[0] * np.sin(q[0]) + l[1] * np.sin(q[0] + q[1])) + 0.5 * k[0] * (
+                l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
                     -q[0] + qr[0]) ** 2 + 0.5 * \
             k[1] * (-q[1] + qr[1]) ** 2 + 0.5 * m[1] * (
-                    dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * np.cos(
+                    dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(
                 q[1]) + dq[0] ** 2 * l[
-                        1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * np.cos(q[1]) + 2 *
+                        1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 *
                     dq[0] * dq[1] * l[1] ** 2 + dq[
                         1] ** 2 * l[1] ** 2)
 
     def _link_positions(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array([[np.cos(q[0]), -np.sin(q[0]), l[0] * np.cos(q[0])],
-                         [np.sin(q[0]), np.cos(q[0]), l[0] * np.sin(q[0])], [0, 0, 1],
-                         [np.cos(q[0] + q[1]), -np.sin(q[0] + q[1]),
-                          l[0] * np.cos(q[0]) + l[1] * np.cos(q[0] + q[1])],
-                         [np.sin(q[0] + q[1]), np.cos(q[0] + q[1]),
-                          l[0] * np.sin(q[0]) + l[1] * np.sin(q[0] + q[1])],
+        return jnp.array([[jnp.cos(q[0]), -jnp.sin(q[0]), l[0] * jnp.cos(q[0])],
+                         [jnp.sin(q[0]), jnp.cos(q[0]), l[0] * jnp.sin(q[0])], [0, 0, 1],
+                         [jnp.cos(q[0] + q[1]), -jnp.sin(q[0] + q[1]),
+                          l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])],
+                         [jnp.sin(q[0] + q[1]), jnp.cos(q[0] + q[1]),
+                          l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
                          [0, 0, 1]]).reshape((2, 3, 3))
 
     def _fkin(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array([[l[0] * np.cos(q[0]) + l[1] * np.cos(q[0] + q[1])],
-                         [l[0] * np.sin(q[0]) + l[1] * np.sin(q[0] + q[1])],
-                         [np.arctan2(np.sin(q[0] + q[1]), np.cos(q[0] + q[1]))]])
+        return jnp.array([[l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])],
+                         [l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
+                         [jnp.arctan2(jnp.sin(q[0] + q[1]), jnp.cos(q[0] + q[1]))]])
 
     def endeffector_pose(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array(
-            [[np.cos(q[0] + q[1]), -np.sin(q[0] + q[1]),
-              l[0] * np.cos(q[0]) + l[1] * np.cos(q[0] + q[1])],
-             [np.sin(q[0] + q[1]), np.cos(q[0] + q[1]),
-              l[0] * np.sin(q[0]) + l[1] * np.sin(q[0] + q[1])],
+        return jnp.array(
+            [[jnp.cos(q[0] + q[1]), -jnp.sin(q[0] + q[1]),
+              l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1])],
+             [jnp.sin(q[0] + q[1]), jnp.cos(q[0] + q[1]),
+              l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])],
              [0, 0, 1]])
 
     def jacobian(self, q):
         l, m, g, k, qr, kf = self.params
-        return np.array([[-l[0] * np.sin(q[0]) - l[1] * np.sin(q[0] + q[1]),
-                          -l[1] * np.sin(q[0] + q[1])],
-                         [l[0] * np.cos(q[0]) + l[1] * np.cos(q[0] + q[1]),
-                          l[1] * np.cos(q[0] + q[1])],
+        return jnp.array([[-l[0] * jnp.sin(q[0]) - l[1] * jnp.sin(q[0] + q[1]),
+                          -l[1] * jnp.sin(q[0] + q[1])],
+                         [l[0] * jnp.cos(q[0]) + l[1] * jnp.cos(q[0] + q[1]),
+                          l[1] * jnp.cos(q[0] + q[1])],
                          [1, 1]])
 
     def create_dynamics(self, controllers=None):
@@ -367,9 +369,9 @@ class ArnesDoublePendulum:
 
         def ode_precomputed(t, y):
             q, dq = y[0:n], y[n:]
-            tau = sum((c(t, q, dq) for c in controllers), np.zeros(self.dof))
+            tau = sum((c(t, q, dq) for c in controllers), jnp.zeros(self.dof))
             ddq = self._ddq(q, dq, tau).flatten()
-            return np.r_[dq, ddq]
+            return jnp.r_[dq, ddq]
 
         return ode_precomputed
 
@@ -379,7 +381,7 @@ class DoublePendulum(Pendulum):
         self.l = params.get('l', (0.5, 0.5))
         self.m = params.get('m', (0.05, 0.05))
         self.k_f = params.get('k_f', 0.0)
-        self.transition = np.asarray([0, 0])
+        self.transition = jnp.asarray([0, 0])
         self.q_des_prev = None
         self.backend = ArnesDoublePendulum(
             l=self.l,
@@ -414,12 +416,12 @@ class DoublePendulum(Pendulum):
             def dEk(q, dq):
                 l = self.l
                 m = self.m
-                dE = np.asarray([[m[0] * dq[0] * l[0] ** 2 + m[1] * dq[0] * l[0] ** 2
-                                  + m[1] * 2 * dq[0] * l[0] * l[1] * np.cos(q[1]) + m[
+                dE = jnp.asarray([[m[0] * dq[0] * l[0] ** 2 + m[1] * dq[0] * l[0] ** 2
+                                  + m[1] * 2 * dq[0] * l[0] * l[1] * jnp.cos(q[1]) + m[
                                       1] * dq[0] * l[1] ** 2
-                                  + m[1] * dq[1] * l[0] * l[1] * np.cos(q[1]) + m[1] *
+                                  + m[1] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + m[1] *
                                   dq[1] * l[1] ** 2,
-                                  m[1] * dq[0] * l[0] * l[1] * np.cos(q[1])
+                                  m[1] * dq[0] * l[0] * l[1] * jnp.cos(q[1])
                                   + m[1] * dq[0] * l[1] ** 2 + m[1] * dq[1] * l[
                                       1] ** 2]])
 
@@ -436,17 +438,17 @@ class DoublePendulum(Pendulum):
             def dEp(q):
                 l = self.l
                 m = self.m
-                dE = np.asarray([[-g * m[0] * l[0] * np.cos(q[0]) - g * m[1] * l[
-                    0] * np.cos(q[0]) - g * m[1] * l[1] *
-                                  np.cos(q[0] + q[1]),
-                                  - g * m[1] * l[1] * np.cos(q[0] + q[1])]])
+                dE = jnp.asarray([[-g * m[0] * l[0] * jnp.cos(q[0]) - g * m[1] * l[
+                    0] * jnp.cos(q[0]) - g * m[1] * l[1] *
+                                  jnp.cos(q[0] + q[1]),
+                                  - g * m[1] * l[1] * jnp.cos(q[0] + q[1])]])
                 return dE
 
             q = sutils.inverse_grad_desc(E, self.backend.potential_energy, dEp,
                                          name='inv. pot. energy',
                                          q0=q0, max_steps=1000, max_tries=10)
 
-            return np.arctan2(np.sin(q), np.cos(q))
+            return jnp.arctan2(jnp.sin(q), jnp.cos(q))
 
         # Handle inputs
         mode = params.get('mode', 'equilibrium')
@@ -476,7 +478,7 @@ class DoublePendulum(Pendulum):
         dq_0 = inverse_kinetic(E=E_k, q=q_0)
 
         # Initialize current positional values
-        self.x_0 = np.append(q_0, dq_0)
+        self.x_0 = jnp.append(q_0, dq_0)
         self.x_cur = self.x_0
 
         self.q_0 = q_0
@@ -499,15 +501,15 @@ class DoublePendulum(Pendulum):
         self.q_des_prev = q_des
 
         def is_II(angle):
-            return np.asarray([int(np.pi / 2 < angle[0] < np.pi),
-                               int(np.pi / 2 < angle[1] < np.pi)])
+            return jnp.asarray([int(jnp.pi / 2 < angle[0] < jnp.pi),
+                               int(jnp.pi / 2 < angle[1] < jnp.pi)])
 
         def is_III(angle):
-            return np.asarray([int(-np.pi / 2 > angle[0] > -np.pi),
-                               int(-np.pi / 2 > angle[1] > -np.pi)])
+            return jnp.asarray([int(-jnp.pi / 2 > angle[0] > -jnp.pi),
+                               int(-jnp.pi / 2 > angle[1] > -jnp.pi)])
 
-        self.transition += is_III(old_angle) * is_II(new_angle) * np.asarray([-1, -1]) \
-                           + is_II(old_angle) * is_III(new_angle) * np.asarray([1, 1])
+        self.transition += is_III(old_angle) * is_II(new_angle) * jnp.asarray([-1, -1]) \
+                           + is_II(old_angle) * is_III(new_angle) * jnp.asarray([1, 1])
 
         return self.transition
 
@@ -517,9 +519,9 @@ class DoublePendulum(Pendulum):
         # coils = params['coils']
 
         # Check reachability
-        r_0 = np.linalg.norm(p)
-        if r_0 > np.sum(self.l):
-            p = p / r_0 * np.sum(self.l)
+        r_0 = jnp.linalg.norm(p)
+        if r_0 > jnp.sum(self.l):
+            p = p / r_0 * jnp.sum(self.l)
 
         # Calculate joint position
         q0 = self.x_cur[0:self.num_dof]
@@ -527,12 +529,12 @@ class DoublePendulum(Pendulum):
 
         #  Correct angle based on transitions between quadrants
         trans = self.detect_transition(q)
-        q = q + trans * 2 * np.pi  # This accounts for the non-uniqueness of the inv-kinematics
+        q = q + trans * 2 * jnp.pi  # This accounts for the non-uniqueness of the inv-kinematics
 
         # Calculate the joint speed
-        dq = np.linalg.pinv(self.backend.jacobian(q))[:, 0:-1] @ v
+        dq = jnp.linalg.pinv(self.backend.jacobian(q))[:, 0:-1] @ v
 
-        return np.asarray([q, dq])
+        return jnp.asarray([q, dq])
 
     # TODO: Expand this in the future to calculate the speeds as wel
     def forward_kins(self,
@@ -542,32 +544,32 @@ class DoublePendulum(Pendulum):
 
     def get_cartesian_state(self):
         # Get joint positions and speeds
-        q = np.asarray(self.x_cur[:self.num_dof])
-        dq = np.asarray(self.x_cur[self.num_dof:])
+        q = jnp.asarray(self.x_cur[:self.num_dof])
+        dq = jnp.asarray(self.x_cur[self.num_dof:])
 
         # Calculate the cart. positions and speeds
-        p = np.asarray(self.backend.forward_kinematics(q)[0:-1])
-        v = np.asarray((self.backend.jacobian(q) @ dq)[0:-1])
+        p = jnp.asarray(self.backend.forward_kinematics(q)[0:-1])
+        v = jnp.asarray((self.backend.jacobian(q) @ dq)[0:-1])
 
-        return np.asarray([p, v])
+        return jnp.asarray([p, v])
 
     def get_link_cartesian_positions(self):
         # Get joint positions
-        q = np.asarray(self.x_cur[0:self.num_dof])
+        q = jnp.asarray(self.x_cur[0:self.num_dof])
 
         # Calculate the link positions
         p = self.backend.forward_kinematics_for_each_link(q)
-        p = np.asarray(p[:, 0:-1])
+        p = jnp.asarray(p[:, 0:-1])
 
         return p
 
     def get_energies(self):
         # Get joint positions and speeds
-        q = np.asarray(self.x_cur[0:self.num_dof])
-        dq = np.asarray(self.x_cur[self.num_dof:])
+        q = jnp.asarray(self.x_cur[0:self.num_dof])
+        dq = jnp.asarray(self.x_cur[self.num_dof:])
 
         # Calculate energies
-        E_pot = np.asarray([self.backend.potential_energy(q, absolute=False)])
-        E_kin = np.asarray([self.backend.kinetic_energy(q, dq)])
+        E_pot = jnp.asarray([self.backend.potential_energy(q, absolute=False)])
+        E_kin = jnp.asarray([self.backend.kinetic_energy(q, dq)])
 
-        return np.asarray([E_pot, E_kin])
+        return jnp.asarray([E_pot, E_kin])
