@@ -17,7 +17,7 @@ from src.environments.dpendulum import DoublePendulumCPGEnv, DoublePendulumDirec
 from src.environments.pendulum import PendulumCPGEnv, PendulumDirectEnv
 from src.learning.curricula import UniformGrowthCurriculum
 from src.learning.reward_functions import default_func
-
+from functools import partial
 
 def p_norm(x, p):
     return jnp.power(jnp.sum(jnp.power(x, p)), 1 / p)
@@ -44,202 +44,202 @@ def move_figure(f, x, y):
 
 
 class BaseGymEnvironment(gym.Env):
+    """
+    A JAX-accelerated Gymnasium Environment.
+
+    This class is optimized to leverage JAX's JIT compilation for high-speed
+    simulations while maintaining compatibility with the standard Gymnasium API.
+    The core simulation logic is encapsulated in a pure, JIT-compiled static
+    method `_jitted_step` to ensure performance-critical code runs on the
+    accelerator (GPU/TPU) without slow data transfers.
+    """
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 30}
 
     def __init__(self, **kwargs):
         """
-        Initializes the environment.
+        Initializes the JAX-accelerated Gymnasium environment.
         """
         super().__init__()
 
-        # Handle inputs
+        # --- Environment Configuration ---
         params = {
             'delta_t_learning': ACTUAL_TIMESTEP,
             'delta_t_system': MIN_TIMESTEP,
             'solve': kwargs.get('solve', False)
         }
-
-        mode = kwargs.get('mode', 'random_des')
-        valid_modes = {'speed', 'position', 'equilibrium', 'random', 'random_des'}
-        if mode not in valid_modes:
-            raise ValueError(
-                f"Selected initial condition mode {mode} is unknown. Valid modes: {valid_modes}")
-        
-        self.mode = mode
-        params['mode'] = mode
-
+        self.mode = kwargs.get('mode', 'random_des')
         self.final_time = kwargs.get('final_time', FINAL_TIME)
-        params['t_final'] = self.final_time
-        params['starting_range'] = kwargs.get('starting_range', [0, 1.5])
+        params.update({
+            'mode': self.mode,
+            't_final': self.final_time,
+            'starting_range': kwargs.get('starting_range', [0, 1.5])
+        })
         self.render_mode = kwargs.get('render_mode')
-
         self.reward_func = kwargs.get('reward_func', default_func)
 
-        curriculum = kwargs.get('curriculum', None)
-        if curriculum is None:
-            self.curriculum = UniformGrowthCurriculum(
-                min_difficulty=params['starting_range'][0],
-                max_difficulty=params['starting_range'][1]
-            )
-        else:
-            self.curriculum = curriculum
+        # --- Curriculum Learning Setup ---
+        self.curriculum = kwargs.get('curriculum') or UniformGrowthCurriculum(
+            min_difficulty=params['starting_range'][0],
+            max_difficulty=params['starting_range'][1]
+        )
 
-        energy_command = kwargs.get('energy_command', None)
+        # --- Energy and Inference Setup ---
         self.energy_step = kwargs.get('energy_step', False)
-        if energy_command is None:
-            self.inference = False
-            self.E_d = 0
-        else:
-            self.inference = True
-            self.E_d = energy_command
+        self.inference = 'energy_command' in kwargs
+        self.E_d = kwargs.get('energy_command', 0.0)
+        self.energy_observer = kwargs.get('energy_observer')
 
-        energy_observer = kwargs.get('energy_observer', None)
-        if energy_observer is None or energy_observer == 'model':
-            self.energy_observer = None
-
-        generator = kwargs.get('generator', None)
-        self.system = kwargs.get('system', None)
-        if generator is None or generator == 'CPG':
-            if self.system is None or self.system == 'DoublePendulum':
-                self.system = DoublePendulumCPGEnv
-                params['num_dof'] = 2
-            elif self.system == 'Pendulum':
-                self.system = PendulumCPGEnv
-                params['num_dof'] = 1
-            else:
-                raise NotImplementedError(f"System {self.system} not implemented")
+        # --- System and Action Space Configuration ---
+        generator = kwargs.get('generator', 'CPG')
+        system_name = kwargs.get('system', 'DoublePendulum')
+        
+        if generator == 'CPG':
+            system_map = {'DoublePendulum': DoublePendulumCPGEnv, 'Pendulum': PendulumCPGEnv}
+            params['num_dof'] = 2 if system_name == 'DoublePendulum' else 1
+            self.system = system_map[system_name]
             self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
-            
-            omega_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
-            omega_scale = omega_scale.at[-1].set(self.action_scale[-1])
-            self.action_scale = omega_scale
-            
-            output_size = params['num_dof']
         elif generator == 'direct':
-            if self.system is None or self.system == 'DoublePendulum':
-                self.system = DoublePendulumDirectEnv
-                params['num_dof'] = 2
-            elif self.system == 'Pendulum':
-                self.system = PendulumDirectEnv
-                params['num_dof'] = 1
-            else:
-                raise NotImplementedError(f"System {self.system} not implemented")
-            self.action_scale = jnp.asarray(
-                kwargs.get('action_scale', ACTION_SCALE_DIRECT))
-            q_scale = jnp.asarray([self.action_scale[0]] * params['num_dof'])
-            q_d_scale = jnp.asarray([self.action_scale[1]] * params['num_dof'])
-            self.action_scale = jnp.concatenate([q_scale, q_d_scale])
-            output_size = params['num_dof'] * 2
+            system_map = {'DoublePendulum': DoublePendulumDirectEnv, 'Pendulum': PendulumDirectEnv}
+            params['num_dof'] = 2 if system_name == 'DoublePendulum' else 1
+            self.system = system_map[system_name]
+            self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_DIRECT))
         else:
             raise NotImplementedError(f"Generator {generator} not implemented")
+
         params['state_size'] = params['num_dof'] * 2
         input_size = params['state_size'] * 2 + 1
+        output_size = len(self.action_scale)
 
-        # Rendering
+        # --- Rendering and Visualization ---
         self.visualize = kwargs.get('render', False)
         self.record = kwargs.get('record', False)
         if self.visualize:
             sns.set()
-            figure = plt.figure('Visualization', figsize=FIG_SIZE)
-            move_figure(figure, 0, 0)
+            move_figure(plt.figure('Visualization', figsize=FIG_SIZE), 0, 0)
 
-        # Build environment
-        self.action_space = Box(low=-1, high=1, shape=(output_size,))
-        self.observation_space = Box(low=-jnp.inf, high=jnp.inf, shape=(input_size,))
+        # --- Gymnasium API Setup ---
+        # Define Gym spaces with NumPy types for compatibility
+        self.action_space = Box(low=-1.0, high=1.0, shape=(output_size,), dtype=np.float32)
+        self.observation_space = Box(low=-np.inf, high=np.inf, shape=(input_size,), dtype=np.float32)
+        
+        # Instantiate the underlying JAX-based simulation
         self.sim = self.system(params=params)
 
-        # Tracking / help variables
-        self.cur_step = 0
-        self.num_dof = params['num_dof']
-        self.r_epi = 0
-        self.r_num = 3  # Number of cost values
-        
-        # --- FIX ---
-        # Initialize trajectories as empty 2D arrays with the correct number of columns.
-        # The number of columns for r_traj is 1 (for reward) + self.r_num (for costs).
-        self.r_traj = jnp.empty((0, self.r_num + 1))
-        self.E_l_traj = jnp.empty((0, 1))
-        # -----------
+        # --- State and Tracking Initialization ---
+        self.r_num = 3  # Number of separate cost values from reward function
+        self.key = jax.random.PRNGKey(0) # JAX PRNG key for reproducible randomness
+        self.state = {} # Will be populated by reset()
 
-    def _state_to_obs(self, state: dict) -> np.ndarray:
-        """Converts the state dictionary to a NumPy observation array."""
-        obs = jnp.concatenate([
-            state['Joint_pos'],
-            state['Joint_vel'],
-            state['Pos_gen'],
-            state['Vel_gen'],
-            jnp.asarray([state['Energy_des']])
-        ])
-        return np.asarray(obs)
+        # Initialize trajectories as empty 2D arrays with the correct number of columns
+        self.r_traj = jnp.empty((0, self.r_num + 1)) # +1 for the main reward
+        self.E_l_traj = jnp.empty((0, 1))
+        self.r_epi = 0.0
+
+    @staticmethod
+    @jit
+    def _jitted_step(state, action, final_time, sim, reward_func):
+        """A pure, JIT-compiled function for one simulation step."""
+        # This function contains the logic that needs to be fast.
+        # It takes the state and action, and returns the results.
+        
+        # Step the underlying JAX-based simulation
+        # We pass the sim object as a static argument to JIT
+        next_sim_state = sim.step(action, state['sim_state'])
+        
+        # Calculate reward and costs
+        reward, costs = reward_func(next_sim_state)
+        
+        # Update time and check for termination
+        t_next = state['t'] + 1
+        terminated = (t_next >= final_time)
+        
+        # Assemble the full next state of the environment
+        next_state = {
+            'sim_state': next_sim_state,
+            't': t_next,
+        }
+        
+        return next_state, reward, costs, terminated
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
-        # Step the simulation
-        state = self.sim.step(action)
-
-        # Compute the reward
-        reward, costs = self.reward_func(state)
-
-        # Check for termination
-        self.t += 1
-        terminated = self.t >= self.final_time
+        """The public step function interfacing with the Gym API."""
+        # Convert NumPy action from Gym to a JAX array for the simulation
+        action_jax = jnp.asarray(action)
+        
+        # Call the fast, JIT-compiled step function with the current state
+        next_state, reward_jax, costs_jax, terminated_jax = self._jitted_step(
+            self.state, action_jax, self.final_time, self.sim, self.reward_func
+        )
+        
+        # Update the environment's state (this is a side-effect)
+        self.state = next_state
+        
+        # Track rewards and other data
+        self.tracking(reward_jax, costs_jax, self.state['sim_state']['Energies'])
+        
+        # Convert results back to standard Python/NumPy types for Gym
+        obs = self._state_to_obs(self.state['sim_state'])
+        reward = float(reward_jax)
+        terminated = bool(terminated_jax)
+        info = {'costs': np.array(costs_jax)}
 
         # The 'truncated' flag is not used in this environment
         truncated = False
 
-        # Additional info
-        info = {'costs': np.concatenate(([reward], costs))}
-
-        return self._state_to_obs(state), reward, terminated, truncated, info
+        return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
-        # We need the following line to seed self.np_random
+        """Resets the environment to an initial state."""
         super().reset(seed=seed)
-
-        # Choose the next desired energy
-        if self.mode == "random_E":
-            self.E_d = self.np_random.uniform(low=self.E_d_range[0], high=self.E_d_range[1])
-
-        # Restart the simulation
+        if seed is not None:
+            self.key = jax.random.PRNGKey(seed)
+        
+        # Update the target energy based on the curriculum
+        self.new_target_energy()
+        
+        # Restart the underlying simulation
         self.sim.restart({'E_d': self.E_d})
-
-        # Get the state from the simulation
-        state = self.sim.get_state_and_update()
-
-        # Compute the reward and costs
-        reward, costs = self.reward_func(state)
-
-        # Concatenate all costs
-        info = {
-            'costs': np.concatenate(([reward], costs))
+        
+        # Get the initial state from the simulation
+        initial_sim_state = self.sim.get_state_and_update()
+        
+        # Initialize the full environment state
+        self.state = {
+            'sim_state': initial_sim_state,
+            't': 0,
         }
+        
+        # Get initial observation and info dict for Gym
+        obs = self._state_to_obs(self.state['sim_state'])
+        _, costs = self.reward_func(self.state['sim_state']) # We only need costs for the info dict
+        info = {'costs': np.array(costs)}
 
-        # Reset the step counter
-        self.t = 0
+        # Reset episode-specific trackers
+        self.r_epi = 0.0
+        self.r_traj = jnp.empty((0, self.r_num + 1))
+        self.E_l_traj = jnp.empty((0, 1))
+        
+        return obs, info
 
-        return self._state_to_obs(state), info
+    def _state_to_obs(self, sim_state: dict) -> np.ndarray:
+        """Converts the simulation state dictionary to a NumPy observation array."""
+        obs = jnp.concatenate([
+            sim_state['Joint_pos'],
+            sim_state['Joint_vel'],
+            sim_state['Pos_gen'],
+            sim_state['Vel_gen'],
+            jnp.atleast_1d(sim_state['Energy_des'])
+        ])
+        return np.asarray(obs)
 
-    def render(self):
-        if self.render_mode == 'human':
-            # This environment uses an external visualization tool
-            pass
-        elif self.render_mode == 'rgb_array':
-            # This would require rendering to an offscreen buffer
-            raise NotImplementedError("RGB array rendering is not implemented.")
-
-    def close(self):
-        if self.visualize:
-            plt.close('all')
-
-
-    def tracking(self, reward: float, costs: jnp.ndarray, energies: tuple):
-        """
-        Correctly tracks rewards, costs, and energies using JAX concatenation.
-        """
-        # --- FIX ---
+    def tracking(self, reward: jax.Array, costs: jax.Array, energies: tuple):
+        """Correctly tracks rewards, costs, and energies using JAX concatenation."""
         # 1. Create a single 1D array for the new reward and cost data.
         new_reward_data = jnp.concatenate([jnp.atleast_1d(reward), costs])
-        # 2. Reshape it to a 2D row vector (1, N) for concatenation.
+        
+        # 2. Reshape it to a 2D row vector (1, N) to match the trajectory's shape.
         new_reward_row = jnp.expand_dims(new_reward_data, axis=0)
+        
         # 3. Concatenate the new row with the existing trajectory.
         self.r_traj = jnp.concatenate([self.r_traj, new_reward_row], axis=0)
 
@@ -247,117 +247,31 @@ class BaseGymEnvironment(gym.Env):
         total_energy = jnp.atleast_1d(energies[0] + energies[1])
         new_energy_row = jnp.expand_dims(total_energy, axis=0)
         self.E_l_traj = jnp.concatenate([self.E_l_traj, new_energy_row], axis=0)
-        # -----------
-
-        # Tracking the episode
+        
+        # Update the total episode reward
         self.r_epi += reward
 
     def new_target_energy(self):
+        """Updates the target energy based on curriculum learning."""
         if not self.inference:
-            # You might need to define a specific success condition for your task.
-            # Here, we assume a simple condition where any positive episode reward is a success.
-            MIN_SCORE_FOR_SUCCESS = 0.0  # Placeholder: Adjust this threshold as needed.
+            MIN_SCORE_FOR_SUCCESS = 0.0  # Placeholder: Adjust this threshold
             success_rate = 1.0 if self.r_epi > MIN_SCORE_FOR_SUCCESS else 0.0
             self.curriculum.update(success_rate)
             self.E_d = self.curriculum.get_difficulty()
 
-    def gather_data(self):
-        # Model data
-        p_model, v_model = self.sim.get_cartesian_state_model()
-        q_model, dq_model = self.sim.get_joint_state_model()
-        if self.energy_observer is not None:
-            E_model = self.energy_observer.get_energies(q_model, dq_model)
-        else:
-            E_model = self.sim.get_energies()
+    def close(self):
+        """Closes any open resources, like plotting windows."""
+        if self.visualize:
+            plt.close('all')
 
-        # CPG data
-        q_gen, dq_gen = self.sim.get_joint_state_generator()
-        params_gen = self.sim.get_params_generator()
-
-        # Controller data
-        tau = self.sim.controller.get_force()
-
-        # Check if energy step desired
-        if self.sim.is_time_energy_step() and self.energy_step:
-            self.E_d /= 2
-
-        # Build data packages
-        state = {'Pos_model': p_model, 'Vel_model': v_model, 'Joint_pos': q_model,
-                 'Joint_vel': dq_model,
-                 'Pos_gen': q_gen, 'Vel_gen': dq_gen, 'Params_gen': params_gen,
-                 'Energy_des': self.E_d, 'Energies': E_model, 'Torque': tau}
-        # TODO: maybe add a constant MAX_POSTITION
-        obs = jnp.concatenate([q_model / self.action_scale[-1], dq_model / MAX_SPEED,
-                              q_gen / self.action_scale[-1], dq_gen / MAX_SPEED,
-                              jnp.asarray([self.E_d / MAX_ENERGY])])
-
-        return state, obs
-
-    def step(self, action):
-        try:
-            # Format and take action
-            # action[0] += 1  # Enable this for tuning
-            action = jnp.multiply(self.action_scale, action)  # Scale up the action
-            self.sim.step(
-                {'action': action, 'E_d': self.E_d, 'inference': self.inference})
-
-            # Extract data for training
-            state, obs = self.gather_data()
-            reward, costs = self.reward_func(state)
-            terminated = self.sim.is_done()
-            info = {}  # TODO: Add some debugging info
-
-            # Track variables
-            self.tracking(reward, costs, state['Energies'])
-
-            # March on
-            self.cur_step += 1
-
-            # Handle episode end
-            if terminated:
-                if self.visualize:
-                    self.plot()
-                # info['TimeLimit.truncated'] = True  # Tell the RL that the episode has limited episode duration
-
-            truncated = terminated
-
-            return obs.astype(jnp.float32), reward, terminated, truncated, info
-
-        except KeyboardInterrupt:
-            print("Closing the program due to Keyboard interrupt.")
-            raise KeyboardInterrupt
-
-    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[jnp.ndarray, dict]:
-        """Resets the environment to an initial state."""
-        # We need the following line to seed self.np_random
-        super().reset(seed=seed)
-
-        # Choose the next desired energy
-        if self.mode == "random_E":
-            # Ensure E_d_range is defined if you use this mode
-            self.E_d = self.np_random.uniform(low=self.E_d_range[0], high=self.E_d_range[1])
-
-        # Restart the simulation
-        self.sim.restart({'E_d': self.E_d})
-
-        # Get the state from the simulation
-        state, obs = self.gather_data()
-
-        # --- FIX ---
-        # Reset trajectory trackers at the beginning of each episode.
-        self.r_traj = jnp.empty((0, self.r_num + 1))
-        self.E_l_traj = jnp.empty((0, 1))
-        self.cur_step = 0
-        self.r_epi = 0
-        # -----------
-
-        # The info dict should contain JAX arrays, not numpy arrays, for consistency
-        info = {
-            'costs': obs  # Example, adjust as needed
-        }
-
-        return obs.astype(jnp.float32), info
-
+    def render(self):
+        """Handles rendering requests."""
+        if self.render_mode == 'human':
+            # This environment uses an external visualization tool (e.g., self.plot())
+            pass
+        elif self.render_mode == 'rgb_array':
+            # This would require rendering to an offscreen buffer
+            raise NotImplementedError("RGB array rendering is not implemented.")
 
     def plot(self):
         try:

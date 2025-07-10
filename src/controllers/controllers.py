@@ -142,46 +142,56 @@ class basePIDController(BaseController):
 
 
 class PID_pos_vel_tracking_modeled(basePIDController):
+    """
+    A PID controller optimized for JAX.
+
+    The core logic is JIT-compiled in a static method for maximum performance,
+    while the `input` method handles state updates.
+    """
     def __init__(self, params: dict = None):
         super().__init__(params)
 
-    # The static, JIT-compiled core of the controller
     @staticmethod
     @jit
-    def _calculate_jit(q_cur, dq_cur, q_d, dq_d, e_P_accum, gains_cur):
-        # Calc. P error
+    def _calculate_jit(q_cur, dq_cur, q_d, dq_d, e_P_accum, gains):
+        """
+        A pure, JIT-compiled function for the core PID calculations.
+        """
+        # Proportional error
         e_P = q_d - q_cur
 
-        # Calc. I error
+        # Integral error (updated accumulated error)
         new_e_P_accum = e_P_accum + e_P
         e_I = new_e_P_accum
 
-        # Calc. D error
-        e_D = (dq_d - dq_cur).flatten()
+        # Derivative error
+        e_D = dq_d - dq_cur
 
-        # Calc. Force
-        P, I, D = gains_cur
-        new_e_cur = jnp.asarray([P * e_P, I * e_I, D * e_D])
-        tau = new_e_cur.sum(axis=0).flatten()
+        # Combine errors with gains to calculate torque
+        P_gain, I_gain, D_gain = gains
+        tau = P_gain * e_P + I_gain * e_I + D_gain * e_D
         
-        return tau, new_e_cur, new_e_P_accum
+        # We return the new accumulated error to be stored in the class state
+        return tau, new_e_P_accum
 
     def input(self, t, q, dq):
-        # Ensure inputs are JAX arrays
+        """
+        Calculates the control input by calling the JIT-compiled function.
+        This method handles the stateful parts of the controller.
+        """
+        # Ensure inputs are JAX arrays for the JIT function
         q_cur = jnp.asarray(q)
         dq_cur = jnp.asarray(dq)
 
-        # Call the pure, JIT-compiled function with the current state
-        tau, e_cur, e_P_accum = self._calculate_jit(
+        # Call the pure, high-performance JIT-compiled function
+        tau, new_e_P_accum = self._calculate_jit(
             q_cur, dq_cur, self.q_d, self.dq_d, self.e_P_accum, self.gains_cur
         )
 
-        # Update the controller's state based on the results from the JIT'd function
+        # Update the state of the controller instance (side-effects)
+        # This happens outside the JIT-compiled function
         self.tau_last = tau
-        self.e_cur = e_cur
-        self.e_P_accum = e_P_accum
-        self.q_d_prev = self.q_d # q_d is not modified in the JIT part, so update prev state here
+        self.e_P_accum = new_e_P_accum
+        self.q_d_prev = self.q_d
 
-        # print(jax.devices())
         return tau
-
