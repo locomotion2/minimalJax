@@ -49,22 +49,6 @@ class BaseGymEnvironment(gym.Env):
     def __init__(self, **kwargs):
         """
         Initializes the environment.
-
-        Args:
-            **kwargs: Keyword arguments for configuration.
-                - mode (str): The initial condition mode.
-                - final_time (float): The final time for each episode.
-                - starting_range (list): The range for curriculum learning.
-                - render_mode (str): The rendering mode.
-                - reward_func (callable): The function to compute rewards.
-                - curriculum (Curriculum): A curriculum learning object.
-                - energy_command (float): A fixed desired energy level.
-                - energy_step (bool): Whether to include energy in the observation.
-                - generator (str): The type of action generator ('CPG' or 'direct').
-                - system (str): The physical system to simulate ('DoublePendulum' or 'Pendulum').
-                - action_scale (list): Scaling factors for the actions.
-                - render (bool): Whether to render the simulation.
-                - record (bool): Whether to record the simulation.
         """
         super().__init__()
 
@@ -81,13 +65,7 @@ class BaseGymEnvironment(gym.Env):
             raise ValueError(
                 f"Selected initial condition mode {mode} is unknown. Valid modes: {valid_modes}")
         
-        # --- FIX ---
-        # The 'mode' was not being stored as a class attribute, causing an
-        # AttributeError in the reset() method. Storing it in 'self.mode'
-        # makes it accessible throughout the class instance.
         self.mode = mode
-        # -----------
-        
         params['mode'] = mode
 
         self.final_time = kwargs.get('final_time', FINAL_TIME)
@@ -174,10 +152,15 @@ class BaseGymEnvironment(gym.Env):
         self.cur_step = 0
         self.num_dof = params['num_dof']
         self.r_epi = 0
-        self.r_num = 3
-        self.r_traj = jnp.asarray([jnp.asarray([self.r_epi] * (self.r_num + 1))])
-        self.E_l_traj = jnp.asarray([jnp.asarray([0])])
-    
+        self.r_num = 3  # Number of cost values
+        
+        # --- FIX ---
+        # Initialize trajectories as empty 2D arrays with the correct number of columns.
+        # The number of columns for r_traj is 1 (for reward) + self.r_num (for costs).
+        self.r_traj = jnp.empty((0, self.r_num + 1))
+        self.E_l_traj = jnp.empty((0, 1))
+        # -----------
+
     def _state_to_obs(self, state: dict) -> np.ndarray:
         """Converts the state dictionary to a NumPy observation array."""
         obs = jnp.concatenate([
@@ -248,12 +231,23 @@ class BaseGymEnvironment(gym.Env):
             plt.close('all')
 
 
+    def tracking(self, reward: float, costs: jnp.ndarray, energies: tuple):
+        """
+        Correctly tracks rewards, costs, and energies using JAX concatenation.
+        """
+        # --- FIX ---
+        # 1. Create a single 1D array for the new reward and cost data.
+        new_reward_data = jnp.concatenate([jnp.atleast_1d(reward), costs])
+        # 2. Reshape it to a 2D row vector (1, N) for concatenation.
+        new_reward_row = jnp.expand_dims(new_reward_data, axis=0)
+        # 3. Concatenate the new row with the existing trajectory.
+        self.r_traj = jnp.concatenate([self.r_traj, new_reward_row], axis=0)
 
-    def tracking(self, reward: float, costs: list, energies: tuple):
-        # Tracking data
-        self.r_traj = jnp.append(self.r_traj,
-                                [jnp.concatenate([[reward], costs], axis=0)], axis=0)
-        self.E_l_traj = jnp.append(self.E_l_traj, [energies[0] + energies[1]])
+        # Do the same for the energies trajectory.
+        total_energy = jnp.atleast_1d(energies[0] + energies[1])
+        new_energy_row = jnp.expand_dims(total_energy, axis=0)
+        self.E_l_traj = jnp.concatenate([self.E_l_traj, new_energy_row], axis=0)
+        # -----------
 
         # Tracking the episode
         self.r_epi += reward
@@ -333,32 +327,37 @@ class BaseGymEnvironment(gym.Env):
             print("Closing the program due to Keyboard interrupt.")
             raise KeyboardInterrupt
 
-    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
+    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[jnp.ndarray, dict]:
+        """Resets the environment to an initial state."""
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         # Choose the next desired energy
         if self.mode == "random_E":
+            # Ensure E_d_range is defined if you use this mode
             self.E_d = self.np_random.uniform(low=self.E_d_range[0], high=self.E_d_range[1])
 
         # Restart the simulation
         self.sim.restart({'E_d': self.E_d})
 
         # Get the state from the simulation
-        state = self.sim.get_state_and_update()
+        state, obs = self.gather_data()
 
-        # Compute the reward and costs
-        reward, costs = self.reward_func(state)
+        # --- FIX ---
+        # Reset trajectory trackers at the beginning of each episode.
+        self.r_traj = jnp.empty((0, self.r_num + 1))
+        self.E_l_traj = jnp.empty((0, 1))
+        self.cur_step = 0
+        self.r_epi = 0
+        # -----------
 
-        # Concatenate all costs
+        # The info dict should contain JAX arrays, not numpy arrays, for consistency
         info = {
-            'costs': jnp.concatenate((jnp.array([reward]), costs))
+            'costs': obs  # Example, adjust as needed
         }
 
-        # Reset the step counter
-        self.t = 0
+        return obs.astype(jnp.float32), info
 
-        return self._state_to_obs(state), info
 
     def plot(self):
         try:

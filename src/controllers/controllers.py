@@ -107,22 +107,38 @@ class basePIDController(BaseController):
         self.dq_d = jnp.asarray(dq_d)
 
         if not params.get('inference', False):
-            cost_energy = gaus(params.get('E') - params.get('E_d'), 0.05)
+            # Calculate the norm of the energy difference to get a scalar value
+            energy_error = jnp.linalg.norm(params.get('E') - params.get('E_d'))
+            cost_energy = gaus(energy_error, 0.05) # Now gaus receives a scalar
+
             if self.mode:
                 self.gains_cur = jnp.maximum(cost_energy * self.gains_eigen, self.gains_outer)
             else:
                 self.gains_cur = jnp.minimum(1/jnp.maximum(0.001, cost_energy) * self.gains_eigen, self.gains_outer)
 
+
+
     def update_trajectories(self, q_d):
-        # Tracking vectors
-        # Note: jnp.append is less efficient than pre-allocation in JAX as it recreates arrays.
-        # For maximum performance, consider pre-allocating memory and updating slices.
-        error = jnp.linalg.norm(self.e_cur, axis=1)
-        tau = self.tau_last
-        tau = jnp.linalg.norm(tau)
-        self.e_traj = jnp.append(self.e_traj, [error], axis=0)
-        self.tau_traj = jnp.append(self.tau_traj, [jnp.asarray([tau])], axis=0)
-        self.q_d_traj = jnp.append(self.q_d_traj, [q_d], axis=0)
+        """
+        Correctly updates all trajectory vectors using jnp.concatenate
+        and ensuring shapes are compatible.
+        """
+        # Calculate the scalar norm of the torque for tracking
+        tau = jnp.linalg.norm(self.tau_last)
+
+        # --- CORRECTION IS HERE ---
+        # The error vector self.e_cur is shape (N, 1). Transpose it to (1, N)
+        # to match the shape of e_traj for concatenation.
+        new_error_row = self.e_cur.T
+
+        # Prepare other rows for concatenation
+        new_tau_row = jnp.expand_dims(jnp.asarray([tau]), axis=0)
+        new_qd_row = jnp.expand_dims(q_d, axis=0)
+
+        # Concatenate the new rows to their respective trajectories
+        self.e_traj = jnp.concatenate([self.e_traj, new_error_row], axis=0)
+        self.tau_traj = jnp.concatenate([self.tau_traj, new_tau_row], axis=0)
+        self.q_d_traj = jnp.concatenate([self.q_d_traj, new_qd_row], axis=0)
 
 
 class PID_pos_vel_tracking_modeled(basePIDController):
