@@ -440,11 +440,10 @@ class DoublePendulum(Pendulum):
         if self.key is None:
             self.key = jax.random.PRNGKey(0)
 
-        # Get symbolic representation of potential energy
-        temp_state = self.symbolic.get_potential_energy_symbols()
-
-        # Get initial conditions by calling the appropriate select_initial method
-        x_0, dq_0 = self.select_initial(params, temp_state)
+        # `select_initial` does not rely on any symbolic backend anymore.
+        # It only uses PRNG keys stored on the instance, so we simply pass
+        # an empty state dictionary for API compatibility.
+        x_0, dq_0 = self.select_initial(params, {})
 
         # Concatenate position and velocity to form the full state vector
         return jnp.concatenate([x_0, dq_0])
