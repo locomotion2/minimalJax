@@ -611,8 +611,11 @@ class DoublePendulum(Pendulum):
         _ = self.backend.U0
         params['not_inherited'] = False
         super().__init__(params)
-        # Initialize a JAX PRNG key for random operations
-        self._jax_key = jax.random.PRNGKey(0)
+        # Initialize JAX PRNG keys for random operations. `self.key` is used
+        # by methods such as `select_initial`, while `_jax_key` remains for
+        # legacy routines that still expect this name.
+        self.key = jax.random.PRNGKey(0)
+        self._jax_key = self.key
 
     def make_eqs_motion(self, params: dict = None):
         def eqs_motion(t, x, params):

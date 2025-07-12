@@ -22,8 +22,13 @@ class Pendulum(BaseModel):
             self.l = params.get('l', 1.0)
             self.m = params.get('m', 0.1)
             self.k_f = params.get('k_f', 0.0)
-        
+
         super().__init__(params)
+
+        # Initialize a JAX PRNG key used for sampling initial conditions
+        # This attribute is accessed in `select_initial`, hence it must
+        # exist before that method runs.
+        self.key = jax.random.PRNGKey(0)
 
     def get_initial_state(self, params: dict = None) -> dict:
         """
