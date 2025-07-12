@@ -1,10 +1,6 @@
 from abc import ABC
 import jax
 import jax.numpy as jnp
-
-# Assuming the base models are in this path.
-# These base classes are expected to provide the .simulate() method
-# and define the basic structure.
 from src.models.base_models import BaseModel, JointsGenerator, PolarGenerator
 
 
@@ -320,6 +316,7 @@ class SPG(PolarGenerator):
     """
     def __init__(self, params: dict = None):
         super().__init__(params)
+        # Initialize current and past omegas based on DOF
         if self.num_dof != 1:
             self.omega_cur = jnp.zeros(self.num_dof - 1)
             self.omega_past = jnp.zeros(self.num_dof - 1)
@@ -327,6 +324,7 @@ class SPG(PolarGenerator):
             self.omega_cur = jnp.zeros(1)
             self.omega_past = jnp.zeros(1)
         self.mu_cur = jnp.zeros(1)
+
         # ----- Default state initialization -----
         self.t_0 = params.get('t_0', 0.0) if params is not None else 0.0
         self.t_cur = self.t_0
@@ -334,10 +332,14 @@ class SPG(PolarGenerator):
         self.x_cur = jnp.asarray(self.x_0)
         self.q_0 = jnp.zeros(self.num_dof)
         self.q_cur = jnp.asarray(self.q_0)
-        self.p_0 = self.get_link_cartesian_positions()
+
+        # Compute initial link poses and energies with explicit state
+        self.p_0 = self.get_link_cartesian_positions(self.x_cur)
         self.p_cur = jnp.asarray(self.p_0)
-        self.E_0 = sum(self.get_energies())
+        self.E_0 = sum(self.get_energies(self.x_cur))
         self.E_cur = self.E_0
+
+        # Initialize trajectories
         self.t_traj = jnp.asarray([self.t_cur])
         self.x_traj = jnp.asarray([self.x_cur])
         self.q_traj = jnp.asarray([self.q_cur])
@@ -345,36 +347,36 @@ class SPG(PolarGenerator):
         self.E_traj = jnp.asarray([self.E_cur])
         self.params_traj = jnp.zeros((1, self.num_dof + 1))
 
+        # Pre-compile the dynamics function
         self.eqs_motion = self.make_eqs_motion()
 
-    def make_eqs_motion(self): # Renamed from _make_eqs_motion
+    def make_eqs_motion(self):
         """Factory for the JIT-compiled dynamics function."""
         if self.num_dof != 1:
             @jax.jit
             def eqs_motion(t, x, params):
-                """SPG equations of motion for num_dof > 1."""
                 mu, omega = params['mu'], params['omega']
                 r = x[-1]
                 dr = (mu ** 2 - r ** 2) * r
                 dphi = omega
-                # Note: This assumes dphi is a scalar or matches the shape of phi.
-                # If omega has num_dof-1 elements, dphi will too.
                 return jnp.append(dphi, dr)
         else:
             @jax.jit
             def eqs_motion(t, x, params):
-                """SPG equations of motion for num_dof == 1."""
                 return params['omega']
         return eqs_motion
 
     def restart(self, params: dict = None, key=None):
         """Resets the model to its initial state."""
-        # --- Logic from BaseModel.restart & PolarGenerator.restart ---
+        # BaseModel & PolarGenerator logic
         self.t_0 = params.get('t_0', self.t_0)
         p_0 = self.select_initial(params, key=key)
         self.t_cur = self.t_0
-        self.E_0 = sum(self.get_energies())
+        # Recompute poses and energies explicitly
+        self.p_cur = self.get_link_cartesian_positions(self.x_cur)
+        self.E_0 = sum(self.get_energies(self.x_cur))
         self.E_cur = self.E_0
+        # Reset trajectories
         self.t_traj = jnp.asarray([self.t_cur])
         self.x_traj = jnp.asarray([self.x_cur])
         self.q_traj = jnp.asarray([self.q_cur])
@@ -385,7 +387,7 @@ class SPG(PolarGenerator):
 
     def step(self, params: dict = None):
         """Advances the simulation by one time step."""
-        # --- Logic from BaseModel.step ---
+        # BaseModel.step logic
         t_final = params.get('t_final', self.t_cur + self.delta_t)
         ts = jnp.asarray([self.t_cur, t_final])
         self.x_cur = self.simulate({
@@ -394,11 +396,12 @@ class SPG(PolarGenerator):
             'ts': ts,
             'x_0': self.x_cur
         })
-        self.p_cur = self.get_link_cartesian_positions()
+        # Update poses and energies explicitly
+        self.p_cur = self.get_link_cartesian_positions(self.x_cur)
         self.q_cur = self.state_to_joints()
-        self.E_cur = sum(self.get_energies())
+        self.E_cur = sum(self.get_energies(self.x_cur))
         self.t_cur = t_final
-        # --- Logic from SPG.step ---
+        # SPG-specific updates
         self.omega_cur = jnp.asarray(params['omega'])
         self.mu_cur = jnp.asarray(params['mu'])
 
@@ -406,11 +409,9 @@ class SPG(PolarGenerator):
         """Converts polar state to joint state [q, dq]."""
         if self.num_dof != 1:
             x_cur = self.x_cur if state is None else state
-            phi = x_cur[0:self.num_dof - 1]
+            phi = x_cur[:self.num_dof - 1]
             r = x_cur[-1]
             q = jnp.asarray([r * jnp.cos(phi), r * jnp.sin(phi)]).flatten()
-            
-            # Calculate dq
             psi = self.mu_cur ** 2 - r ** 2
             root = jnp.ones((self.num_dof, self.num_dof))
             upper = jnp.multiply(jnp.triu(root, 1), -self.omega_cur)
@@ -428,7 +429,6 @@ class SPG(PolarGenerator):
         """Converts joint state to polar state."""
         if self.num_dof != 1:
             r = jnp.linalg.norm(joints)
-            # Ensure phi is always calculated for safety, even if r is 0
             phi = jnp.arctan2(joints[1], joints[0])
             return jnp.asarray([phi, r])
         else:
@@ -436,7 +436,6 @@ class SPG(PolarGenerator):
 
     def update_trajectories(self, params: dict = None):
         """Appends the current state to the trajectory history."""
-        # --- Logic from SPG.update_trajectories ---
         change = jnp.any(jnp.sign(self.omega_cur) != jnp.sign(self.omega_past)).astype(float)
         self.omega_past = self.omega_cur
         params_input = jnp.concatenate([
@@ -444,8 +443,6 @@ class SPG(PolarGenerator):
             jnp.atleast_1d(self.mu_cur),
             jnp.atleast_1d(change)
         ])
-
-        # --- Logic from BaseModel & PolarGenerator (Corrected) ---
         self.t_traj = jnp.append(self.t_traj, self.t_cur)
         self.x_traj = jnp.append(self.x_traj, jnp.expand_dims(self.x_cur, axis=0), axis=0)
         self.q_traj = jnp.append(self.q_traj, jnp.expand_dims(self.q_cur, axis=0), axis=0)
@@ -454,7 +451,9 @@ class SPG(PolarGenerator):
         self.params_traj = jnp.append(self.params_traj, jnp.expand_dims(params_input, axis=0), axis=0)
 
     def get_params(self):
+        """Returns the current CPG parameters [omega, mu]."""
         return [self.omega_cur, self.mu_cur]
+
 
     def get_joint_state(self, state: dict | None = None):
         """Returns the current joint state [q, dq] from the polar state."""

@@ -130,7 +130,7 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = 0.0
 
     @staticmethod
-    @partial(jit, static_argnames=('sim', 'reward_func', 'action_scale'))
+    @partial(jit, static_argnums=(3,4,5))
     def _jitted_step(state, action, final_time, sim, reward_func, action_scale):
         """
         A pure, JIT-compiled function for one simulation step.
