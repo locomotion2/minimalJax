@@ -17,10 +17,29 @@ class CPG(BaseModel, ABC):
     """
     def __init__(self, params: dict = None):
         super().__init__(params)
-        # Initialize state variables as JAX arrays
+
+        # ----- Default state initialization -----
+        self.t_0 = params.get('t_0', 0.0) if params is not None else 0.0
+        self.t_cur = self.t_0
+        self.x_0 = jnp.zeros(self.state_size)
+        self.x_cur = jnp.asarray(self.x_0)
+        self.q_0 = jnp.zeros(self.num_dof)
+        self.q_cur = jnp.asarray(self.q_0)
+        self.p_0 = self.get_link_cartesian_positions()
+        self.p_cur = jnp.asarray(self.p_0)
+        self.E_0 = sum(self.get_energies())
+        self.E_cur = self.E_0
+        self.t_traj = jnp.asarray([self.t_cur])
+        self.x_traj = jnp.asarray([self.x_cur])
+        self.q_traj = jnp.asarray([self.q_cur])
+        self.p_traj = jnp.asarray([self.p_cur])
+        self.E_traj = jnp.asarray([self.E_cur])
+        # Initialize parameters
         self.omega_cur = jnp.zeros(self.num_dof)
         self.mu_cur = 0.0
         self.coils = 0
+        params_cpg = jnp.array([0.0, 1.0])
+        self.params_traj = jnp.asarray([params_cpg])
 
         # Pre-compile the JITted function for the equations of motion
         self.eqs_motion = self.make_eqs_motion()
@@ -173,6 +192,24 @@ class GPG(JointsGenerator):
             self.omega_cur = jnp.zeros(1)
             self.omega_past = jnp.zeros(1)
         self.mu_cur = jnp.zeros(1)
+        # ----- Default state initialization -----
+        self.t_0 = params.get('t_0', 0.0) if params is not None else 0.0
+        self.t_cur = self.t_0
+        self.x_0 = jnp.zeros(self.state_size)
+        self.x_cur = jnp.asarray(self.x_0)
+        self.q_0 = jnp.zeros(self.num_dof)
+        self.q_cur = jnp.asarray(self.q_0)
+        self.p_0 = self.get_link_cartesian_positions()
+        self.p_cur = jnp.asarray(self.p_0)
+        self.E_0 = sum(self.get_energies())
+        self.E_cur = self.E_0
+        self.t_traj = jnp.asarray([self.t_cur])
+        self.x_traj = jnp.asarray([self.x_cur])
+        self.q_traj = jnp.asarray([self.q_cur])
+        self.p_traj = jnp.asarray([self.p_cur])
+        self.E_traj = jnp.asarray([self.E_cur])
+        self.params_traj = jnp.zeros((1, self.num_dof + 1))
+
         # Create the appropriate JITted function based on static parameter `num_dof`.
         self.eqs_motion = self.make_eqs_motion()
 
@@ -287,6 +324,24 @@ class SPG(PolarGenerator):
             self.omega_cur = jnp.zeros(1)
             self.omega_past = jnp.zeros(1)
         self.mu_cur = jnp.zeros(1)
+        # ----- Default state initialization -----
+        self.t_0 = params.get('t_0', 0.0) if params is not None else 0.0
+        self.t_cur = self.t_0
+        self.x_0 = jnp.zeros(self.state_size)
+        self.x_cur = jnp.asarray(self.x_0)
+        self.q_0 = jnp.zeros(self.num_dof)
+        self.q_cur = jnp.asarray(self.q_0)
+        self.p_0 = self.get_link_cartesian_positions()
+        self.p_cur = jnp.asarray(self.p_0)
+        self.E_0 = sum(self.get_energies())
+        self.E_cur = self.E_0
+        self.t_traj = jnp.asarray([self.t_cur])
+        self.x_traj = jnp.asarray([self.x_cur])
+        self.q_traj = jnp.asarray([self.q_cur])
+        self.p_traj = jnp.asarray([self.p_cur])
+        self.E_traj = jnp.asarray([self.E_cur])
+        self.params_traj = jnp.zeros((1, self.num_dof + 1))
+
         self.eqs_motion = self.make_eqs_motion()
 
     def make_eqs_motion(self): # Renamed from _make_eqs_motion
