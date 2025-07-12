@@ -92,38 +92,43 @@ class Pendulum(BaseModel):
             return self._eqs_motion(t, x, controller, self.l, self.m, self.k_f)
         return ode_func
 
-    def select_initial(self, params: dict, state: dict) -> dict:
+    def select_initial(self, params: dict, state: jax.Array) -> tuple[jax.Array, jax.Array]:
         """
         Selects an initial state [q, dq] based on energy distribution.
-        This is now a pure function that takes and returns a state dictionary.
+
+        This is a pure function that computes initial conditions based on input parameters.
         """
         params = params or {}
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0.0)
+        key = self.key # Use the key from the model's state
 
-        # Split PRNG key from the state for reproducible randomness
-        rng, alpha_key, beta_key = jax.random.split(state['rng'], 3)
+        # Split PRNG key for reproducible randomness
+        key, alpha_key, beta_key = jax.random.split(key, 3)
         alpha = jax.random.uniform(alpha_key)
         beta = jax.random.uniform(beta_key)
 
         E_k, E_p = 0.0, 0.0
-        if mode == 'speed': E_k = E_d
-        elif mode == 'position': E_p = E_d
-        elif mode == 'random_des': E_k, E_p = alpha * E_d, (1.0 - alpha) * E_d
-        elif mode == 'random': E_rand = beta * MAX_ENERGY / 20.0; E_k, E_p = alpha * E_rand, (1.0 - alpha) * E_rand
+        if mode == 'speed':
+            E_k = E_d
+        elif mode == 'position':
+            E_p = E_d
+        elif mode == 'random_des':
+            E_k, E_p = alpha * E_d, (1.0 - alpha) * E_d
+        elif mode == 'random':
+            E_rand = beta * MAX_ENERGY / 20.0
+            E_k, E_p = alpha * E_rand, (1.0 - alpha) * E_rand
 
         # Use the static, JIT-compiled methods for calculation
+        # Note: These inverse methods need to be defined, likely in the BaseModel or as static methods.
+        # Assuming they are pure functions that don't rely on `self`'s mutable state.
         q_0 = self._inverse_potential(E_p, self.m, self.l)
-        dq_0 = self._inverse_kinetic(E_k, self.m, self.l)
+        dq_0 = self._inverse_kinetic(E_k, self.m, self.l, q_0) # Pass q_0 if kinetic energy depends on position
 
-        # Create a new state dictionary with the updated values
-        new_state = state.copy()
-        new_state['x_cur'] = jnp.array([q_0, dq_0]).flatten()
-        new_state['q_cur'] = new_state['x_cur'][0:self.num_dof]
-        new_state['p_cur'] = self._forward_kins(new_state['q_cur'], self.l)
-        new_state['rng'] = rng # Store the updated key
-        
-        return new_state
+        # Update the key in the main model state after using it
+        self.key = key
+
+        return q_0, dq_0
 
     def get_link_cartesian_positions(self, state: dict):
         """ Gets cartesian positions by calling the JIT-compiled forward kinematics. """

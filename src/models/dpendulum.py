@@ -435,22 +435,19 @@ class DoublePendulum(Pendulum):
         params['not_inherited'] = False
         super().__init__(params)
 
-    def get_initial_state(self, params: dict = None) -> dict:
-        """
-        Creates and returns the initial dynamic state of the model as a dictionary.
-        """
-        # Get initial physical state from the parent model
-        initial_parent_state = super().get_initial_state(params)
-        
-        # Add specific state for this class
-        initial_parent_state['q_des_prev'] = None
-        initial_parent_state['transition'] = jnp.zeros(2)
-        initial_parent_state['jax_key'] = jax.random.PRNGKey(0)
-        
-        # Select initial positions/velocities based on energy mode
-        final_state = self.select_initial(params, initial_parent_state)
-        
-        return final_state
+    def get_initial_state(self, params: dict) -> jax.Array:
+        """Computes the initial state of the model."""
+        if self.key is None:
+            self.key = jax.random.PRNGKey(0)
+
+        # Get symbolic representation of potential energy
+        temp_state = self.symbolic.get_potential_energy_symbols()
+
+        # Get initial conditions by calling the appropriate select_initial method
+        x_0, dq_0 = self.select_initial(params, temp_state)
+
+        # Concatenate position and velocity to form the full state vector
+        return jnp.concatenate([x_0, dq_0])
 
     def make_eqs_motion(self, params: dict = None):
         """
@@ -617,7 +614,6 @@ class DoublePendulum(Pendulum):
         # Initialize a JAX PRNG key for random operations
         self._jax_key = jax.random.PRNGKey(0)
 
-
     def make_eqs_motion(self, params: dict = None):
         def eqs_motion(t, x, params):
             controller = params['controller']
@@ -630,97 +626,83 @@ class DoublePendulum(Pendulum):
 
 # In class DoublePendulum
 
-    def select_initial(self, params: dict = None):
+    def select_initial(self, params: dict, state: jax.Array) -> tuple[jax.Array, jax.Array]:
         """
-        Selects the initial state of the pendulum based on a given energy `E`.
+        Selects the initial state of the double pendulum based on a given energy `E`.
+        This function is now pure and does not modify the instance state.
         """
+        # Note: The `state` argument is not used here but is kept for API consistency
+        # with the parent class. The key is managed via `self.key`.
+
         def inverse_kinetic(key, q, E: float = 0):
             """
-            Calculates the inverse kinetic energy to find the initial velocities.
+            Calculates the inverse kinetic energy to find the initial velocities. (Pure function)
             """
             key, subkey1, subkey2 = jax.random.split(key, 3)
+            # Use a fixed random direction for velocity for reproducibility in optimization
             dq0 = jax.random.uniform(subkey1, shape=(2,), minval=-1, maxval=1)
 
+            # The energy function should ideally be a static method of the backend
             value_func = lambda dq: self.backend.kinetic_energy(q, dq)
-
-            ### DEBUG ###
-            print(f"--- inverse_kinetic ---")
-            print(f"Target Energy (E_k): {E}")
-            print(f"Initial dq0: {dq0}")
-            print(f"Created value_func: {value_func}")
-            print(f"-----------------------")
-
-
             grad_func = jax.grad(value_func)
 
+            # find_by_grad_desc should be a pure function
             dq = sutils.find_by_grad_desc(subkey2, E, dq0, value_func, grad_func)
-            return dq, key
+            return dq, key # Return the updated key
 
         def inverse_potential(key, E: float = 0, q0=None):
             """
-            Calculates the inverse potential energy to find the initial positions.
+            Calculates the inverse potential energy to find the initial positions. (Pure function)
             """
             key, subkey = jax.random.split(key)
 
             if q0 is None:
-                q0 = jnp.zeros(2)
+                # Use a fixed random starting point for optimization
+                q0 = jax.random.uniform(key, shape=(2,), minval=-jnp.pi, maxval=jnp.pi)
+                key, subkey = jax.random.split(key) # Get a new subkey for the optimizer
 
+            # The energy function should ideally be a static method of the backend
             value_func = lambda q: self.backend.potential_energy(q, absolute=True)
             grad_func = jax.grad(value_func)
 
+            # find_by_grad_desc should be a pure function
             q = sutils.find_by_grad_desc(subkey, E, q0, value_func, grad_func)
 
-            return jnp.arctan2(jnp.sin(q), jnp.cos(q)), key
+            return jnp.arctan2(jnp.sin(q), jnp.cos(q)), key # Return the updated key
 
         # --- Main function logic ---
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0)
-        if E_d is None:
-            E_d = 0.0
+        E_d = params.get('E_d', 0.0)
 
-        self._jax_key, key_alpha, key_beta = jax.random.split(self._jax_key, 3)
+        # Use the instance's PRNG key and split it for use.
+        key, key_alpha, key_beta = jax.random.split(self.key, 3)
 
         alpha = jax.random.uniform(key_alpha)
         beta = jax.random.uniform(key_beta)
 
         if mode == 'speed':
-            E_k = E_d
-            E_p = 0
+            E_k, E_p = E_d, 0.0
         elif mode == 'position':
-            E_k = 0
-            E_p = E_d
+            E_k, E_p = 0.0, E_d
         elif mode == 'random_des':
-            E_k = alpha * E_d
-            E_p = (1 - alpha) * E_d
+            E_k, E_p = alpha * E_d, (1 - alpha) * E_d
         elif mode == 'random':
-            E_rand = beta * MAX_ENERGY / 20
-            E_k = alpha * E_rand
-            E_p = (1 - alpha) * E_rand
+            E_rand = beta * MAX_ENERGY / 20.0
+            E_k, E_p = alpha * E_rand, (1 - alpha) * E_rand
         else: # 'equilibrium'
-            E_k = 0
-            E_p = 0
+            E_k, E_p = 0.0, 0.0
 
-        ### DEBUG ###
-        print(f"--- select_initial ---")
-        print(f"Mode: {mode}, Desired Energy (E_d): {E_d}")
-        print(f"Calculated E_k: {E_k}, E_p: {E_p}")
-        print(f"----------------------")
+        # Thread the key through the pure inverse functions
+        q_0, key = inverse_potential(key, E=E_p)
+        dq_0, key = inverse_kinetic(key, q=q_0, E=E_k)
 
+        # The key has been used and split, so update the key on the instance
+        # for the next time this or another method needs randomness.
+        self.key = key
 
-        q_0, self._jax_key = inverse_potential(self._jax_key, E=E_p)
-        dq_0, self._jax_key = inverse_kinetic(self._jax_key, q=q_0, E=E_k)
-
-        self.x_0 = jnp.append(q_0, dq_0)
-        self.x_cur = self.x_0
-
-        self.q_0 = q_0
-        self.q_cur = self.q_0
-
-        self.p_0 = self.get_link_cartesian_positions()
-        self.p_cur = self.p_0
-
-        return q_0
+        # Return the computed initial position and velocity as a tuple
+        return q_0, dq_0
 
     def solve(self, t: float):
         raise NotImplementedError

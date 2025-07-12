@@ -189,30 +189,36 @@ class BaseGymEnvironment(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
-        """Resets the environment. This is inherently stateful."""
+        """Resets the environment to an initial state."""
         super().reset(seed=seed)
         if seed is not None:
-            self.key, sim_key = jax.random.split(jax.random.PRNGKey(seed))
-        else:
-            self.key, sim_key = jax.random.split(self.key)
-        
-        self.new_target_energy()
-        
-        # The simulation's restart must also be handled carefully if it uses random keys
-        initial_sim_state = self.sim.restart({'E_d': self.E_d}, key=sim_key)
-        
-        # Initialize the full environment state PyTree
-        self.state = {'sim_state': initial_sim_state, 't': 0}
-        
-        obs = self._state_to_obs(self.state['sim_state'])
-        _, costs = self.reward_func(self.state['sim_state'])
-        info = {'costs': np.array(costs, dtype=np.float32)}
+            self.key = jax.random.PRNGKey(seed)
 
-        # Reset episode trackers
+        # Update the target energy based on the curriculum
+        self.new_target_energy()
+
+        # Restart the underlying simulation
+        self.sim.restart({'E_d': self.E_d})
+
+        # Get the initial state from the simulation
+        initial_sim_state = self.sim.get_state_and_update()
+
+        # Initialize the full environment state
+        self.state = {
+            'sim_state': initial_sim_state,
+            't': 0,
+        }
+
+        # Get initial observation and info dict for Gym
+        obs = self._state_to_obs(self.state['sim_state'])
+        _, costs = self.reward_func(self.state['sim_state']) # We only need costs for the info dict
+        info = {'costs': np.array(costs)}
+
+        # Reset episode-specific trackers
         self.r_epi = 0.0
         self.r_traj = jnp.empty((0, self.r_num + 1))
         self.E_l_traj = jnp.empty((0, 1))
-        
+
         return obs, info
 
     def _state_to_obs(self, sim_state: dict) -> np.ndarray:
@@ -252,19 +258,6 @@ class BaseGymEnvironment(gym.Env):
         """Closes any open resources (e.g., plotting windows)."""
         if self.visualize:
             plt.close('all')
-
-
-    # ... The plot, animate, and render methods remain the same, as they are
-    # for visualization and are not part of the JAX-compiled simulation loop.
-
-    def render(self):
-        """Handles rendering requests."""
-        if self.render_mode == 'human':
-            # This environment uses an external visualization tool (e.g., self.plot())
-            pass
-        elif self.render_mode == 'rgb_array':
-            # This would require rendering to an offscreen buffer
-            raise NotImplementedError("RGB array rendering is not implemented.")
 
     def plot(self):
         try:
