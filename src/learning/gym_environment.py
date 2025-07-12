@@ -1,5 +1,5 @@
 import pandas as pd
-
+import numpy as np # Using numpy for Gym spaces
 from src.CONSTANTS import *
 
 import gymnasium as gym
@@ -7,9 +7,10 @@ from gymnasium.spaces import Box
 import jax
 import jax.numpy as jnp
 from jax import jit
+from functools import partial
+
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 import cv2
 from PIL import ImageGrab
 
@@ -17,47 +18,42 @@ from src.environments.dpendulum import DoublePendulumCPGEnv, DoublePendulumDirec
 from src.environments.pendulum import PendulumCPGEnv, PendulumDirectEnv
 from src.learning.curricula import UniformGrowthCurriculum
 from src.learning.reward_functions import default_func
-from functools import partial
-
-def p_norm(x, p):
-    return jnp.power(jnp.sum(jnp.power(x, p)), 1 / p)
 
 
+# --- Helper Functions (Not for JIT) ---
 def move_figure(f, x, y):
-    """Move figure's upper left corner to pixel (x, y)"""
+    """Move matplotlib figure's upper left corner to pixel (x, y)"""
     import matplotlib
     backend = matplotlib.get_backend()
+    if backend is None: return # Return if no backend
     window = f.canvas.manager.window
     if backend == 'TkAgg':
         window.wm_geometry(f"+{x}+{y}")
     elif backend == 'WXAgg':
         window.SetPosition((x, y))
     else:
-        # Qt backends: Try move() if available, else setGeometry
         if hasattr(window, "move"):
             window.move(x, y)
         elif hasattr(window, "setGeometry"):
-            # width and height in pixels
             width, height = int(f.get_figwidth() * f.dpi), int(f.get_figheight() * f.dpi)
             window.setGeometry(x, y, width, height)
-
 
 
 class BaseGymEnvironment(gym.Env):
     """
     A JAX-accelerated Gymnasium Environment.
 
-    This class is optimized to leverage JAX's JIT compilation for high-speed
-    simulations while maintaining compatibility with the standard Gymnasium API.
-    The core simulation logic is encapsulated in a pure, JIT-compiled static
-    method `_jitted_step` to ensure performance-critical code runs on the
-    accelerator (GPU/TPU) without slow data transfers.
+    This class uses the "stateful wrapper, stateless core" pattern.
+    - The public methods (`step`, `reset`) are stateful (they modify `self.state`)
+      and compatible with the standard Gymnasium API.
+    - The internal, performance-critical logic is in `_jitted_step`, a pure,
+      stateless function that is JIT-compiled by JAX.
     """
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 30}
 
     def __init__(self, **kwargs):
         """
-        Initializes the JAX-accelerated Gymnasium environment.
+        Initializes the environment. This method is stateful and runs only once.
         """
         super().__init__()
 
@@ -93,24 +89,24 @@ class BaseGymEnvironment(gym.Env):
         generator = kwargs.get('generator', 'CPG')
         system_name = kwargs.get('system', 'DoublePendulum')
         
+        system_map_cpg = {'DoublePendulum': DoublePendulumCPGEnv, 'Pendulum': PendulumCPGEnv}
+        system_map_direct = {'DoublePendulum': DoublePendulumDirectEnv, 'Pendulum': PendulumDirectEnv}
+
         if generator == 'CPG':
-            system_map = {'DoublePendulum': DoublePendulumCPGEnv, 'Pendulum': PendulumCPGEnv}
-            params['num_dof'] = 2 if system_name == 'DoublePendulum' else 1
-            self.system = system_map[system_name]
+            system_class = system_map_cpg[system_name]
             self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_CPG))
         elif generator == 'direct':
-            system_map = {'DoublePendulum': DoublePendulumDirectEnv, 'Pendulum': PendulumDirectEnv}
-            params['num_dof'] = 2 if system_name == 'DoublePendulum' else 1
-            self.system = system_map[system_name]
+            system_class = system_map_direct[system_name]
             self.action_scale = jnp.asarray(kwargs.get('action_scale', ACTION_SCALE_DIRECT))
         else:
             raise NotImplementedError(f"Generator {generator} not implemented")
 
+        params['num_dof'] = 2 if system_name == 'DoublePendulum' else 1
         params['state_size'] = params['num_dof'] * 2
         input_size = params['state_size'] * 2 + 1
         output_size = len(self.action_scale)
 
-        # --- Rendering and Visualization ---
+        # --- Rendering and Visualization (Not JIT-compatible) ---
         self.visualize = kwargs.get('render', False)
         self.record = kwargs.get('record', False)
         if self.visualize:
@@ -118,103 +114,101 @@ class BaseGymEnvironment(gym.Env):
             move_figure(plt.figure('Visualization', figsize=FIG_SIZE), 0, 0)
 
         # --- Gymnasium API Setup ---
-        # Define Gym spaces with NumPy types for compatibility
         self.action_space = Box(low=-1.0, high=1.0, shape=(output_size,), dtype=np.float32)
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(input_size,), dtype=np.float32)
         
-        # Instantiate the underlying JAX-based simulation
-        self.sim = self.system(params=params)
+        # Instantiate the underlying simulation
+        self.sim = system_class(params=params)
 
         # --- State and Tracking Initialization ---
-        self.r_num = 3  # Number of separate cost values from reward function
-        self.key = jax.random.PRNGKey(0) # JAX PRNG key for reproducible randomness
-        self.state = {} # Will be populated by reset()
-
-        # Initialize trajectories as empty 2D arrays with the correct number of columns
-        self.r_traj = jnp.empty((0, self.r_num + 1)) # +1 for the main reward
+        self.r_num = 3
+        self.key = jax.random.PRNGKey(0)
+        # The 'state' is a PyTree that will be passed to JIT functions
+        self.state = {} 
+        self.r_traj = jnp.empty((0, self.r_num + 1))
         self.E_l_traj = jnp.empty((0, 1))
         self.r_epi = 0.0
 
     @staticmethod
-    @jit
-    def _jitted_step(state, action, final_time, sim, reward_func):
-        """A pure, JIT-compiled function for one simulation step."""
-        # This function contains the logic that needs to be fast.
-        # It takes the state and action, and returns the results.
+    @partial(jit, static_argnames=('sim', 'reward_func', 'action_scale'))
+    def _jitted_step(state, action, final_time, sim, reward_func, action_scale):
+        """
+        A pure, JIT-compiled function for one simulation step.
+        This is the performance-critical core.
+        - It is stateless: all inputs are passed as arguments in the `state` PyTree.
+        - It is pure: it has no side-effects and returns the new state PyTree.
+        """
+        # Unpack the state PyTree
+        sim_state = state['sim_state']
+        t = state['t']
         
-        # Step the underlying JAX-based simulation
-        # We pass the sim object as a static argument to JIT
-        next_sim_state = sim.step(action, state['sim_state'])
+        # Scale the action
+        scaled_action = action * action_scale
+
+        # Step the underlying JAX-based simulation.
+        # Crucially, sim.step must also be a pure function that takes the
+        # state as input and returns the new state.
+        next_sim_state = sim.step(sim_state, scaled_action)
         
-        # Calculate reward and costs
+        # Calculate reward and costs from the new state
         reward, costs = reward_func(next_sim_state)
         
         # Update time and check for termination
-        t_next = state['t'] + 1
+        t_next = t + 1
         terminated = (t_next >= final_time)
         
-        # Assemble the full next state of the environment
-        next_state = {
-            'sim_state': next_sim_state,
-            't': t_next,
-        }
-        
+        # Pack and return the new state PyTree and other results
+        next_state = {'sim_state': next_sim_state, 't': t_next}
         return next_state, reward, costs, terminated
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
-        """The public step function interfacing with the Gym API."""
-        # Convert NumPy action from Gym to a JAX array for the simulation
+        """
+        The public, stateful step function that interfaces with the Gym API.
+        This method acts as a "wrapper" around the JIT-compiled core.
+        """
         action_jax = jnp.asarray(action)
         
-        # Call the fast, JIT-compiled step function with the current state
+        # Call the fast, pure, JIT-compiled step function
         next_state, reward_jax, costs_jax, terminated_jax = self._jitted_step(
-            self.state, action_jax, self.final_time, self.sim, self.reward_func
+            self.state, action_jax, self.final_time, self.sim, self.reward_func, self.action_scale
         )
         
-        # Update the environment's state (this is a side-effect)
+        # This is the stateful part: update the environment's state.
+        # This side-effect happens outside the JIT-compiled function.
         self.state = next_state
         
-        # Track rewards and other data
+        # Tracking and observation logic also happens outside the JIT-ed path.
         self.tracking(reward_jax, costs_jax, self.state['sim_state']['Energies'])
         
-        # Convert results back to standard Python/NumPy types for Gym
         obs = self._state_to_obs(self.state['sim_state'])
         reward = float(reward_jax)
         terminated = bool(terminated_jax)
-        info = {'costs': np.array(costs_jax)}
-
-        # The 'truncated' flag is not used in this environment
+        info = {'costs': np.array(costs_jax, dtype=np.float32)}
         truncated = False
 
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
-        """Resets the environment to an initial state."""
+        """Resets the environment. This is inherently stateful."""
         super().reset(seed=seed)
         if seed is not None:
-            self.key = jax.random.PRNGKey(seed)
+            self.key, sim_key = jax.random.split(jax.random.PRNGKey(seed))
+        else:
+            self.key, sim_key = jax.random.split(self.key)
         
-        # Update the target energy based on the curriculum
         self.new_target_energy()
         
-        # Restart the underlying simulation
-        self.sim.restart({'E_d': self.E_d})
+        # The simulation's restart must also be handled carefully if it uses random keys
+        initial_sim_state = self.sim.restart({'E_d': self.E_d}, key=sim_key)
         
-        # Get the initial state from the simulation
-        initial_sim_state = self.sim.get_state_and_update()
+        # Initialize the full environment state PyTree
+        self.state = {'sim_state': initial_sim_state, 't': 0}
         
-        # Initialize the full environment state
-        self.state = {
-            'sim_state': initial_sim_state,
-            't': 0,
-        }
-        
-        # Get initial observation and info dict for Gym
         obs = self._state_to_obs(self.state['sim_state'])
-        _, costs = self.reward_func(self.state['sim_state']) # We only need costs for the info dict
-        info = {'costs': np.array(costs)}
+        _, costs = self.reward_func(self.state['sim_state'])
+        info = {'costs': np.array(costs, dtype=np.float32)}
 
-        # Reset episode-specific trackers
+        # Reset episode trackers
         self.r_epi = 0.0
         self.r_traj = jnp.empty((0, self.r_num + 1))
         self.E_l_traj = jnp.empty((0, 1))
@@ -222,50 +216,46 @@ class BaseGymEnvironment(gym.Env):
         return obs, info
 
     def _state_to_obs(self, sim_state: dict) -> np.ndarray:
-        """Converts the simulation state dictionary to a NumPy observation array."""
-        obs = jnp.concatenate([
+        """Converts the simulation state PyTree to a NumPy observation array."""
+        obs_jax = jnp.concatenate([
             sim_state['Joint_pos'],
             sim_state['Joint_vel'],
             sim_state['Pos_gen'],
             sim_state['Vel_gen'],
             jnp.atleast_1d(sim_state['Energy_des'])
         ])
-        return np.asarray(obs)
+        return np.asarray(obs_jax)
 
     def tracking(self, reward: jax.Array, costs: jax.Array, energies: tuple):
-        """Correctly tracks rewards, costs, and energies using JAX concatenation."""
-        # 1. Create a single 1D array for the new reward and cost data.
-        new_reward_data = jnp.concatenate([jnp.atleast_1d(reward), costs])
-        
-        # 2. Reshape it to a 2D row vector (1, N) to match the trajectory's shape.
-        new_reward_row = jnp.expand_dims(new_reward_data, axis=0)
-        
-        # 3. Concatenate the new row with the existing trajectory.
-        self.r_traj = jnp.concatenate([self.r_traj, new_reward_row], axis=0)
+        """
+        Tracks data over an episode. This is stateful and not JIT-compiled.
+        """
+        new_reward_row = jnp.expand_dims(jnp.concatenate([jnp.atleast_1d(reward), costs]), 0)
+        self.r_traj = jnp.concatenate([self.r_traj, new_reward_row])
 
-        # Do the same for the energies trajectory.
         total_energy = jnp.atleast_1d(energies[0] + energies[1])
-        new_energy_row = jnp.expand_dims(total_energy, axis=0)
-        self.E_l_traj = jnp.concatenate([self.E_l_traj, new_energy_row], axis=0)
+        new_energy_row = jnp.expand_dims(total_energy, 0)
+        self.E_l_traj = jnp.concatenate([self.E_l_traj, new_energy_row])
         
-        # Update the total episode reward
         self.r_epi += reward
 
     def new_target_energy(self):
-        """Updates the target energy based on curriculum learning."""
+        """Updates the target energy. This is stateful."""
         if not self.inference:
-            MIN_SCORE_FOR_SUCCESS = 0.0  # Placeholder: Adjust this threshold
+            MIN_SCORE_FOR_SUCCESS = 0.0
             success_rate = 1.0 if self.r_epi > MIN_SCORE_FOR_SUCCESS else 0.0
             self.curriculum.update(success_rate)
-            
-            # Get difficulty from curriculum and provide a default if it's None
             difficulty = self.curriculum.get_difficulty()
             self.E_d = 0.0 if difficulty is None else difficulty
 
     def close(self):
-        """Closes any open resources, like plotting windows."""
+        """Closes any open resources (e.g., plotting windows)."""
         if self.visualize:
             plt.close('all')
+
+
+    # ... The plot, animate, and render methods remain the same, as they are
+    # for visualization and are not part of the JAX-compiled simulation loop.
 
     def render(self):
         """Handles rendering requests."""

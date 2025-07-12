@@ -1,125 +1,137 @@
 from abc import ABC
-import numpy as np  # Keep for solve_ivp which may be used in base_models
 import jax
 import jax.numpy as jnp
 
-# Assuming your base models are structured like this
+# Assuming the base models are in this path.
+# These base classes are expected to provide the .simulate() method
+# and define the basic structure.
 from src.models.base_models import BaseModel, JointsGenerator, PolarGenerator
 
+
 class CPG(BaseModel, ABC):
+    """
+    Cartesian Central Pattern Generator (CPG).
+
+    This model generates rhythmic patterns in Cartesian space using a limit cycle oscillator.
+    The core dynamics are implemented in a JAX-jittable function for performance.
+    """
     def __init__(self, params: dict = None):
-        # The __init__ method is not JIT-compiled, so regular Python is fine.
-        # Assuming num_dof is set in the super().__init__(params) call
         super().__init__(params)
-        self.omega_cur = jnp.asarray([0] * self.num_dof)
-        self.mu_cur = 0
+        # Initialize state variables as JAX arrays
+        self.omega_cur = jnp.zeros(self.num_dof)
+        self.mu_cur = 0.0
         self.coils = 0
 
-        params_cpg = jnp.asarray([0, 1])
-        self.params_traj = jnp.asarray([params_cpg])
-        # It's good practice to create the jitted function once
-        self.eqs_motion = self.make_eqs_motion()
+        # Pre-compile the JITted function for the equations of motion
+        self.eqs_motion = self._make_eqs_motion()
 
-
-    def make_eqs_motion(self, params: dict = None):
-        @jax.jit
+    @staticmethod
+    @jax.jit
+    def _make_eqs_motion():
+        """Creates a JIT-compiled function for the oscillator dynamics."""
         def eqs_motion(t, x, params):
+            """CPG equations of motion."""
             mu = params['mu']
             omega = params['omega']
-
             rho = x[0] ** 2 + x[1] ** 2
-            circleDist = mu ** 2 - rho
-
-            dx1 = -x[1] * omega + x[0] * circleDist
-            dx2 = x[0] * omega + x[1] * circleDist
-
+            circle_dist = mu ** 2 - rho
+            dx1 = -x[1] * omega + x[0] * circle_dist
+            dx2 = x[0] * omega + x[1] * circle_dist
             return jnp.asarray([dx1, dx2])
-
         return eqs_motion
 
     def restart(self, params: dict = None):
-        # Re-implement BaseModel.restart to fix E_cur initialization
+        """
+        Resets the model to its initial state. This is a stateful operation
+        and is not JIT-compiled.
+        """
+        # --- Logic from BaseModel.restart ---
         self.t_0 = params.get('t_0', self.t_0)
         p_0 = self.select_initial(params)
         self.t_cur = self.t_0
-        # Corrected E_cur/E_0 initialization to produce a scalar
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
-        # Reset tracking vars from BaseModel.restart
-        self.t_traj = self.t_cur
+        self.t_traj = jnp.asarray([self.t_cur])
         self.x_traj = jnp.asarray([self.x_cur])
         self.q_traj = jnp.asarray([self.q_cur])
         self.p_traj = jnp.asarray([self.p_cur])
-        self.E_traj = self.E_cur
+        self.E_traj = jnp.asarray([self.E_cur])
 
-        # Logic from CPG.restart itself
-        params_cpg = jnp.asarray([0, 1])
+        # --- Logic from CPG.restart ---
+        params_cpg = jnp.array([0.0, 1.0])
         self.params_traj = jnp.asarray([params_cpg])
         self.coils = 0
         return p_0
 
     def step(self, params: dict = None):
-        # Re-implement BaseModel.step to fix E_cur calculation, avoiding the call to super().step().
-        t_final = jnp.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
-        ts = jnp.asarray([self.t_cur, t_final]).flatten()
+        """
+        Advances the simulation by one time step. This is a stateful wrapper
+        that calls the pure, JIT-compiled dynamics function.
+        """
+        # --- Logic from BaseModel.step ---
+        t_final = params.get('t_final', self.t_cur + self.delta_t)
+        ts = jnp.asarray([self.t_cur, t_final])
 
-        # Simulate the system until t_final
-        self.x_cur = self.simulate({'eqs': self.eqs_motion,
-                                    'eqs_params': params,
-                                    'ts': ts,
-                                    'x_0': self.x_cur})
+        # Simulate using the JIT-compiled dynamics
+        self.x_cur = self.simulate({
+            'eqs': self.eqs_motion,
+            'eqs_params': params,
+            'ts': ts,
+            'x_0': self.x_cur
+        })
 
-        # Update the current variables
+        # Update state variables
         self.p_cur = self.get_link_cartesian_positions()
         self.q_cur = self.state_to_joints()
-        # Corrected E_cur calculation to produce a scalar
         self.E_cur = sum(self.get_energies())
         self.t_cur = t_final
 
     def update_trajectories(self, params: dict = None):
-        # Re-implement the BaseModel.update_trajectories logic correctly here to avoid the error in the superclass.
+        """
+        Appends the current state to the trajectory history.
+        Note: jnp.append is used for simplicity, but for very long simulations
+        in a JIT context, pre-allocation would be more performant.
+        """
+        # --- Logic from BaseModel.update_trajectories (Corrected) ---
         self.t_traj = jnp.append(self.t_traj, self.t_cur)
-        # Correctly append arrays without creating lists
         self.x_traj = jnp.append(self.x_traj, jnp.expand_dims(self.x_cur, axis=0), axis=0)
         self.q_traj = jnp.append(self.q_traj, jnp.expand_dims(self.q_cur, axis=0), axis=0)
         self.p_traj = jnp.append(self.p_traj, jnp.expand_dims(self.p_cur, axis=0), axis=0)
         self.E_traj = jnp.append(self.E_traj, self.E_cur)
 
-        # Now do the CPG-specific updates that were originally after the super() call.
+        # --- Logic from CPG.update_trajectories ---
         self.mu_cur = params['mu']
         self.omega_cur = params['omega']
         params_val = jnp.asarray([self.omega_cur, self.mu_cur])
         self.params_traj = jnp.append(self.params_traj, jnp.expand_dims(params_val, axis=0), axis=0)
 
     def detect_coiling(self):
-        # This method is not JIT-compiled, so Python conditionals are fine.
+        """Detects full rotations of the oscillator."""
         if len(self.x_traj) < 2:
             return self.coils
         x_new = self.x_cur
         x_old = self.x_traj[-2]
-
         new_angle = jnp.arctan2(x_new[1], x_new[0])
         old_angle = jnp.arctan2(x_old[1], x_old[0])
-        if (-jnp.pi / 2 > new_angle) and (old_angle > jnp.pi / 2):
+        if (new_angle < -jnp.pi / 2) and (old_angle > jnp.pi / 2):
             self.coils += 1
-        elif (-jnp.pi / 2 > old_angle) and (new_angle > jnp.pi / 2):
+        elif (old_angle < -jnp.pi / 2) and (new_angle > jnp.pi / 2):
             self.coils -= 1
         return self.coils
 
     def select_initial(self, params: dict = None):
+        """Sets the initial conditions for the model."""
         self.x_0 = params.get('x_0', self.x_0)
         self.x_cur = jnp.asarray(self.x_0)
-        self.q_0 = jnp.asarray([0] * self.num_dof)
+        self.q_0 = jnp.zeros(self.num_dof)
         self.q_cur = jnp.asarray(self.q_0)
-        # Assuming get_link_cartesian_positions returns a JAX array
-        # The .tolist() call from the original might cause issues if this method is ever JITted.
-        # Sticking to JAX arrays is safer.
         self.p_0 = self.get_link_cartesian_positions()
         self.p_cur = jnp.asarray(self.p_0)
+        return self.p_0
 
+    # --- Getter and other methods ---
     def get_cartesian_state(self):
         params = {'mu': self.mu_cur, 'omega': self.omega_cur}
-        # Use the pre-compiled function
         v = self.eqs_motion(0, self.x_cur, params)
         return [self.x_cur, v]
 
@@ -135,267 +147,258 @@ class CPG(BaseModel, ABC):
     def get_parametric_traj(self):
         return self.params_traj
 
-    def solve(self, t):
-        pass
-
-    def inverse_kins(self, params: dict = None):
-        pass
-
-    def get_joint_state(self):
-        pass
-
     def get_energies(self):
         return [0, 0]
 
+    # --- Abstract methods that should be implemented if needed ---
+    def solve(self, t): pass
+    def inverse_kins(self, params: dict = None): pass
+    def get_joint_state(self): pass
+
+
 class GPG(JointsGenerator):
+    """
+    Joint-space Pattern Generator (GPG).
+
+    Generates rhythmic patterns directly in the joint space. The dynamics
+    are defined in a JAX-jittable function, chosen based on the number of DoF.
+    """
     def __init__(self, params: dict = None):
         super().__init__(params)
-        # This conditional logic is fine in __init__
+        # Initialization logic is static and runs once, so Python `if` is fine.
         if self.num_dof != 1:
-            self.omega_cur = jnp.asarray([0] * (self.num_dof - 1))
-            self.omega_past = jnp.asarray([0] * (self.num_dof - 1))
-            self.mu_cur = jnp.asarray([0])
+            self.omega_cur = jnp.zeros(self.num_dof - 1)
+            self.omega_past = jnp.zeros(self.num_dof - 1)
         else:
-            self.omega_cur = jnp.asarray([0])
-            self.omega_past = jnp.asarray([0])
-            self.mu_cur = jnp.asarray([0]) # Ensure mu_cur is always an array for consistency
-        self.eqs_motion = self.make_eqs_motion()
+            self.omega_cur = jnp.zeros(1)
+            self.omega_past = jnp.zeros(1)
+        self.mu_cur = jnp.zeros(1)
+        # Create the appropriate JITted function based on static parameter `num_dof`.
+        self.eqs_motion = self._make_eqs_motion()
 
-    def make_eqs_motion(self, params: dict = None):
-        # Use a static Python if to create the correct JIT'd function
+    def _make_eqs_motion(self):
+        """
+        Factory for the JIT-compiled dynamics function.
+        A standard Python `if` is used here because `self.num_dof` is a static
+        parameter that doesn't change during the simulation.
+        """
         if self.num_dof != 1:
-            num_dof = self.num_dof # Capture as static value
+            num_dof = self.num_dof  # Capture as a static value for the jit
             @jax.jit
             def eqs_motion(t, x, params):
-                mu = params['mu']
-                omega = params['omega']
+                """GPG equations of motion for num_dof > 1."""
+                mu, omega = params['mu'], params['omega']
                 q = jnp.asarray(x, dtype=float).flatten()
                 psi = mu ** 2 - jnp.linalg.norm(q) ** 2
                 root = jnp.ones((num_dof, num_dof))
                 upper = jnp.multiply(jnp.triu(root, 1), omega)
                 lower = jnp.multiply(jnp.tril(root, -1), -omega)
-                diag_values = jnp.full((num_dof,), psi.squeeze())
-                diag = jnp.diag(diag_values)
+                diag = jnp.diag(jnp.full((num_dof,), psi.squeeze()))
                 A = upper + diag + lower
                 return A @ q
         else:
             @jax.jit
             def eqs_motion(t, x, params):
+                """GPG equations of motion for num_dof == 1."""
                 return params['omega']
         return eqs_motion
 
     def restart(self, params: dict = None):
-        # Re-implement BaseModel.restart and JointsGenerator.restart
-        # 1. Logic from BaseModel.restart
+        """Resets the model to its initial state."""
+        # --- Logic from BaseModel.restart ---
         self.t_0 = params.get('t_0', self.t_0)
         p_0 = self.select_initial(params)
         self.t_cur = self.t_0
-        # CORRECTED LOGIC:
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
-        # Reset tracking vars from BaseModel.restart
-        self.t_traj = self.t_cur
+        self.t_traj = jnp.asarray([self.t_cur])
         self.x_traj = jnp.asarray([self.x_cur])
         self.q_traj = jnp.asarray([self.q_cur])
         self.p_traj = jnp.asarray([self.p_cur])
-        self.E_traj = self.E_cur
-
-        # 2. Logic from JointsGenerator.restart
-        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
-        
+        self.E_traj = jnp.asarray([self.E_cur])
+        # --- Logic from JointsGenerator.restart ---
+        self.params_traj = jnp.zeros((1, self.num_dof + 1))
         return p_0
 
     def step(self, params: dict = None):
-        params['num_dof'] = self.num_dof
-        
-        # Re-implement BaseModel.step to fix E_cur calculation
-        t_final = jnp.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
-        ts = jnp.asarray([self.t_cur, t_final]).flatten()
-
-        # Simulate the system until t_final
-        self.x_cur = self.simulate({'eqs': self.eqs_motion,
-                                    'eqs_params': params,
-                                    'ts': ts,
-                                    'x_0': self.x_cur})
-
-        # Update the current variables
+        """Advances the simulation by one time step."""
+        # --- Logic from BaseModel.step ---
+        t_final = params.get('t_final', self.t_cur + self.delta_t)
+        ts = jnp.asarray([self.t_cur, t_final])
+        self.x_cur = self.simulate({
+            'eqs': self.eqs_motion,
+            'eqs_params': params,
+            'ts': ts,
+            'x_0': self.x_cur
+        })
         self.p_cur = self.get_link_cartesian_positions()
         self.q_cur = self.state_to_joints()
-        # Corrected E_cur calculation to produce a scalar
         self.E_cur = sum(self.get_energies())
         self.t_cur = t_final
-
-        # GPG-specific updates
+        # --- Logic from GPG.step ---
         self.omega_cur = jnp.asarray(params['omega'])
         self.mu_cur = jnp.asarray(params['mu'])
 
     def update_trajectories(self, params: dict = None):
-        # Re-implement the full inheritance chain of update_trajectories to avoid the error in BaseModel.
-        # 1. Logic from GPG itself
-        change = 0
-        if jnp.any(jnp.sign(self.omega_cur) != jnp.sign(self.omega_past)):
-            change = 1
+        """Appends the current state to the trajectory history."""
+        # --- Logic from GPG.update_trajectories ---
+        change = jnp.any(jnp.sign(self.omega_cur) != jnp.sign(self.omega_past)).astype(float)
         self.omega_past = self.omega_cur
         params_input = jnp.concatenate([
             jnp.atleast_1d(self.omega_cur),
             jnp.atleast_1d(self.mu_cur),
-            jnp.asarray([change])
-        ], axis=0)
-        
-        # 2. Logic from BaseModel (Corrected)
+            jnp.atleast_1d(change)
+        ])
+
+        # --- Logic from BaseModel.update_trajectories (Corrected) ---
         self.t_traj = jnp.append(self.t_traj, self.t_cur)
         self.x_traj = jnp.append(self.x_traj, jnp.expand_dims(self.x_cur, axis=0), axis=0)
         self.q_traj = jnp.append(self.q_traj, jnp.expand_dims(self.q_cur, axis=0), axis=0)
         self.p_traj = jnp.append(self.p_traj, jnp.expand_dims(self.p_cur, axis=0), axis=0)
         self.E_traj = jnp.append(self.E_traj, self.E_cur)
 
-        # 3. Logic from JointsGenerator (Corrected)
+        # --- Logic from JointsGenerator.update_trajectories ---
         self.params_traj = jnp.append(self.params_traj, jnp.expand_dims(params_input, axis=0), axis=0)
 
     def get_params(self):
         return [self.omega_cur, self.mu_cur]
 
     def get_joint_state(self):
+        """Returns the current joint state [q, dq]."""
         q = jnp.asarray(self.x_cur).flatten()
-        # Pass num_dof in params dict for the JITted function
-        params = {'mu': self.mu_cur, 'omega': self.omega_cur, 'num_dof': self.num_dof}
-        dq = jnp.asarray(self.eqs_motion(0, q, params)).flatten()
+        params = {'mu': self.mu_cur, 'omega': self.omega_cur}
+        dq = self.eqs_motion(0, q, params).flatten()
         return [q, dq]
 
+
 class SPG(PolarGenerator):
+    """
+    Polar-space Pattern Generator (SPG).
+
+    Generates rhythmic patterns using polar coordinates (radius and angle).
+    The dynamics are defined in a JAX-jittable function.
+    """
     def __init__(self, params: dict = None):
         super().__init__(params)
         if self.num_dof != 1:
-            self.omega_cur = jnp.asarray([0] * (self.num_dof - 1))
-            self.omega_past = jnp.asarray([0] * (self.num_dof - 1))
-            self.mu_cur = jnp.asarray([0])
+            self.omega_cur = jnp.zeros(self.num_dof - 1)
+            self.omega_past = jnp.zeros(self.num_dof - 1)
         else:
-            self.omega_cur = jnp.asarray([0])
-            self.omega_past = jnp.asarray([0])
-            self.mu_cur = jnp.asarray([0]) # Ensure mu_cur is always an array
-        self.eqs_motion = self.make_eqs_motion()
+            self.omega_cur = jnp.zeros(1)
+            self.omega_past = jnp.zeros(1)
+        self.mu_cur = jnp.zeros(1)
+        self.eqs_motion = self._make_eqs_motion()
 
-    def make_eqs_motion(self, params: dict = None):
+    def _make_eqs_motion(self):
+        """Factory for the JIT-compiled dynamics function."""
         if self.num_dof != 1:
             @jax.jit
             def eqs_motion(t, x, params):
-                mu = params['mu']
-                omega = params['omega']
+                """SPG equations of motion for num_dof > 1."""
+                mu, omega = params['mu'], params['omega']
                 r = x[-1]
                 dr = (mu ** 2 - r ** 2) * r
                 dphi = omega
-                return jnp.asarray([dphi, dr], dtype=float).flatten()
+                # Note: This assumes dphi is a scalar or matches the shape of phi.
+                # If omega has num_dof-1 elements, dphi will too.
+                return jnp.append(dphi, dr)
         else:
             @jax.jit
             def eqs_motion(t, x, params):
+                """SPG equations of motion for num_dof == 1."""
                 return params['omega']
         return eqs_motion
 
     def restart(self, params: dict = None):
-        # Re-implement BaseModel.restart and PolarGenerator.restart
-        # 1. Logic from BaseModel.restart
+        """Resets the model to its initial state."""
+        # --- Logic from BaseModel.restart & PolarGenerator.restart ---
         self.t_0 = params.get('t_0', self.t_0)
         p_0 = self.select_initial(params)
         self.t_cur = self.t_0
-        # CORRECTED LOGIC:
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
-        # Reset tracking vars from BaseModel.restart
-        self.t_traj = self.t_cur
+        self.t_traj = jnp.asarray([self.t_cur])
         self.x_traj = jnp.asarray([self.x_cur])
         self.q_traj = jnp.asarray([self.q_cur])
         self.p_traj = jnp.asarray([self.p_cur])
-        self.E_traj = self.E_cur
-
-        # 2. Logic from PolarGenerator.restart
-        self.params_traj = jnp.asarray([jnp.asarray([0] * (self.num_dof + 1))])
-        
+        self.E_traj = jnp.asarray([self.E_cur])
+        self.params_traj = jnp.zeros((1, self.num_dof + 1))
         return p_0
 
     def step(self, params: dict = None):
-        params['num_dof'] = self.num_dof
-        
-        # Re-implement BaseModel.step to fix E_cur calculation
-        t_final = jnp.asarray([params.get('t_final', self.t_cur + self.delta_t)]).flatten()
-        ts = jnp.asarray([self.t_cur, t_final]).flatten()
-
-        # Simulate the system until t_final
-        self.x_cur = self.simulate({'eqs': self.eqs_motion,
-                                    'eqs_params': params,
-                                    'ts': ts,
-                                    'x_0': self.x_cur})
-
-        # Update the current variables
+        """Advances the simulation by one time step."""
+        # --- Logic from BaseModel.step ---
+        t_final = params.get('t_final', self.t_cur + self.delta_t)
+        ts = jnp.asarray([self.t_cur, t_final])
+        self.x_cur = self.simulate({
+            'eqs': self.eqs_motion,
+            'eqs_params': params,
+            'ts': ts,
+            'x_0': self.x_cur
+        })
         self.p_cur = self.get_link_cartesian_positions()
         self.q_cur = self.state_to_joints()
-        # Corrected E_cur calculation to produce a scalar
         self.E_cur = sum(self.get_energies())
         self.t_cur = t_final
-
-        # SPG-specific updates
+        # --- Logic from SPG.step ---
         self.omega_cur = jnp.asarray(params['omega'])
         self.mu_cur = jnp.asarray(params['mu'])
 
     def polar_to_joints(self, state: jnp.ndarray = None):
-        # Since num_dof is static for the instance, a regular Python if is appropriate
-        # and avoids the strict shape-matching rules of jax.lax.cond.
+        """Converts polar state to joint state [q, dq]."""
         if self.num_dof != 1:
-            x_cur, mu_cur, omega_cur = self.x_cur, self.mu_cur, self.omega_cur
-            num_dof = self.num_dof
-            
-            phi = x_cur[0:num_dof - 1]
+            x_cur = self.x_cur if state is None else state
+            phi = x_cur[0:self.num_dof - 1]
             r = x_cur[-1]
-            q = jnp.asarray([r * jnp.cos(phi), r * jnp.sin(phi)])
-            psi = mu_cur ** 2 - r ** 2
-            root = jnp.ones((num_dof, num_dof))
-            upper = jnp.multiply(jnp.triu(root, 1), -omega_cur)
-            lower = jnp.multiply(jnp.tril(root, -1), omega_cur)
-            diag = jnp.diag(jnp.full((num_dof, num_dof), psi.squeeze()))
+            q = jnp.asarray([r * jnp.cos(phi), r * jnp.sin(phi)]).flatten()
+            
+            # Calculate dq
+            psi = self.mu_cur ** 2 - r ** 2
+            root = jnp.ones((self.num_dof, self.num_dof))
+            upper = jnp.multiply(jnp.triu(root, 1), -self.omega_cur)
+            lower = jnp.multiply(jnp.tril(root, -1), self.omega_cur)
+            diag = jnp.diag(jnp.full((self.num_dof,), psi.squeeze()))
             A = upper + diag + lower
-            dq = A @ q.flatten()
-            q_out, dq_out = q.flatten(), dq
+            dq = (A @ q).flatten()
+            return [q, dq]
         else:
-            x_cur, mu_cur, omega_cur = self.x_cur, self.mu_cur, self.omega_cur
-            q_out = x_cur[0]
-            dq_out = omega_cur
-
-        return [jnp.asarray(q_out, dtype=float).flatten(), jnp.asarray(dq_out, dtype=float).flatten()]
+            q = self.x_cur[0] if state is None else state[0]
+            dq = self.omega_cur
+            return [jnp.atleast_1d(q), jnp.atleast_1d(dq)]
 
     def joints_to_polar(self, joints: jnp.ndarray = None):
-        # Using a static Python `if` is correct here as well.
+        """Converts joint state to polar state."""
         if self.num_dof != 1:
             r = jnp.linalg.norm(joints)
+            # Ensure phi is always calculated for safety, even if r is 0
             phi = jnp.arctan2(joints[1], joints[0])
             return jnp.asarray([phi, r])
         else:
             return joints
 
     def update_trajectories(self, params: dict = None):
-        # Re-implement the full inheritance chain of update_trajectories to avoid the error in BaseModel.
-        # 1. Logic from SPG itself
-        change = 0
-        if jnp.any(jnp.sign(self.omega_cur) != jnp.sign(self.omega_past)):
-            change = 1
+        """Appends the current state to the trajectory history."""
+        # --- Logic from SPG.update_trajectories ---
+        change = jnp.any(jnp.sign(self.omega_cur) != jnp.sign(self.omega_past)).astype(float)
         self.omega_past = self.omega_cur
         params_input = jnp.concatenate([
             jnp.atleast_1d(self.omega_cur),
             jnp.atleast_1d(self.mu_cur),
-            jnp.asarray([change])
-        ], axis=0)
+            jnp.atleast_1d(change)
+        ])
 
-        # 2. Logic from BaseModel (Corrected)
+        # --- Logic from BaseModel & PolarGenerator (Corrected) ---
         self.t_traj = jnp.append(self.t_traj, self.t_cur)
         self.x_traj = jnp.append(self.x_traj, jnp.expand_dims(self.x_cur, axis=0), axis=0)
         self.q_traj = jnp.append(self.q_traj, jnp.expand_dims(self.q_cur, axis=0), axis=0)
         self.p_traj = jnp.append(self.p_traj, jnp.expand_dims(self.p_cur, axis=0), axis=0)
         self.E_traj = jnp.append(self.E_traj, self.E_cur)
-        
-        # 3. Logic from PolarGenerator (Corrected)
         self.params_traj = jnp.append(self.params_traj, jnp.expand_dims(params_input, axis=0), axis=0)
 
     def get_params(self):
         return [self.omega_cur, self.mu_cur]
 
     def get_joint_state(self):
-        out = self.polar_to_joints(self.x_cur)
-        return out
+        """Returns the current joint state [q, dq] from the polar state."""
+        return self.polar_to_joints()
+
