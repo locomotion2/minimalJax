@@ -23,11 +23,11 @@ class CPG(BaseModel, ABC):
         self.coils = 0
 
         # Pre-compile the JITted function for the equations of motion
-        self.eqs_motion = self._make_eqs_motion()
+        self.eqs_motion = self.make_eqs_motion()
 
     @staticmethod
     @jax.jit
-    def _make_eqs_motion():
+    def make_eqs_motion(): # Renamed from _make_eqs_motion
         """Creates a JIT-compiled function for the oscillator dynamics."""
         def eqs_motion(t, x, params):
             """CPG equations of motion."""
@@ -40,14 +40,14 @@ class CPG(BaseModel, ABC):
             return jnp.asarray([dx1, dx2])
         return eqs_motion
 
-    def restart(self, params: dict = None):
+    def restart(self, params: dict = None, key=None):
         """
         Resets the model to its initial state. This is a stateful operation
         and is not JIT-compiled.
         """
         # --- Logic from BaseModel.restart ---
         self.t_0 = params.get('t_0', self.t_0)
-        p_0 = self.select_initial(params)
+        p_0 = self.select_initial(params, key=key)
         self.t_cur = self.t_0
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
@@ -119,7 +119,7 @@ class CPG(BaseModel, ABC):
             self.coils -= 1
         return self.coils
 
-    def select_initial(self, params: dict = None):
+    def select_initial(self, params: dict = None, key=None):
         """Sets the initial conditions for the model."""
         self.x_0 = params.get('x_0', self.x_0)
         self.x_cur = jnp.asarray(self.x_0)
@@ -174,9 +174,9 @@ class GPG(JointsGenerator):
             self.omega_past = jnp.zeros(1)
         self.mu_cur = jnp.zeros(1)
         # Create the appropriate JITted function based on static parameter `num_dof`.
-        self.eqs_motion = self._make_eqs_motion()
+        self.eqs_motion = self.make_eqs_motion()
 
-    def _make_eqs_motion(self):
+    def make_eqs_motion(self): # Renamed from _make_eqs_motion
         """
         Factory for the JIT-compiled dynamics function.
         A standard Python `if` is used here because `self.num_dof` is a static
@@ -203,11 +203,11 @@ class GPG(JointsGenerator):
                 return params['omega']
         return eqs_motion
 
-    def restart(self, params: dict = None):
+    def restart(self, params: dict = None, key=None):
         """Resets the model to its initial state."""
         # --- Logic from BaseModel.restart ---
         self.t_0 = params.get('t_0', self.t_0)
-        p_0 = self.select_initial(params)
+        p_0 = self.select_initial(params, key=key)
         self.t_cur = self.t_0
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
@@ -287,9 +287,9 @@ class SPG(PolarGenerator):
             self.omega_cur = jnp.zeros(1)
             self.omega_past = jnp.zeros(1)
         self.mu_cur = jnp.zeros(1)
-        self.eqs_motion = self._make_eqs_motion()
+        self.eqs_motion = self.make_eqs_motion()
 
-    def _make_eqs_motion(self):
+    def make_eqs_motion(self): # Renamed from _make_eqs_motion
         """Factory for the JIT-compiled dynamics function."""
         if self.num_dof != 1:
             @jax.jit
@@ -309,11 +309,11 @@ class SPG(PolarGenerator):
                 return params['omega']
         return eqs_motion
 
-    def restart(self, params: dict = None):
+    def restart(self, params: dict = None, key=None):
         """Resets the model to its initial state."""
         # --- Logic from BaseModel.restart & PolarGenerator.restart ---
         self.t_0 = params.get('t_0', self.t_0)
-        p_0 = self.select_initial(params)
+        p_0 = self.select_initial(params, key=key)
         self.t_cur = self.t_0
         self.E_0 = sum(self.get_energies())
         self.E_cur = self.E_0
@@ -401,4 +401,3 @@ class SPG(PolarGenerator):
     def get_joint_state(self):
         """Returns the current joint state [q, dq] from the polar state."""
         return self.polar_to_joints()
-
