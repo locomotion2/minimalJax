@@ -20,7 +20,7 @@ pip install sbx-rl
 
 How to train the model:
 ```
-python train.py --algo tqc --env TestEnvironment-v1 -P --conf-file hyperparams/tqc.yml --env-kwargs render:False mode:"'speed'" --eval-freq -1 -params train_freq:10 gradient_steps:10 --log-interval 100 -n 200000
+python train.py --algo tqc --env TestEnvironment-v1 -P --conf-file hyperparams/tqc.yml --env-kwargs render:False mode:"'speed'" --eval-freq -1 -params train_freq:10 gradient_steps:10 --log-interval 100 -n 20000
 ```
 How to run a trained model:
 ```

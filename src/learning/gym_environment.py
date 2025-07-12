@@ -257,7 +257,10 @@ class BaseGymEnvironment(gym.Env):
             MIN_SCORE_FOR_SUCCESS = 0.0  # Placeholder: Adjust this threshold
             success_rate = 1.0 if self.r_epi > MIN_SCORE_FOR_SUCCESS else 0.0
             self.curriculum.update(success_rate)
-            self.E_d = self.curriculum.get_difficulty()
+            
+            # Get difficulty from curriculum and provide a default if it's None
+            difficulty = self.curriculum.get_difficulty()
+            self.E_d = 0.0 if difficulty is None else difficulty
 
     def close(self):
         """Closes any open resources, like plotting windows."""

@@ -40,7 +40,8 @@ class ArnesDoublePendulum:
     @property
     def U0(self):
         if self._U0 is None:
-            self._U0 = self._potential(self.equilibrium)
+            # Correctly call _potential, passing the required 'params' argument.
+            self._U0 = self._potential(self.equilibrium, params=self.params)
         return self._U0
 
     def sim(self, q0, dq0,
@@ -143,23 +144,68 @@ class ArnesDoublePendulum:
                                  q[1]) + 1.0 * k[1] * q[1] - 1.0 * k[
                                  1] * qr[1]]]).flatten()
 
+    def _kinetic_energy(self, q, dq, params):
+        """
+        Private method to calculate kinetic energy.
+        This is now robust and expects the 'params' argument explicitly.
+        """
+        l, m, g, k, qr, kf = params
+        return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + 0.5 * m[1] * (
+                dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(q[1]) +
+                dq[0] ** 2 * l[1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 * dq[
+                    0] * dq[1] * l[1] ** 2 + dq[1] ** 2 * l[1] ** 2)
+
     def kinetic_energy(self, q, dq):
-        # Use jnp.ndim instead of q.ndim
-        if jnp.ndim(q) == jnp.ndim(dq) == 1:
-            return self._kinetic_energy(q, dq)
-        elif jnp.ndim(q) == jnp.ndim(dq) == 2:
-            return self._kinetic_energy(q.T, dq.T)
+        """
+        Public method that handles different input shapes and correctly calls
+        the private method with the instance's parameters.
+        """
+        ### DEBUG ###
+        print(f"--- Calling kinetic_energy ---")
+        print(f"Input q: {q}")
+        print(f"Input dq: {dq}")
+
+        result = None
+        if jnp.ndim(q) == 1:
+            result = self._kinetic_energy(q, dq, self.params)
+        elif jnp.ndim(q) == 2:
+            # Use jax.vmap for efficient batch processing
+            result = jax.vmap(self._kinetic_energy, in_axes=(0, 0, None))(q, dq, self.params)
         else:
-            raise ValueError
+            # Ensure a float is always returned
+            result = 0.0
+
+        ### DEBUG ###
+        print(f"Output result: {result}")
+        print(f"----------------------------")
+        return result
+
+    def _potential(self, q, params):
+        """
+        Private method to calculate potential energy.
+        This is now robust and expects the 'params' argument explicitly.
+        """
+        l, m, g, k, qr, kf = params
+        return g * l[0] * m[0] * jnp.sin(q[0]) + g * m[1] * (
+                l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
+                    -q[0] + qr[0]) ** 2 + 0.5 * \
+            k[1] * (-q[1] + qr[1]) ** 2
 
     def potential_energy(self, q, absolute=False):
-        # Use jnp.ndim instead of q.ndim
+        """
+        Public method that handles different input shapes and correctly calls
+        the private method with the instance's parameters.
+        """
+        # Determine the potential by calling the private method
         if jnp.ndim(q) == 1:
-            return self._potential(q) - (0 if absolute else self.U0)
+            potential = self._potential(q, self.params)
         elif jnp.ndim(q) == 2:
-            return self._potential(q.T) - (0 if absolute else self.U0)
+            # Use jax.vmap for efficient batch processing
+            potential = jax.vmap(self._potential, in_axes=(0, None))(q, self.params)
         else:
-            raise ValueError
+            return 0.0
+
+        return potential - (0 if absolute else self.U0)
 
     def forward_kinematics(self, q):
         # Use jnp.ndim instead of q.ndim
@@ -175,7 +221,8 @@ class ArnesDoublePendulum:
         if jnp.ndim(q) == 1:
             return sutils.hom2xyphi(self._link_positions(q).reshape((-1, 3, 3)))
         elif jnp.ndim(q) == 2:
-            out = jnp.empty((q.shape[0], self.dof, 3)) # Use jnp.empty
+            # Correct the empty array creation
+            out = jnp.empty((q.shape[0], self.dof, 3), dtype=jnp.float32)
             for i in range(q.shape[0]):
                 out = out.at[i, :, :].set(sutils.hom2xyphi(self._link_positions(q[i]).reshape((-1,
                                                                                     3,
@@ -226,13 +273,6 @@ class ArnesDoublePendulum:
 
         return jnp.arctan2(jnp.sin(q), jnp.cos(q)) # Use jnp.arctan2, jnp.sin, jnp.cos
 
-    def _potential(self, q):
-        l, m, g, k, qr, kf = self.params
-        # Use jnp.sin
-        return g * l[0] * m[0] * jnp.sin(q[0]) + g * m[1] * (
-                l[0] * jnp.sin(q[0]) + l[1] * jnp.sin(q[0] + q[1])) + 0.5 * k[0] * (
-                    -q[0] + qr[0]) ** 2 + 0.5 * \
-            k[1] * (-q[1] + qr[1]) ** 2
 
     def _ddq(self, q, dq, tau_in):
         l, m, g, k, qr, kf = self.params
@@ -309,13 +349,6 @@ class ArnesDoublePendulum:
         ddq = ddq_cons - kf * jnp.asarray([[dq[0]], [dq[1]]]) # Use jnp.asarray
         return ddq
 
-    def _kinetic_energy(self, q, dq):
-        l, m, g, k, qr, kf = self.params
-        # Use jnp.cos
-        return 0.5 * dq[0] ** 2 * l[0] ** 2 * m[0] + 0.5 * m[1] * (
-                dq[0] ** 2 * l[0] ** 2 + 2 * dq[0] ** 2 * l[0] * l[1] * jnp.cos(q[1]) +
-                dq[0] ** 2 * l[1] ** 2 + 2 * dq[0] * dq[1] * l[0] * l[1] * jnp.cos(q[1]) + 2 * dq[
-                    0] * dq[1] * l[1] ** 2 + dq[1] ** 2 * l[1] ** 2)
 
     def _energy(self, q, dq):
         l, m, g, k, qr, kf = self.params
@@ -398,6 +431,8 @@ class DoublePendulum(Pendulum):
             qr=(0, 0),
             kf=self.k_f
         )
+        # Force the computation of U0 at initialization
+        _ = self.backend.U0
         params['not_inherited'] = False
         super().__init__(params)
         # Initialize a JAX PRNG key for random operations
@@ -413,6 +448,9 @@ class DoublePendulum(Pendulum):
 
         return eqs_motion
 
+
+# In class DoublePendulum
+
     def select_initial(self, params: dict = None):
         """
         Selects the initial state of the pendulum based on a given energy `E`.
@@ -422,16 +460,20 @@ class DoublePendulum(Pendulum):
             Calculates the inverse kinetic energy to find the initial velocities.
             """
             key, subkey1, subkey2 = jax.random.split(key, 3)
-            # Use a random starting point for the velocities
             dq0 = jax.random.uniform(subkey1, shape=(2,), minval=-1, maxval=1)
-            
-            # Define the functions needed for the specialized solver
-            # This function calculates the value we're trying to match (kinetic energy)
+
             value_func = lambda dq: self.backend.kinetic_energy(q, dq)
-            # This function calculates the gradient of the kinetic energy wrt velocities
+
+            ### DEBUG ###
+            print(f"--- inverse_kinetic ---")
+            print(f"Target Energy (E_k): {E}")
+            print(f"Initial dq0: {dq0}")
+            print(f"Created value_func: {value_func}")
+            print(f"-----------------------")
+
+
             grad_func = jax.grad(value_func)
-            
-            # Call the new, specialized function designed for this task
+
             dq = sutils.find_by_grad_desc(subkey2, E, dq0, value_func, grad_func)
             return dq, key
 
@@ -441,36 +483,26 @@ class DoublePendulum(Pendulum):
             """
             key, subkey = jax.random.split(key)
 
-            # Use a default starting position if none is provided
             if q0 is None:
                 q0 = jnp.zeros(2)
 
-            # Define the functions needed for the specialized solver
-            # This function calculates the value we're trying to match (potential energy)
-            value_func = self.backend.potential_energy
-            # This function calculates the gradient of the potential energy wrt positions
+            value_func = lambda q: self.backend.potential_energy(q, absolute=True)
             grad_func = jax.grad(value_func)
 
-            # Call the new, specialized function
             q = sutils.find_by_grad_desc(subkey, E, q0, value_func, grad_func)
 
             return jnp.arctan2(jnp.sin(q), jnp.cos(q)), key
 
         # --- Main function logic ---
-
-        # Handle inputs
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0)
 
-        # Split the key for all random operations in this function
         self._jax_key, key_alpha, key_beta = jax.random.split(self._jax_key, 3)
-        
-        # Use jax.random for all random numbers for consistency
+
         alpha = jax.random.uniform(key_alpha)
         beta = jax.random.uniform(key_beta)
 
-        # Choose energies based on mode
         if mode == 'speed':
             E_k = E_d
             E_p = 0
@@ -487,14 +519,17 @@ class DoublePendulum(Pendulum):
         else: # 'equilibrium'
             E_k = 0
             E_p = 0
-            
-        # Calculate starting positions and velocities
+
+        ### DEBUG ###
+        print(f"--- select_initial ---")
+        print(f"Mode: {mode}, Desired Energy (E_d): {E_d}")
+        print(f"Calculated E_k: {E_k}, E_p: {E_p}")
+        print(f"----------------------")
+
+
         q_0, self._jax_key = inverse_potential(self._jax_key, E=E_p)
         dq_0, self._jax_key = inverse_kinetic(self._jax_key, q=q_0, E=E_k)
 
-        # Initialize current state
-        # Note: jnp.append can be inefficient in JIT-compiled functions.
-        # For better performance, consider pre-allocating arrays.
         self.x_0 = jnp.append(q_0, dq_0)
         self.x_cur = self.x_0
 
@@ -504,7 +539,6 @@ class DoublePendulum(Pendulum):
         self.p_0 = self.get_link_cartesian_positions()
         self.p_cur = self.p_0
 
-        # Return the initial position in joint coordinates
         return q_0
 
     def solve(self, t: float):
