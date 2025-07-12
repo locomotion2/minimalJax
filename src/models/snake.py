@@ -92,7 +92,8 @@ class Snake(BaseModel):
 
         # Handle inputs
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0)
+        # ``E_d`` can be explicitly ``None`` when no energy schedule is used.
+        E_d = params.get('E_d') or 0
 
         # Choose energies based on mode
         alpha = self.rng.uniform(0, 1)

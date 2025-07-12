@@ -105,7 +105,9 @@ class Pendulum(BaseModel):
         """
         params = params or {}
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0.0)
+        # ``E_d`` may be explicitly ``None`` when training without an energy
+        # command. Fall back to ``0.0`` in that case.
+        E_d = params.get('E_d') or 0.0
         key = self.key # Use the key from the model's state
 
         # Split PRNG key for reproducible randomness

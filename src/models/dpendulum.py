@@ -494,7 +494,9 @@ class DoublePendulum(Pendulum):
         # --- Main function logic ---
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0.0)
+        # Some callers may set ``E_d`` explicitly to ``None``.
+        # Ensure it is always a valid numeric value for the optimizer.
+        E_d = params.get('E_d') or 0.0
         
         key, key_alpha, key_beta = jax.random.split(state['jax_key'], 3)
         alpha = jax.random.uniform(key_alpha)
@@ -675,7 +677,8 @@ class DoublePendulum(Pendulum):
         # --- Main function logic ---
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0.0)
+        # ``E_d`` might explicitly be ``None`` when no energy command is used.
+        E_d = params.get('E_d') or 0.0
 
         # Use the instance's PRNG key and split it for use.
         key, key_alpha, key_beta = jax.random.split(self.key, 3)
