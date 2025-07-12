@@ -118,6 +118,7 @@ class BaseEnvironment(ABC):
         return step_bool
 
     def restart(self, params: dict = None):
+        params = params or {}
         p_0 = self.model.restart({'mode': self.mode, 'E_d': params.get('E_d', 0)})
         self.controller.restart()
         self.generator.restart({'x_0': p_0})

@@ -7,7 +7,7 @@ register(
     entry_point="src.learning.gym_environment:BaseGymEnvironment",
     kwargs={
         "render": False,
-        "energy_command": None,
+        "energy_command": 0.0,
         "mode": 'random_des',
         "solve": False,
     },
