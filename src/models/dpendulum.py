@@ -462,6 +462,8 @@ class DoublePendulum(Pendulum):
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
         E_d = params.get('E_d', 0)
+        if E_d is None:
+            E_d = 0
 
         # Split the key for all random operations in this function
         self._jax_key, key_alpha, key_beta = jax.random.split(self._jax_key, 3)

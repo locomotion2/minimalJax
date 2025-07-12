@@ -86,7 +86,8 @@ class BaseGymEnvironment(gym.Env):
         # --- Energy and Inference Setup ---
         self.energy_step = kwargs.get('energy_step', False)
         self.inference = 'energy_command' in kwargs
-        self.E_d = kwargs.get('energy_command', 0.0)
+        energy_cmd = kwargs.get('energy_command', 0.0)
+        self.E_d = 0.0 if energy_cmd is None else energy_cmd
         self.energy_observer = kwargs.get('energy_observer')
 
         # --- System and Action Space Configuration ---
