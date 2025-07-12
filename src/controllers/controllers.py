@@ -127,9 +127,9 @@ class basePIDController(BaseController):
         tau = jnp.linalg.norm(self.tau_last)
 
         # --- CORRECTION IS HERE ---
-        # The error vector self.e_cur is shape (N, 1). Transpose it to (1, N)
-        # to match the shape of e_traj for concatenation.
-        new_error_row = self.e_cur.T
+        # self.e_cur stores the scalar P/I/D error norms. Expand the array
+        # to match the (1, 3) shape expected by e_traj.
+        new_error_row = jnp.expand_dims(self.e_cur, axis=0)
 
         # Prepare other rows for concatenation
         new_tau_row = jnp.expand_dims(jnp.asarray([tau]), axis=0)
@@ -188,8 +188,19 @@ class PID_pos_vel_tracking_modeled(basePIDController):
             q_cur, dq_cur, self.q_d, self.dq_d, self.e_P_accum, self.gains_cur
         )
 
+        # Compute individual error components for tracking
+        e_P = self.q_d - q_cur
+        e_I = new_e_P_accum
+        e_D = self.dq_d - dq_cur
+
+        P_gain, I_gain, D_gain = self.gains_cur
+        self.e_cur = jnp.asarray([
+            jnp.linalg.norm(P_gain * e_P),
+            jnp.linalg.norm(I_gain * e_I),
+            jnp.linalg.norm(D_gain * e_D),
+        ])
+
         # Update the state of the controller instance (side-effects)
-        # This happens outside the JIT-compiled function
         self.tau_last = tau
         self.e_P_accum = new_e_P_accum
         self.q_d_prev = self.q_d
