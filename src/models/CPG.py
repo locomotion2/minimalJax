@@ -149,13 +149,15 @@ class CPG(BaseModel, ABC):
         return self.p_0
 
     # --- Getter and other methods ---
-    def get_cartesian_state(self):
+    def get_cartesian_state(self, state: dict | None = None):
+        """Return cartesian position and velocity."""
+        x = self.x_cur if state is None else state.get('x_cur', self.x_cur)
         params = {'mu': self.mu_cur, 'omega': self.omega_cur}
-        v = self.eqs_motion(0, self.x_cur, params)
-        return [self.x_cur, v]
+        v = self.eqs_motion(0, x, params)
+        return [x, v]
 
-    def get_link_cartesian_positions(self):
-        return self.get_cartesian_state()[0]
+    def get_link_cartesian_positions(self, state: dict | None = None):
+        return self.get_cartesian_state(state)[0]
 
     def get_state_traj(self):
         return self.x_traj
@@ -300,9 +302,10 @@ class GPG(JointsGenerator):
     def get_params(self):
         return [self.omega_cur, self.mu_cur]
 
-    def get_joint_state(self):
+    def get_joint_state(self, state: dict | None = None):
         """Returns the current joint state [q, dq]."""
-        q = jnp.asarray(self.x_cur).flatten()
+        x = self.x_cur if state is None else state.get('x_cur', self.x_cur)
+        q = jnp.asarray(x).flatten()
         params = {'mu': self.mu_cur, 'omega': self.omega_cur}
         dq = self.eqs_motion(0, q, params).flatten()
         return [q, dq]
@@ -453,6 +456,9 @@ class SPG(PolarGenerator):
     def get_params(self):
         return [self.omega_cur, self.mu_cur]
 
-    def get_joint_state(self):
+    def get_joint_state(self, state: dict | None = None):
         """Returns the current joint state [q, dq] from the polar state."""
-        return self.polar_to_joints()
+        if state is None:
+            return self.polar_to_joints()
+        else:
+            return self.polar_to_joints(state['x_cur'])

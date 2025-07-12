@@ -115,13 +115,24 @@ class BaseModel(ABC):
     @abstractmethod
     def forward_kins(self, params: dict = None): raise NotImplementedError
     @abstractmethod
-    def get_cartesian_state(self, state: dict): raise NotImplementedError
+    def get_cartesian_state(self, state: dict | None = None):
+        """Return cartesian position/velocity of the model."""
+        raise NotImplementedError
+
     @abstractmethod
-    def get_link_cartesian_positions(self, state: dict): raise NotImplementedError
+    def get_link_cartesian_positions(self, state: dict | None = None):
+        """Return cartesian positions of the links."""
+        raise NotImplementedError
+
     @abstractmethod
-    def get_joint_state(self, state: dict): raise NotImplementedError
+    def get_joint_state(self, state: dict | None = None):
+        """Return joint position and velocity."""
+        raise NotImplementedError
+
     @abstractmethod
-    def get_energies(self, state: dict): raise NotImplementedError
+    def get_energies(self, state: dict | None = None):
+        """Return potential and kinetic energies."""
+        raise NotImplementedError
 
     # --- Helper & Getter Methods (now take state as input) ---
     def state_to_joints(self, state: dict):
@@ -155,18 +166,31 @@ class JointsGenerator(BaseModel):
         x_0 = params.get('x_0', state['x_cur'])
         return {"x_cur": x_0, "q_cur": x_0}
 
-    def get_link_cartesian_positions(self, state: dict): return jnp.zeros(self.num_dof)
-    def get_energies(self, state: dict): return jnp.zeros(2)
-    def get_parametric_traj(self, state: dict): return jnp.stack(state['params_traj'])
+    def get_link_cartesian_positions(self, state: dict | None = None):
+        return jnp.zeros(self.num_dof)
+
+    def get_energies(self, state: dict | None = None):
+        return jnp.zeros(2)
+    def get_parametric_traj(self, state: dict | None = None):
+        return jnp.stack(state['params_traj']) if state is not None else jnp.zeros((0,))
 
     # --- Unchanged abstract methods ---
     @abstractmethod
-    def get_params(self): raise NotImplementedError
+    def get_params(self):
+        raise NotImplementedError
+
     @abstractmethod
-    def get_joint_state(self, state: dict): return NotImplementedError
-    def get_cartesian_state(self, state: dict): raise NotImplementedError
-    def inverse_kins(self, params: dict = None): raise NotImplementedError
-    def forward_kins(self, params: dict = None): raise NotImplementedError
+    def get_joint_state(self, state: dict | None = None):
+        return NotImplementedError
+
+    def get_cartesian_state(self, state: dict | None = None):
+        raise NotImplementedError
+
+    def inverse_kins(self, params: dict = None):
+        raise NotImplementedError
+
+    def forward_kins(self, params: dict = None):
+        raise NotImplementedError
 
 class PolarGenerator(BaseModel):
     def __init__(self, params: dict = None):
@@ -192,9 +216,13 @@ class PolarGenerator(BaseModel):
     def state_to_joints(self, state: dict):
         return self.polar_to_joints(state['x_cur'][0:self.num_dof])[0]
         
-    def get_link_cartesian_positions(self, state: dict): return jnp.zeros(self.num_dof)
-    def get_energies(self, state: dict): return jnp.zeros(2)
-    def get_parametric_traj(self, state: dict): return jnp.stack(state['params_traj'])
+    def get_link_cartesian_positions(self, state: dict | None = None):
+        return jnp.zeros(self.num_dof)
+
+    def get_energies(self, state: dict | None = None):
+        return jnp.zeros(2)
+    def get_parametric_traj(self, state: dict | None = None):
+        return jnp.stack(state['params_traj']) if state is not None else jnp.zeros((0,))
 
     # --- Unchanged abstract methods ---
     @abstractmethod
@@ -204,10 +232,17 @@ class PolarGenerator(BaseModel):
     @abstractmethod
     def get_params(self): raise NotImplementedError
     @abstractmethod
-    def get_joint_state(self, state: dict): return NotImplementedError
-    def get_cartesian_state(self, state: dict): raise NotImplementedError
-    def inverse_kins(self, params: dict = None): raise NotImplementedError
-    def forward_kins(self, params: dict = None): raise NotImplementedError
+    def get_joint_state(self, state: dict | None = None):
+        return NotImplementedError
+
+    def get_cartesian_state(self, state: dict | None = None):
+        raise NotImplementedError
+
+    def inverse_kins(self, params: dict = None):
+        raise NotImplementedError
+
+    def forward_kins(self, params: dict = None):
+        raise NotImplementedError
 
 
 class DummyOutput(JointsGenerator):
