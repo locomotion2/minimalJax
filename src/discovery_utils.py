@@ -86,6 +86,9 @@ def find_by_grad_desc(key,
     A JIT-compatible function to find an input `q` that yields a `target_value`
     from a `value_func`, using simple gradient descent.
     """
+    if target_value is None:
+        raise ValueError("target_value (E) must not be None")
+
     init_state = (q0, 0, 0, key)
 
     def loop_cond(state):

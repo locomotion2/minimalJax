@@ -136,8 +136,8 @@ class BaseGymEnvironment(gym.Env):
         self.r_epi = 0.0
 
     @staticmethod
-    @jit
-    def _jitted_step(state, action, final_time, sim, reward_func):
+    @partial(jit, static_argnames=["sim", "reward_func"]) # to explicitly mark sim and reward_func as static
+    def _jitted_step(state, action, final_time, *, sim, reward_func):
         """A pure, JIT-compiled function for one simulation step."""
         # This function contains the logic that needs to be fast.
         # It takes the state and action, and returns the results.
@@ -168,8 +168,8 @@ class BaseGymEnvironment(gym.Env):
         
         # Call the fast, JIT-compiled step function with the current state
         next_state, reward_jax, costs_jax, terminated_jax = self._jitted_step(
-            self.state, action_jax, self.final_time, self.sim, self.reward_func
-        )
+           self.state, action_jax, self.final_time, sim=self.sim, reward_func=self.reward_func
+         )
         
         # Update the environment's state (this is a side-effect)
         self.state = next_state
@@ -194,27 +194,25 @@ class BaseGymEnvironment(gym.Env):
         if seed is not None:
             self.key = jax.random.PRNGKey(seed)
         
-        # Update the target energy based on the curriculum
         self.new_target_energy()
         
-        # Restart the underlying simulation
         self.sim.restart({'E_d': self.E_d})
         
-        # Get the initial state from the simulation
         initial_sim_state = self.sim.get_state_and_update()
+
         
-        # Initialize the full environment state
+        initial_sim_state['num_dof'] = getattr(self.sim, 'num_dof', 1)  
+        
         self.state = {
             'sim_state': initial_sim_state,
             't': 0,
         }
         
-        # Get initial observation and info dict for Gym
         obs = self._state_to_obs(self.state['sim_state'])
-        _, costs = self.reward_func(self.state['sim_state']) # We only need costs for the info dict
+        _, costs = self.reward_func(self.state['sim_state'])  
         info = {'costs': np.array(costs)}
 
-        # Reset episode-specific trackers
+        
         self.r_epi = 0.0
         self.r_traj = jnp.empty((0, self.r_num + 1))
         self.E_l_traj = jnp.empty((0, 1))

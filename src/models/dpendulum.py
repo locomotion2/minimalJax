@@ -417,24 +417,19 @@ class DoublePendulum(Pendulum):
         """
         Selects the initial state of the pendulum based on a given energy `E`.
         """
-        def inverse_kinetic(key, q, E: float = 0):
-            """
-            Calculates the inverse kinetic energy to find the initial velocities.
-            """
-            key, subkey1, subkey2 = jax.random.split(key, 3)
-            # Use a random starting point for the velocities
-            dq0 = jax.random.uniform(subkey1, shape=(2,), minval=-1, maxval=1)
-            
-            # Define the functions needed for the specialized solver
-            # This function calculates the value we're trying to match (kinetic energy)
-            value_func = lambda dq: self.backend.kinetic_energy(q, dq)
-            # This function calculates the gradient of the kinetic energy wrt velocities
-            grad_func = jax.grad(value_func)
-            
-            # Call the new, specialized function designed for this task
-            dq = sutils.find_by_grad_desc(subkey2, E, dq0, value_func, grad_func)
-            return dq, key
+        def inverse_kinetic(key, q, *, backend, E: float = 0):
+          """
+          Calculates the inverse kinetic energy to find the initial velocities.
+           """
+          key, subkey1, subkey2 = jax.random.split(key, 3)
+          dq0 = jax.random.uniform(subkey1, shape=(2,), minval=-1, maxval=1)
 
+          value_func = lambda dq: backend.kinetic_energy(q, dq)
+          grad_func = jax.grad(value_func)
+
+          dq = sutils.find_by_grad_desc(subkey2, E, dq0, value_func, grad_func)
+          return dq, key
+      
         def inverse_potential(key, E: float = 0, q0=None):
             """
             Calculates the inverse potential energy to find the initial positions.
@@ -461,7 +456,7 @@ class DoublePendulum(Pendulum):
         # Handle inputs
         params = params if params is not None else {}
         mode = params.get('mode', 'equilibrium')
-        E_d = params.get('E_d', 0)
+        E_d = float(params.get('E_d') or 0.0)#changed it so  its always a valid float and never None or a weird type
 
         # Split the key for all random operations in this function
         self._jax_key, key_alpha, key_beta = jax.random.split(self._jax_key, 3)
@@ -490,7 +485,7 @@ class DoublePendulum(Pendulum):
             
         # Calculate starting positions and velocities
         q_0, self._jax_key = inverse_potential(self._jax_key, E=E_p)
-        dq_0, self._jax_key = inverse_kinetic(self._jax_key, q=q_0, E=E_k)
+        dq_0, self._jax_key = inverse_kinetic(self._jax_key, q=q_0, backend=self.backend, E=E_k)
 
         # Initialize current state
         # Note: jnp.append can be inefficient in JIT-compiled functions.

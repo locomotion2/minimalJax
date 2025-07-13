@@ -10,6 +10,9 @@ import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
 import warnings
+import jax.numpy as jnp
+import jax
+from jax import lax
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -118,6 +121,7 @@ class BaseEnvironment(ABC):
         return step_bool
 
     def restart(self, params: dict = None):
+        params = params or {}
         p_0 = self.model.restart({'mode': self.mode, 'E_d': params.get('E_d', 0)})
         self.controller.restart()
         self.generator.restart({'x_0': p_0})
@@ -282,37 +286,41 @@ class CPGEnv(BaseEnvironment):
         self.controller = PID_pos_vel_tracking_modeled(params=self.config.get('controller_params'))
         self.generator = SPG(params=self.config.get('generator_params'))
 
-    def step(self, params: dict = None):
-        action = params.get('action')
+    def step(self, action, sim_state):
+     def true_branch(args):
+        action, num_dof = args
+        return jnp.asarray(action[0:num_dof - 1]), jnp.asarray(action[num_dof - 1:num_dof])
+     def false_branch(args):
+        action, _ = args
+        return jnp.asarray([action[0]]), jnp.asarray([])
+     omega, mu = lax.cond(
+     sim_state['num_dof'] != 1,
+     true_branch,
+     false_branch,
+     (action, sim_state['num_dof'])
+      )
+     generator = sim_state['generator']
+     controller = sim_state['controller']
+     model = sim_state['model']
+     t_elapsed = sim_state['t_elapsed']
+     dt = sim_state['delta_t_learning']
 
-        # Get RL params
-        if self.num_dof != 1:
-            omega = np.asarray(action[0:self.num_dof - 1])
-            mu = np.asarray(action[self.num_dof - 1:self.num_dof])
-        else:
-            omega = np.asarray([action[0]])
-            mu = np.asarray([])
+     if not sim_state['solve']:
+        generator_input = {'omega': omega, 'mu': mu}
+        generator.step(generator_input)
+        generator.update_trajectories(generator_input)
+        q_d, dq_d = generator.get_joint_state()
+     else:
+        q_d, dq_d = model.solve(t_elapsed)
 
-        if not self.solve:
-            # Generate next point in path
-            generator_input = {'omega': omega, 'mu': mu}
-            self.generator.step(generator_input)
-            self.generator.update_trajectories(generator_input)
-            [q_d, dq_d] = self.generator.get_joint_state()
-        else:
-            # Obtain solution from model to compare results
-            [q_d, dq_d] = self.model.solve(self.t_elapsed)
+     controller.set_target(q_d, dq_d, params={'E': jnp.array([sum(model.get_energies())])})
+     model.step({'controller': controller.input, 't_final': t_elapsed + dt})
 
-        # New step for model
-        params['E'] = np.asarray([sum(self.model.get_energies())]).flatten()
-        self.controller.set_target(q_d, dq_d, params=params)
-        self.model.step({'controller': self.controller.input, 't_final': self.t_elapsed + self.delta_t_learning})
+     model.update_trajectories()
+     controller.update_trajectories(q_d)
+     sim_state['t_elapsed'] += dt
 
-        # Save latest trajectory for plotting
-        self.model.update_trajectories()
-        self.controller.update_trajectories(q_d)  # Todo: delete the tracking of the desired position in the cont
-        self.t_elapsed += self.delta_t_learning
-
+     return sim_state
 
 class DirectEnv(BaseEnvironment):
     def __init__(self, params: dict = None):
