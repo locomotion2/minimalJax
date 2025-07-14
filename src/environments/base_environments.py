@@ -288,8 +288,10 @@ class CPGEnv(BaseEnvironment):
 
     def step(self, action, sim_state):
      def true_branch(args):
-        action, num_dof = args
-        return jnp.asarray(action[0:num_dof - 1]), jnp.asarray(action[num_dof - 1:num_dof])
+       action, num_dof = args
+       omega = lax.dynamic_slice(action, (0,), (num_dof - 1,))
+       mu = lax.dynamic_slice(action, (num_dof - 1,), (1,))
+       return omega, mu
      def false_branch(args):
         action, _ = args
         return jnp.asarray([action[0]]), jnp.asarray([])
